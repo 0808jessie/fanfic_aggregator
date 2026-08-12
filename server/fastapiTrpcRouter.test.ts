@@ -1,0 +1,56 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import axios from "axios";
+import { appRouter } from "./routers";
+
+vi.mock("axios", () => ({
+  default: {
+    request: vi.fn(),
+  },
+}));
+
+describe("fastapi.proxy", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("forwards a search request to the Python service", async () => {
+    vi.mocked(axios.request).mockResolvedValue({
+      status: 200,
+      data: [{ title: "Test story", platform: "AO3" }],
+    } as never);
+
+    const caller = appRouter.createCaller({
+      user: undefined,
+      req: {} as never,
+      res: {} as never,
+    });
+
+    const result = await caller.fastapi.proxy({
+      path: "/search",
+      method: "POST",
+      data: { keyword: "星光", platforms: ["ao3"] },
+    });
+
+    expect(result).toEqual([{ title: "Test story", platform: "AO3" }]);
+    expect(axios.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "POST",
+        url: "http://localhost:8000/search",
+        data: { keyword: "星光", platforms: ["ao3"] },
+        timeout: 20_000,
+      }),
+    );
+  });
+
+  it("rejects upstream HTTP errors", async () => {
+    vi.mocked(axios.request).mockResolvedValue({ status: 503, data: { detail: "down" } } as never);
+
+    const caller = appRouter.createCaller({
+      user: undefined,
+      req: {} as never,
+      res: {} as never,
+    });
+
+    await expect(caller.fastapi.proxy({ path: "/fastapi-status" })).rejects.toThrow("HTTP 503");
+  });
+});

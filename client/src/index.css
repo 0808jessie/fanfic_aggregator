@@ -175,3 +175,127 @@
     }
   }
 }
+
+/* Fanfic Atlas blueprint visual system */
+:root {
+  --atlas-ink: #10151b;
+  --atlas-cyan: #6bcfca;
+  --atlas-pink: #f2a4bd;
+}
+
+html {
+  background: #f8faf9;
+}
+
+body {
+  min-width: 320px;
+  font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+}
+
+button,
+a,
+input {
+  transition: color 180ms ease-out, background-color 180ms ease-out, border-color 180ms ease-out, transform 160ms ease-out;
+}
+
+button:active:not(:disabled),
+a:active {
+  transform: scale(0.97);
+}
+
+.blueprint-grid {
+  background-image:
+    linear-gradient(rgba(52, 82, 91, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(52, 82, 91, 0.055) 1px, transparent 1px),
+    linear-gradient(rgba(102, 196, 190, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(102, 196, 190, 0.045) 1px, transparent 1px);
+  background-position: center center;
+  background-size: 32px 32px, 32px 32px, 8px 8px, 8px 8px;
+  mask-image: linear-gradient(to bottom, black 0%, rgba(0, 0, 0, 0.62) 72%, transparent 100%);
+}
+
+.blueprint-cross {
+  height: 96px;
+  width: 96px;
+  border: 1px solid rgba(16, 21, 27, 0.18);
+}
+
+.blueprint-cross::before,
+.blueprint-cross::after {
+  position: absolute;
+  content: "";
+  background: rgba(16, 21, 27, 0.18);
+}
+
+.blueprint-cross::before {
+  left: 50%;
+  top: -14px;
+  height: 124px;
+  width: 1px;
+}
+
+.blueprint-cross::after {
+  left: -14px;
+  top: 50%;
+  height: 1px;
+  width: 124px;
+}
+
+.cross-one {
+  right: 8vw;
+  top: 18vh;
+  transform: rotate(12deg);
+}
+
+.cross-two {
+  bottom: 17vh;
+  left: 5vw;
+  height: 62px;
+  width: 62px;
+  border-color: rgba(242, 164, 189, 0.6);
+  transform: rotate(-18deg);
+}
+
+.cross-two::before {
+  height: 88px;
+  background: rgba(242, 164, 189, 0.55);
+}
+
+.cross-two::after {
+  width: 88px;
+  background: rgba(242, 164, 189, 0.55);
+}
+
+.blueprint-orbit {
+  border: 1px solid rgba(107, 207, 202, 0.48);
+  border-radius: 999px;
+  height: 220px;
+  width: 440px;
+}
+
+.orbit-one {
+  left: -170px;
+  top: 42vh;
+  transform: rotate(-27deg);
+}
+
+.orbit-two {
+  bottom: -100px;
+  right: -120px;
+  border-color: rgba(242, 164, 189, 0.36);
+  transform: rotate(23deg);
+}
+
+.brand-mark {
+  box-shadow: 4px 4px 0 rgba(16, 21, 27, 0.9);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
