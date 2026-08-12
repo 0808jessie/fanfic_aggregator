@@ -32,3 +32,5 @@ class SearchResponse(BaseModel):
     items: list[ScrapedFanfic] = Field(default_factory=list)
     source: Literal["live", "cache", "fallback-cache", "none"] = "none"
     warning: Optional[str] = None
+    success: bool = True
+    isRateLimited: bool = False

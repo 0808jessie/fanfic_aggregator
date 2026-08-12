@@ -14,9 +14,9 @@ from .scrapers.lofter_scraper import LofterScraper
 app = FastAPI(title="Fanfic Atlas Search API", version="0.1.3")
 CACHE_TTL = timedelta(seconds=settings.cache_ttl_seconds)
 
-# 1小時記憶體快取 (Memory Cache) 用以避免頻繁爬取被平台限流或封鎖
+# 30分鐘記憶體快取 (In-Memory Cache) 用以避免頻繁請求遭到 AO3 限流與 IP 封鎖
 _MEMORY_CACHE: dict[str, tuple[datetime, list[ScrapedFanfic]]] = {}
-MEMORY_CACHE_TTL = timedelta(hours=1)
+MEMORY_CACHE_TTL = timedelta(minutes=30)
 
 SCRAPERS: dict[str, Callable[[], object]] = {
     "ao3": AO3Scraper,
@@ -200,14 +200,18 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
                 warning="外部平台即時連線受阻或逾時，已自動載入本機歷史快取作品。",
             )
 
-        # 5. No fake data / no example domain: return an explicit machine-readable status.
+        # 5. Rate-limit or block handling: return structured JSON indicating rate limit state
         warning = (
-            f"未從 {', '.join(platforms).upper()} 取得可驗證作品。"
-            "外部平台可能回傳 HTTP 403/404/429/525、觸發反爬防護或發生網路逾時；"
-            "本次沒有使用任何佔位連結。"
+            "AO3 伺服器目前流量較高或觸發防護（HTTP 403/429/525），伺服器稍微休息中，請於 10 秒後再搜尋。"
         )
-        print(f"[SearchAPI] Discovery halted for '{keyword}': {warning}")
-        return SearchResponse(source="none", warning=warning)
+        print(f"[SearchAPI] Rate limited / blocked for '{keyword}': {warning}")
+        return SearchResponse(
+            items=[],
+            source="none",
+            warning=warning,
+            success=False,
+            isRateLimited=True,
+        )
 
     except Exception as error:
         print(f"[SearchAPI] Unexpected failure: {error}")

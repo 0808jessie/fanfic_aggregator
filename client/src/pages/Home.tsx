@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { extractSearchWarning, normalizeResults, type SearchResult } from "@/lib/searchResults";
+import { extractIsRateLimited, extractSearchWarning, normalizeResults, type SearchResult } from "@/lib/searchResults";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -52,9 +52,17 @@ export default function Home() {
 
   const searchMutation = trpc.fastapi.proxy.useMutation({
     onSuccess: (payload) => {
+      const isLimited = extractIsRateLimited(payload);
+      const warningMsg = extractSearchWarning(payload);
       setResults(normalizeResults(payload));
-      setSearchWarning(extractSearchWarning(payload));
+      setSearchWarning(warningMsg);
       setHasSearched(true);
+
+      if (isLimited) {
+        toast.error("伺服器稍微休息中，請於 10 秒後再搜尋", {
+          description: warningMsg || "AO3 目前流量較高或觸發防護。",
+        });
+      }
     },
     onError: (error) => {
       setHasSearched(true);

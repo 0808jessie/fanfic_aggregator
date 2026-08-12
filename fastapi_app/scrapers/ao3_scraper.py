@@ -16,48 +16,67 @@ class AO3Scraper(BaseScraper):
     SEARCH_PATHS = ["/works/search", "/works/search?work_search[query]="]
 
     def scrape(self, keyword: str) -> list[ScrapedFanfic]:
+        import random
+        import time
+
         encoded_query = quote_plus(keyword)
-        search_urls = [
-            f"{self.BASE_URL}/works/search?work_search%5Bquery%5D={encoded_query}",
-            f"{self.BASE_URL}/works/search?utf8=%E2%9C%93&work_search%5Bquery%5D={encoded_query}",
-        ]
+        search_url = f"{self.BASE_URL}/works/search?work_search%5Bquery%5D={encoded_query}"
         
-        headers_list = [
+        # 完整真實桌面瀏覽器 Headers (Chrome 123/124 現代規格)
+        headers_pool = [
             {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9,zh-TW;q=0.8,zh;q=0.7,en-GB;q=0.6",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
                 "Referer": "https://archiveofourown.org/",
                 "Connection": "keep-alive",
             },
             {
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9,zh-TW;q=0.8",
                 "Referer": "https://archiveofourown.org/works/search",
                 "Connection": "keep-alive",
             }
         ]
 
         response = None
-        for search_url in search_urls:
-            for headers in headers_list:
-                try:
-                    print(f"[AO3Scraper] Requesting URL: {search_url}")
-                    res = requests.get(search_url, headers=headers, timeout=15)
-                    if res.status_code == 200 and "li.work" in res.text or len(res.text) > 5000:
-                        response = res
-                        break
-                    elif res.status_code == 200:
-                        response = res
-                except Exception as ex:
-                    print(f"[AO3Scraper] Attempt failed: {ex}")
-            if response and response.status_code == 200:
+        max_retries = 3
+        timeout_seconds = 10
+
+        for attempt in range(1, max_retries + 1):
+            headers = random.choice(headers_pool)
+            try:
+                print(f"[AO3Scraper] Requesting URL: {search_url} (Attempt {attempt}/{max_retries})")
+                res = requests.get(search_url, headers=headers, timeout=timeout_seconds)
+                
+                # 遇到 429 (Too Many Requests) 或 525 (SSL Handshake / Cloudflare 錯誤) 時進行指數退避重試
+                if res.status_code in (429, 525, 403, 503, 504):
+                    print(f"[AO3Scraper] Warning: Received HTTP {res.status_code} on attempt {attempt}")
+                    if attempt < max_retries:
+                        sleep_time = random.uniform(1.5, 3.0) * attempt
+                        print(f"[AO3Scraper] Retrying in {sleep_time:.2f} seconds...")
+                        time.sleep(sleep_time)
+                        continue
+                
+                if res.status_code == 200:
+                    response = res
+                    break
+                else:
+                    response = res
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as net_err:
+                print(f"[AO3Scraper] Network/Timeout error on attempt {attempt}: {net_err}")
+                if attempt < max_retries:
+                    sleep_time = random.uniform(1.5, 3.0) * attempt
+                    time.sleep(sleep_time)
+                    continue
+            except Exception as ex:
+                print(f"[AO3Scraper] Unexpected error on attempt {attempt}: {ex}")
                 break
 
         if not response or response.status_code != 200:
             status_code = response.status_code if response else "Unknown"
-            print(f"[AO3Scraper] ERROR: AO3 returned HTTP Status Code {status_code} for keyword '{keyword}'")
+            print(f"[AO3Scraper] ERROR: AO3 failed after {max_retries} attempts with status {status_code}")
             return []
 
         soup = BeautifulSoup(response.text, "html.parser")

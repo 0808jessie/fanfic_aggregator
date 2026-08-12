@@ -24,7 +24,7 @@ export const fastapiTrpcRouter = router({
           url: targetUrl,
           params: input.params,
           data: input.data,
-          timeout: 25_000,
+          timeout: 45_000,
           headers: { "Content-Type": "application/json" },
           validateStatus: () => true,
         });

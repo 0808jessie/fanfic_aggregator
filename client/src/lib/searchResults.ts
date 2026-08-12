@@ -45,3 +45,8 @@ export function extractSearchWarning(payload: unknown): string | null {
   const warning = (payload as { warning?: unknown }).warning;
   return typeof warning === "string" && warning.trim() ? warning : null;
 }
+
+export function extractIsRateLimited(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object") return false;
+  return Boolean((payload as { isRateLimited?: unknown }).isRateLimited);
+}

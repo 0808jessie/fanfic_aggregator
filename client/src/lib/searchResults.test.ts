@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractSearchWarning, isDisplayableResult, normalizeResults } from "./searchResults";
+import { extractIsRateLimited, extractSearchWarning, isDisplayableResult, normalizeResults } from "./searchResults";
 
 const verifiedAo3Result = {
   title: "Verified work",
@@ -23,15 +23,18 @@ describe("search result safety contract", () => {
     expect(extractSearchWarning(payload)).toBe("未取得可驗證作品");
   });
 
-  it("preserves an explicit empty-result diagnostic envelope", () => {
+  it("preserves an explicit empty-result diagnostic envelope and rate limit flags", () => {
     const payload = {
       items: [],
       source: "none",
-      warning: "未從 AO3, LOFTER 取得可驗證作品",
+      warning: "AO3 伺服器目前流量較高或觸發防護（HTTP 403/429/525），伺服器稍微休息中，請於 10 秒後再搜尋。",
+      success: false,
+      isRateLimited: true,
     };
 
     expect(normalizeResults(payload)).toEqual([]);
-    expect(extractSearchWarning(payload)).toContain("未從 AO3");
+    expect(extractSearchWarning(payload)).toContain("伺服器稍微休息中");
+    expect(extractIsRateLimited(payload)).toBe(true);
   });
 
   it("rejects Example Domain placeholder records", () => {
