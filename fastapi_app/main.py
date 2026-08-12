@@ -11,8 +11,13 @@ from .models import ScrapedFanfic, SearchQuery, SearchResponse
 from .scrapers.ao3_scraper import AO3Scraper
 from .scrapers.lofter_scraper import LofterScraper
 
-app = FastAPI(title="Fanfic Atlas Search API", version="0.1.2")
+app = FastAPI(title="Fanfic Atlas Search API", version="0.1.3")
 CACHE_TTL = timedelta(seconds=settings.cache_ttl_seconds)
+
+# 1小時記憶體快取 (Memory Cache) 用以避免頻繁爬取被平台限流或封鎖
+_MEMORY_CACHE: dict[str, tuple[datetime, list[ScrapedFanfic]]] = {}
+MEMORY_CACHE_TTL = timedelta(hours=1)
+
 SCRAPERS: dict[str, Callable[[], object]] = {
     "ao3": AO3Scraper,
     "lofter": LofterScraper,
@@ -123,10 +128,27 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
         raise HTTPException(status_code=400, detail="No supported platform was selected")
 
     try:
-        # 1. Try fresh cache hit
+        # 0. Try in-memory 1-hour cache first for speed and anti-rate-limiting
+        cache_key = f"{keyword}:{'-'.join(sorted(platforms))}"
+        if cache_key in _MEMORY_CACHE:
+            cached_time, cached_items = _MEMORY_CACHE[cache_key]
+            if datetime.utcnow() - cached_time < MEMORY_CACHE_TTL:
+                print(f"[SearchAPI] Memory cache hit for '{cache_key}'")
+                for item in cached_items:
+                    item.source = "cache"
+                    item.warning = None
+                return SearchResponse(
+                    items=sorted(cached_items, key=lambda item: item.scraped_at, reverse=True),
+                    source="cache",
+                )
+            else:
+                del _MEMORY_CACHE[cache_key]
+
+        # 1. Try DB/SQLite cache hit
         cached = get_cached_results(db, keyword, platforms, source_label="cache")
         if cached:
-            print(f"[SearchAPI] Cache hit for '{keyword}'")
+            print(f"[SearchAPI] SQLite cache hit for '{keyword}'")
+            _MEMORY_CACHE[cache_key] = (datetime.utcnow(), cached)
             return SearchResponse(
                 items=sorted(cached, key=lambda item: item.scraped_at, reverse=True),
                 source="cache",
@@ -161,8 +183,10 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
                 result.keyword = keyword
                 deduplicated[result.url] = result
                 save_fanfic_to_db(db, result)
+            final_items = list(deduplicated.values())
+            _MEMORY_CACHE[cache_key] = (datetime.utcnow(), final_items)
             return SearchResponse(
-                items=sorted(deduplicated.values(), key=lambda item: item.scraped_at, reverse=True),
+                items=sorted(final_items, key=lambda item: item.scraped_at, reverse=True),
                 source="live",
             )
         

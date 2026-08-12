@@ -13,40 +13,51 @@ class AO3Scraper(BaseScraper):
     """Archive of Our Own (AO3) search adapter with robust headers and error logging."""
 
     BASE_URL = "https://archiveofourown.org"
-    SEARCH_PATH = "/works/search"
+    SEARCH_PATHS = ["/works/search", "/works/search?work_search[query]="]
 
     def scrape(self, keyword: str) -> list[ScrapedFanfic]:
-        search_url = f"{self.BASE_URL}{self.SEARCH_PATH}?work_search%5Bquery%5D={quote_plus(keyword)}"
+        encoded_query = quote_plus(keyword)
+        search_urls = [
+            f"{self.BASE_URL}/works/search?work_search%5Bquery%5D={encoded_query}",
+            f"{self.BASE_URL}/works/search?utf8=%E2%9C%93&work_search%5Bquery%5D={encoded_query}",
+        ]
         
-        # 模擬真實現代瀏覽器標頭，防止被 AO3 防火牆阻擋 (403 / 429)
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9,zh-TW;q=0.8,zh;q=0.7",
-            "Cache-Control": "max-age=0",
-            "Referer": "https://archiveofourown.org/",
-            "Connection": "keep-alive",
-        }
+        headers_list = [
+            {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9,zh-TW;q=0.8,zh;q=0.7,en-GB;q=0.6",
+                "Referer": "https://archiveofourown.org/",
+                "Connection": "keep-alive",
+            },
+            {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+                "Referer": "https://archiveofourown.org/works/search",
+                "Connection": "keep-alive",
+            }
+        ]
 
-        try:
-            print(f"[AO3Scraper] Requesting URL: {search_url}")
-            response = requests.get(search_url, headers=headers, timeout=15)
-            
-            # 若發生 HTTP 錯誤（如 403, 429, 500 等），記錄具體 Status Code
-            if response.status_code != 200:
-                print(f"[AO3Scraper] ERROR: AO3 returned HTTP Status Code {response.status_code} for keyword '{keyword}'")
-                return []
-                
-            response.raise_for_status()
-        except requests.exceptions.HTTPError as http_err:
-            status_code = http_err.response.status_code if http_err.response else "Unknown"
-            print(f"[AO3Scraper] HTTP error occurred: Status Code {status_code} - {http_err}")
-            return []
-        except requests.exceptions.Timeout:
-            print(f"[AO3Scraper] ERROR: Request timed out while connecting to AO3 for keyword '{keyword}'")
-            return []
-        except requests.RequestException as error:
-            print(f"[AO3Scraper] ERROR: Network or request failed for keyword '{keyword}': {error}")
+        response = None
+        for search_url in search_urls:
+            for headers in headers_list:
+                try:
+                    print(f"[AO3Scraper] Requesting URL: {search_url}")
+                    res = requests.get(search_url, headers=headers, timeout=15)
+                    if res.status_code == 200 and "li.work" in res.text or len(res.text) > 5000:
+                        response = res
+                        break
+                    elif res.status_code == 200:
+                        response = res
+                except Exception as ex:
+                    print(f"[AO3Scraper] Attempt failed: {ex}")
+            if response and response.status_code == 200:
+                break
+
+        if not response or response.status_code != 200:
+            status_code = response.status_code if response else "Unknown"
+            print(f"[AO3Scraper] ERROR: AO3 returned HTTP Status Code {status_code} for keyword '{keyword}'")
             return []
 
         soup = BeautifulSoup(response.text, "html.parser")
