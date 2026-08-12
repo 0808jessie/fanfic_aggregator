@@ -13,7 +13,8 @@ class LofterScraper(BaseScraper):
 
     SEARCH_URL = "https://www.lofter.com/search"
 
-    def scrape(self, keyword: str) -> list[ScrapedFanfic]:
+    def scrape(self, keyword: str, page: int = 1) -> list[ScrapedFanfic]:
+        self.last_warning = None
         # Lofter 搜尋 Headers
         headers = {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -23,21 +24,23 @@ class LofterScraper(BaseScraper):
         }
 
         try:
-            print(f"[LofterScraper] Searching keyword: {keyword}")
+            print(f"[LofterScraper] Searching keyword: {keyword}, page={page}")
             response = requests.get(
                 self.SEARCH_URL,
-                params={"q": keyword, "query": keyword},
+                params={"q": keyword, "query": keyword, "page": page},
                 headers=headers,
                 timeout=12,
             )
             
             if response.status_code != 200:
+                self.last_warning = f"Lofter HTTP {response.status_code}; no verified results were returned."
                 print(f"[LofterScraper] ERROR: Lofter returned HTTP Status Code {response.status_code} for keyword '{keyword}'")
                 return []
                 
             response.raise_for_status()
         except requests.RequestException as error:
             status_code = error.response.status_code if error.response else "Network Error"
+            self.last_warning = f"Lofter request failed with {status_code}; no verified results were returned."
             print(f"[LofterScraper] Request failed for keyword '{keyword}': Status Code {status_code} - {error}")
             return []
 

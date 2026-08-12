@@ -29,6 +29,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 
 const PLATFORMS = [
@@ -199,7 +200,7 @@ export default function Home() {
               <Button type="submit" disabled={searchMutation.isPending} className="h-11 min-w-36 bg-[#10151b] px-6 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white hover:bg-[#24313a]">{searchMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Terminal className="mr-2 h-4 w-4" />}{searchMutation.isPending ? "SCANNING" : "RUN SEARCH"}</Button>
             </div>
           </form>
-          {showFilters && <div className="mt-4 flex flex-col gap-4 border-t border-[#10151b]/10 pt-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#61707a]"><Filter className="h-3.5 w-3.5" /> SOURCE ADAPTERS</div><div className="flex flex-wrap gap-2">{PLATFORMS.map((platform) => { const active = selectedPlatforms.includes(platform.id); return <button key={platform.id} type="button" onClick={() => togglePlatform(platform.id)} className={`group flex items-center gap-2 border px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.13em] transition-colors ${active ? platform.tone === "cyan" ? "border-[#5acbc4] bg-[#d9f8f5] text-[#126762]" : "border-[#ec9db8] bg-[#ffe3eb] text-[#8b3e59]" : "border-[#10151b]/15 bg-white/50 text-[#86929a]"}`}>{active ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}{platform.label}</button>; })}</div></div>}
+          {showFilters && <div className="mt-4 flex flex-col gap-4 border-t border-[#10151b]/10 pt-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#61707a]"><Filter className="h-3.5 w-3.5" /> SOURCE ADAPTERS</div><div className="flex flex-wrap gap-2">{PLATFORMS.map((platform) => { const active = selectedPlatforms.includes(platform.id); return <label key={platform.id} className={`group flex cursor-pointer items-center gap-2 border px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.13em] transition-colors ${active ? platform.tone === "cyan" ? "border-[#5acbc4] bg-[#d9f8f5] text-[#126762]" : "border-[#ec9db8] bg-[#ffe3eb] text-[#8b3e59]" : "border-[#10151b]/15 bg-white/50 text-[#86929a]"}`}><Checkbox checked={active} onCheckedChange={() => togglePlatform(platform.id)} aria-label={`搜尋 ${platform.label}`} className="rounded-none border-[#10151b]/30 data-[state=checked]:border-[#10151b] data-[state=checked]:bg-[#10151b] data-[state=checked]:text-white" />{platform.label}</label>; })}</div></div>}
         </section>
 
         <section className="mt-8 flex flex-col gap-3 border-b border-[#10151b]/15 pb-5 sm:flex-row sm:items-end sm:justify-between"><div><div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[#75838b]">SEARCH OUTPUT</div><h2 className="mt-2 text-3xl font-black tracking-[-0.07em] sm:text-4xl">{searchMutation.isPending ? "SCANNING ARCHIVES..." : hasSearched ? pagination.totalWorks > 0 ? `${pagination.totalWorks.toLocaleString()} STORIES FOUND` : "NO VERIFIED STORIES FOUND" : "READY TO EXPLORE"}</h2>{hasSearched && pagination.totalWorks > 0 && <div className="mt-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#75838b]">LOADED THROUGH PAGE {pagination.loadedThroughPage} / {pagination.totalPages}</div>}</div><div className="flex items-center gap-4 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#6b7982]"><span>ADAPTERS: {selectedLabels}</span><span className="hidden h-4 w-px bg-[#10151b]/20 sm:block" /><span className="text-[#45b9b2]">CACHE: 30M TTL</span></div></section>
@@ -248,7 +249,7 @@ export default function Home() {
                       <CardContent className="p-0">
                         <div className="flex items-center justify-between border-b border-[#10151b]/10 px-5 py-3">
                           <div className="flex items-center gap-2">
-                            <Badge className={`rounded-none border font-mono text-[9px] font-bold uppercase tracking-[0.16em] ${meta.tone === "cyan" ? "border-[#65cec8] bg-[#d9f8f5] text-[#197b75]" : "border-[#eea3bb] bg-[#ffe3eb] text-[#8b3e59]"}`}>
+                            <Badge className={`rounded-none border font-mono text-[9px] font-bold uppercase tracking-[0.16em] ${meta.tone === "cyan" ? "border-[#10151b] bg-[#10151b] text-white" : "border-[#eea3bb] bg-[#ffe3eb] text-[#8b3e59]"}`}>
                               {meta.label}
                             </Badge>
                             {result.source && (

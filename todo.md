@@ -23,3 +23,9 @@
 - [x] 完成 Home.tsx 互動測試後儲存涵蓋本輪多頁功能的新 checkpoint
 - [x] 在 Home.tsx 元件互動測試中加入重複 URL 回傳，確認既有卡片不會重複渲染
 - [x] 完成 Home.tsx 去重互動測試後建立新的多頁功能 checkpoint
+
+- [x] 建立統一 StoryItem 平台聯集與多平台 Adapter registry
+- [x] 以平行查詢隔離 AO3/Lofter 失敗並合併真實結果與平台 warning
+- [x] 接上前端平台複選、平台 Badge 與搜尋請求 platforms 參數
+- [x] 補上多平台平行搜尋、錯誤隔離與前端平台篩選回歸測試
+- [x] 完成混合平台端到端驗證並儲存新的 checkpoint

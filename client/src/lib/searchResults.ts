@@ -1,10 +1,13 @@
 export type SearchResult = {
+  id?: string;
   title: string;
   author: string;
   platform: string;
   url: string;
   tags: string;
   summary: string;
+  wordCount?: string | null;
+  updatedAt?: string | null;
   scraped_at: string;
   source?: string;
   warning?: string;

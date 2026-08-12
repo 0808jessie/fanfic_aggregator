@@ -8,8 +8,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Fanfic, SessionLocal
 from .models import ScrapedFanfic, SearchQuery, SearchResponse
-from .scrapers.ao3_scraper import AO3Scraper
-from .scrapers.lofter_scraper import LofterScraper
+from .scrapers.index import SCRAPERS, parallel_search_platforms
 
 app = FastAPI(title="Fanfic Atlas Search API", version="0.1.3")
 CACHE_TTL = timedelta(seconds=settings.cache_ttl_seconds)
@@ -17,12 +16,6 @@ CACHE_TTL = timedelta(seconds=settings.cache_ttl_seconds)
 # 30分鐘記憶體快取 (In-Memory Cache) 用以避免頻繁請求遭到 AO3 限流與 IP 封鎖
 _MEMORY_CACHE: dict[str, tuple[datetime, list[ScrapedFanfic], int, int, int]] = {}
 MEMORY_CACHE_TTL = timedelta(minutes=30)
-
-SCRAPERS: dict[str, Callable[[], object]] = {
-    "ao3": AO3Scraper,
-    "lofter": LofterScraper,
-}
-
 
 def get_db():
     db = SessionLocal()
@@ -67,7 +60,7 @@ def save_fanfic_to_db(db: Session, fanfic: ScrapedFanfic) -> None:
         return
     try:
         record = db.query(Fanfic).filter(Fanfic.url == fanfic.url).first()
-        values = fanfic.model_dump(exclude={"source", "warning"})
+        values = fanfic.model_dump(exclude={"id", "source", "warning", "wordCount", "updatedAt"})
         if record is None:
             db.add(Fanfic(**values))
         else:
@@ -176,41 +169,23 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
                     hasMore=has_more,
                 )
 
-        # 2. 呼叫平台 Adapter；AO3 接收 page，Lofter 維持既有介面。
-        fresh_results: list[ScrapedFanfic] = []
-        total_works = 0
-        total_pages = 0
-        any_success = False
-        for platform in platforms:
-            adapter = SCRAPERS[platform]()
-            try:
-                print(f"[SearchAPI] Scraping '{platform}' for '{keyword}', page={requested_page}")
-                raw_payload = (
-                    adapter.scrape(keyword, page=requested_page)
-                    if platform == "ao3"
-                    else adapter.scrape(keyword)
-                )
-                if isinstance(raw_payload, dict):
-                    platform_results = raw_payload.get("items", [])
-                    total_works = max(total_works, int(raw_payload.get("total_works", 0) or 0))
-                    total_pages = max(total_pages, int(raw_payload.get("total_pages", 0) or 0))
-                else:
-                    platform_results = raw_payload
+        # 2. 透過 Adapter registry 平行查詢所有已選平台；單一平台失敗不阻塞其他結果。
+        aggregate = parallel_search_platforms(platforms, keyword, requested_page)
+        fresh_results = [
+            result for result in aggregate["items"]
+            if is_real_platform_url(result.url, result.platform)
+        ]
+        total_works = int(aggregate.get("total_works", 0) or 0)
+        total_pages = int(aggregate.get("total_pages", 0) or 0)
+        any_success = bool(aggregate.get("any_success")) and bool(fresh_results)
+        platform_warnings = [str(message) for message in aggregate.get("warnings", []) if message]
+        combined_warning = "；".join(platform_warnings) if platform_warnings else None
 
-                trusted_results = [
-                    result for result in platform_results
-                    if is_real_platform_url(result.url, result.platform)
-                ]
-                if trusted_results:
-                    any_success = True
-                for result in trusted_results:
-                    result.source = "live"
-                    result.warning = None
-                    fresh_results.append(result)
-            except Exception as error:
-                print(f"[SearchAPI] Adapter '{platform}' crashed: {error}")
+        for result in fresh_results:
+            result.source = "live"
+            result.warning = combined_warning
 
-        # 3. 若即時抓取成功，保存結果與 AO3 分頁統計。
+        # 3. 若至少一個平台即時抓取成功，保存並回傳合併結果。
         if any_success and fresh_results:
             deduplicated: dict[str, ScrapedFanfic] = {}
             for result in fresh_results:
@@ -235,6 +210,7 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
             return SearchResponse(
                 items=final_items,
                 source="live",
+                warning=combined_warning,
                 totalWorks=total_works,
                 totalPages=total_pages,
                 page=requested_page,

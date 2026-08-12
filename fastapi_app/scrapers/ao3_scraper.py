@@ -21,6 +21,7 @@ class AO3Scraper(BaseScraper):
         (total ~40 items) with random delays, and extracts total work statistics.
         Returns a dictionary containing items, total_works, and total_pages.
         """
+        self.last_warning = None
         encoded_query = quote_plus(keyword)
         pages_to_fetch = [page]
         if page == 1:
@@ -59,6 +60,7 @@ class AO3Scraper(BaseScraper):
                         status_code = response.status if response else 0
 
                         if status_code in (403, 429, 525, 503):
+                            self.last_warning = f"AO3 HTTP {status_code} on page {target_page}; results may be partial."
                             print(f"[AO3Scraper Playwright] ERROR: HTTP {status_code} on page {target_page}")
                             if idx == 0:
                                 browser.close()
@@ -68,6 +70,7 @@ class AO3Scraper(BaseScraper):
                         try:
                             page_obj.wait_for_selector("li.work", timeout=12000)
                         except Exception:
+                            self.last_warning = f"AO3 page {target_page} did not expose work cards; the platform may be rate-limiting or showing a challenge."
                             print(f"[AO3Scraper Playwright] Warning: 'li.work' not found on page {target_page}")
 
                         html_content = page_obj.content()
@@ -150,11 +153,13 @@ class AO3Scraper(BaseScraper):
                                 continue
 
                 except Exception as nav_err:
+                    self.last_warning = f"AO3 navigation failed: {nav_err}"
                     print(f"[AO3Scraper Playwright] Navigation error: {nav_err}")
                 finally:
                     browser.close()
 
         except Exception as launch_err:
+            self.last_warning = f"AO3 browser launch failed: {launch_err}"
             print(f"[AO3Scraper Playwright] Launch error: {launch_err}")
 
         if total_works == 0 and all_results:

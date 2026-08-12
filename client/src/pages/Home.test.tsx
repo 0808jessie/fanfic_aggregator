@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "./Home";
 
-const mockState = vi.hoisted(() => ({ nextHookId: 0 }));
+const mockState = vi.hoisted(() => ({ nextHookId: 0, lastVariables: null as unknown }));
 
 vi.mock("sonner", () => ({
   toast: { error: vi.fn() },
@@ -20,7 +20,8 @@ vi.mock("@/lib/trpc", async () => {
           useMutation: (options: { onSuccess?: (payload: unknown) => void; onError?: (error: Error) => void }) => {
             const [hookId] = React.useState(() => mockState.nextHookId++);
             const [isPending, setIsPending] = React.useState(false);
-            const mutate = () => {
+            const mutate = (variables?: unknown) => {
+              mockState.lastVariables = variables;
               setIsPending(true);
               window.setTimeout(() => {
                 const payload = hookId === 0
@@ -57,8 +58,13 @@ vi.mock("@/lib/trpc", async () => {
   };
 });
 
+afterEach(() => {
+  cleanup();
+});
+
 beforeEach(() => {
   mockState.nextHookId = 0;
+  mockState.lastVariables = null;
 });
 
 describe("Home pagination interactions", () => {
@@ -81,3 +87,22 @@ describe("Home pagination interactions", () => {
     expect(screen.queryByRole("button", { name: "LOAD MORE / PAGE 3" })).toBeNull();
   });
 });
+
+  it("renders platform checkboxes and sends the selected platform list", async () => {
+    render(<Home />);
+
+    fireEvent.click(screen.getByRole("button", { name: /FILTERS/ }));
+    const lofterCheckbox = screen.getByRole("checkbox", { name: "搜尋 LOFTER" });
+    expect(lofterCheckbox.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(lofterCheckbox);
+    expect(lofterCheckbox.getAttribute("aria-checked")).toBe("false");
+
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "花" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+
+    await waitFor(() => expect(mockState.lastVariables).toEqual({
+      path: "/search",
+      method: "POST",
+      data: { keyword: "花", platforms: ["ao3"], page: 1 },
+    }));
+  });

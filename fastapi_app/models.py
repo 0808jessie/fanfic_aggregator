@@ -3,18 +3,20 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 class ScrapedFanfic(BaseModel):
     """Canonical metadata shape shared by every platform adapter, including source tracking."""
 
     model_config = ConfigDict(from_attributes=True)
 
+    id: str = ""
     title: str = "Untitled work"
     author: str = "Unknown author"
-    platform: str
+    platform: Literal["AO3", "Lofter", "晉江", "其他"] = "AO3"
     url: str
     tags: str = ""
     summary: str = ""
+    wordCount: Optional[str] = None
+    updatedAt: Optional[str] = None
     scraped_at: datetime = Field(default_factory=datetime.utcnow)
     keyword: Optional[str] = None
     source: str = Field(default="live", description="Source of result: live, cache, or fallback")

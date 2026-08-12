@@ -39,9 +39,21 @@ class FakeAO3Adapter:
         return {"items": items, "total_works": 60, "total_pages": 3}
 
 
+def fake_parallel_search(platforms: list[str], keyword: str, page: int = 1) -> dict:
+    adapter = FakeAO3Adapter()
+    payload = adapter.scrape(keyword, page)
+    return {
+        "items": payload["items"],
+        "any_success": True,
+        "total_works": payload["total_works"],
+        "total_pages": payload["total_pages"],
+        "warnings": [],
+    }
+
+
 def test_page_one_has_two_page_metadata_and_page_three_can_continue():
     FakeAO3Adapter.calls = []
-    with patch.object(main, "SCRAPERS", {"ao3": FakeAO3Adapter}), patch.object(
+    with patch.object(main, "parallel_search_platforms", fake_parallel_search), patch.object(
         main, "save_fanfic_to_db"
     ), patch.object(main, "get_cached_results", return_value=None), patch.object(
         main, "_MEMORY_CACHE", {}
@@ -63,7 +75,7 @@ def test_page_one_has_two_page_metadata_and_page_three_can_continue():
 
 def test_page_aware_memory_cache_preserves_page_metadata():
     FakeAO3Adapter.calls = []
-    with patch.object(main, "SCRAPERS", {"ao3": FakeAO3Adapter}), patch.object(
+    with patch.object(main, "parallel_search_platforms", fake_parallel_search), patch.object(
         main, "save_fanfic_to_db"
     ), patch.object(main, "get_cached_results", return_value=None), patch.object(
         main, "_MEMORY_CACHE", {}
