@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import Callable
+from typing import Any, Callable
 
 from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy import func
@@ -8,15 +8,16 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Fanfic, SessionLocal
 from .models import ScrapedFanfic, SearchQuery, SearchResponse
-from .scrapers.ao3_scraper import CP_TAG_MAPPING
+from .scrapers.cp_tags import CP_TAG_MAP
 from .scrapers.index import SCRAPERS, parallel_search_platforms
 
-app = FastAPI(title="Fanfic Atlas Search API", version="0.1.3")
+app = FastAPI(title="Fanfic Atlas Search API", version="0.1.4")
 CACHE_TTL = timedelta(seconds=settings.cache_ttl_seconds)
 
 # 30分鐘記憶體快取 (In-Memory Cache) 用以避免頻繁請求遭到 AO3 限流與 IP 封鎖
 _MEMORY_CACHE: dict[str, tuple[datetime, list[ScrapedFanfic], int, int, int]] = {}
 MEMORY_CACHE_TTL = timedelta(minutes=30)
+
 
 def get_db():
     db = SessionLocal()
@@ -90,7 +91,6 @@ def get_cached_results(db: Session, keyword: str, platforms: list[str], ignore_t
     unique_records = {record.url: record for record in filtered}
     results = []
     for record in unique_records.values():
-        # SQLite ORM 的自動遞增 id 是整數；API StoryItem id 必須是跨平台穩定字串。
         item = ScrapedFanfic(
             id=f"{record.platform.lower()}:{record.url}",
             title=record.title,
@@ -111,14 +111,14 @@ def get_cached_results(db: Session, keyword: str, platforms: list[str], ignore_t
 
 @app.get("/fastapi-status")
 def fastapi_status() -> dict[str, str]:
-    return {"status": "ok", "service": "fastapi-search", "version": "0.1.2"}
+    return {"status": "ok", "service": "fastapi-search", "version": "0.1.4"}
 
 
 @app.get("/platforms")
 def list_platforms() -> list[dict[str, str]]:
     return [
         {"id": "ao3", "label": "AO3", "status": "ready"},
-        {"id": "lofter", "label": "Lofter", "status": "best-effort"},
+        {"id": "lofter", "label": "Lofter", "status": "ready"},
     ]
 
 
@@ -133,13 +133,18 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
         raise HTTPException(status_code=400, detail="No supported platform was selected")
 
     try:
-        # 0. 先查以關鍵字、平台與頁碼隔離的 30 分鐘記憶體快取。
         requested_page = query.page
         cache_key = f"{keyword}:{'-'.join(sorted(platforms))}:page={requested_page}"
+
+        # 0. 清除舊快取污染：若即時搜尋，先確保清除任何過時或 0 筆的記憶體快取鍵
+        keys_to_clear = [k for k in _MEMORY_CACHE.keys() if k.startswith(f"{keyword}:")]
+        for k in keys_to_clear:
+            del _MEMORY_CACHE[k]
+
         memory_entry = _MEMORY_CACHE.get(cache_key)
         if memory_entry:
             cached_time, cached_items, total_works, total_pages, loaded_through_page = memory_entry
-            if datetime.utcnow() - cached_time < MEMORY_CACHE_TTL:
+            if datetime.utcnow() - cached_time < MEMORY_CACHE_TTL and cached_items:
                 print(f"[SearchAPI] Memory cache hit for '{cache_key}'")
                 for item in cached_items:
                     item.source = "cache"
@@ -156,32 +161,10 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
                     nextPage=loaded_through_page + 1 if has_more else None,
                     hasMore=has_more,
                 )
-            del _MEMORY_CACHE[cache_key]
+            if cache_key in _MEMORY_CACHE:
+                del _MEMORY_CACHE[cache_key]
 
-        # 1. SQLite cache 只在首次 page=1 使用，避免舊資料被誤當成特定頁面。
-        if requested_page == 1 and "ao3" not in platforms:
-            cached = get_cached_results(db, keyword, platforms, source_label="cache")
-            if cached:
-                print(f"[SearchAPI] SQLite cache hit for '{keyword}'")
-                total_works = len(cached)
-                total_pages = max(1, (total_works + 19) // 20)
-                loaded_through_page = min(2, total_pages)
-                _MEMORY_CACHE[cache_key] = (
-                    datetime.utcnow(), cached, total_works, total_pages, loaded_through_page
-                )
-                has_more = loaded_through_page < total_pages
-                return SearchResponse(
-                    items=sorted(cached, key=lambda item: item.scraped_at, reverse=True),
-                    source="cache",
-                    totalWorks=total_works,
-                    totalPages=total_pages,
-                    page=requested_page,
-                    loadedThroughPage=loaded_through_page,
-                    nextPage=loaded_through_page + 1 if has_more else None,
-                    hasMore=has_more,
-                )
-
-        # 2. 透過 Adapter registry 平行查詢所有已選平台；單一平台失敗不阻塞其他結果。
+        # 2. 透過 Adapter registry 平行查詢所有已選平台
         aggregate = parallel_search_platforms(platforms, keyword, requested_page)
         fresh_results = [
             result for result in aggregate["items"]
@@ -197,7 +180,7 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
             result.source = "live"
             result.warning = combined_warning
 
-        # 3. 若至少一個平台即時抓取成功，保存並回傳合併結果。
+        # 3. 若即時抓取成功且有真實結果，寫入資料庫與記憶體快取
         if any_success and fresh_results:
             deduplicated: dict[str, ScrapedFanfic] = {}
             for result in fresh_results:
@@ -230,12 +213,10 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
                 nextPage=loaded_through_page + 1 if has_more else None,
                 hasMore=has_more,
             )
-        
-        # 4. Fallback to stale cache if external failed. Mapped CP queries are
-        # excluded because legacy rows do not persist relationship arrays and
-        # cannot be proven to match the requested pairing.
+
+        # 4. 若即時抓取為 0 筆或失敗，絕對不寫入快取，且對 CP 映射關鍵字不使用 stale SQLite cache 避免污染
         stale_cached = None
-        if keyword not in CP_TAG_MAPPING:
+        if keyword not in CP_TAG_MAP:
             stale_cached = get_cached_results(db, keyword, platforms, ignore_ttl=True, source_label="fallback-cache")
         if stale_cached:
             print(f"[SearchAPI] External failed, falling back to stale cache for '{keyword}'")
@@ -248,14 +229,13 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
                 totalWorks=stale_total_works,
                 totalPages=stale_total_pages,
                 page=requested_page,
-                loadedThroughPage=min(requested_page + (1 if requested_page == 1 else 0), stale_total_pages),
                 nextPage=(min(requested_page + (1 if requested_page == 1 else 0), stale_total_pages) + 1)
                 if min(requested_page + (1 if requested_page == 1 else 0), stale_total_pages) < stale_total_pages
                 else None,
                 hasMore=min(requested_page + (1 if requested_page == 1 else 0), stale_total_pages) < stale_total_pages,
             )
 
-        # 5. Rate-limit or block handling: return structured JSON indicating rate limit state
+        # 5. 回傳結構化未命中/限流狀態
         default_warning = (
             "AO3 伺服器目前流量較高或觸發防護（HTTP 403/429/525），伺服器稍微休息中，請於 10 秒後再搜尋。"
         )
