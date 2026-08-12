@@ -29,8 +29,8 @@ class LofterScraper(BaseScraper):
             status_code = response.status_code
 
             if status_code in (403, 404, 429, 525, 503):
-                self.last_warning = f"[Lofter Adapter] Blocked or Offline (HTTP {status_code})"
-                print(f"[Lofter Adapter] Blocked or Offline: HTTP {status_code} for tag '{keyword}'")
+                self.last_warning = f"[Lofter] Request blocked (HTTP {status_code})"
+                print("[Lofter] Request blocked")
                 return []
 
             if response.ok and len(response.text) > 500:
@@ -38,7 +38,7 @@ class LofterScraper(BaseScraper):
                 pass
 
         except Exception as err:
-            self.last_warning = f"[Lofter Adapter] Blocked or Offline: {err}"
-            print(f"[Lofter Adapter] Blocked or Offline: {err}")
+            self.last_warning = f"[Lofter] Request blocked ({err})"
+            print("[Lofter] Request blocked")
 
         return results

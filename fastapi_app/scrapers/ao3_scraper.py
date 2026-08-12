@@ -10,8 +10,75 @@ from .base_scraper import BaseScraper
 from ..models import ScrapedFanfic
 
 
+CP_TAG_MAPPING: dict[str, str] = {
+    "義忍": "Tomioka Giyuu/Kochou Shinobu",
+    "五夏": "Gojo Satoru/Geto Suguru",
+    "夏五": "Geto Suguru/Gojo Satoru",
+    "勝出": "Bakugou Katsuki/Midoriya Izuku",
+    "轟出": "Todoroki Shouto/Midoriya Izuku",
+}
+
+
+def build_ao3_search_url(keyword: str, page: int = 1) -> tuple[str, bool]:
+    """Build an AO3 query URL and report whether a known CP mapping was applied."""
+    from urllib.parse import quote_plus
+
+    normalized_keyword = keyword.strip()
+    mapped_tag = CP_TAG_MAPPING.get(normalized_keyword)
+    if mapped_tag:
+        encoded_value = quote_plus(mapped_tag)
+        return (
+            f"https://archiveofourown.org/works/search?work_search%5Btag_names%5D={encoded_value}&page={page}",
+            True,
+        )
+
+    encoded_query = quote_plus(normalized_keyword)
+    return (
+        f"https://archiveofourown.org/works/search?work_search%5Bquery%5D={encoded_query}&page={page}",
+        False,
+    )
+
+
+def _unique_tag_text(elements) -> list[str]:
+    values: list[str] = []
+    for element in elements:
+        value = element.get_text(" ", strip=True)
+        if value and value not in values:
+            values.append(value)
+    return values
+
+
+def relationship_matches_mapping(relationship_tags: list[str], mapped_tag: str) -> bool:
+    """Verify that a work contains the mapped CP relationship before displaying it."""
+    expected_parts = [part.strip().casefold() for part in re.split(r"[/／]", mapped_tag) if part.strip()]
+    normalized_mapping = mapped_tag.casefold().replace("／", "/")
+    for relationship in relationship_tags:
+        normalized_relationship = relationship.casefold().replace("／", "/")
+        if normalized_relationship == normalized_mapping:
+            return True
+        if all(part in normalized_relationship for part in expected_parts):
+            return True
+    return False
+
+
+def extract_ao3_tag_metadata(work) -> tuple[list[str], list[str], list[str]]:
+    """Return relationship tags, character tags, and remaining AO3 tags in stable order."""
+    relationship_tags = _unique_tag_text(
+        work.select("ul.tags li.relationships a, ul.tags li.relationships")
+    )
+    character_tags = _unique_tag_text(
+        work.select("ul.tags li.characters a, ul.tags li.characters")
+    )
+    all_tag_values = _unique_tag_text(work.select("ul.tags li a, ul.tags li"))
+    other_tags = [
+        value for value in all_tag_values
+        if value not in relationship_tags and value not in character_tags
+    ]
+    return relationship_tags, character_tags, other_tags
+
+
 class AO3Scraper(BaseScraper):
-    """Archive of Our Own (AO3) search adapter supporting multi-page crawling and pagination metadata."""
+    """Archive of Our Own (AO3) search adapter supporting CP tags and pagination."""
 
     BASE_URL = "https://archiveofourown.org"
 
@@ -22,13 +89,13 @@ class AO3Scraper(BaseScraper):
         Returns a dictionary containing items, total_works, and total_pages.
         """
         self.last_warning = None
-        encoded_query = quote_plus(keyword)
         pages_to_fetch = [page]
         if page == 1:
             pages_to_fetch = [1, 2]  # 預設自動連抓第 1 頁與第 2 頁
 
         all_results: list[ScrapedFanfic] = []
         total_works = 0
+        mapped_tag = CP_TAG_MAPPING.get(keyword.strip())
         total_pages = 1
 
         print(f"[AO3Scraper Playwright] Starting scrape for keyword '{keyword}', pages: {pages_to_fetch}")
@@ -48,8 +115,9 @@ class AO3Scraper(BaseScraper):
 
                 try:
                     for idx, target_page in enumerate(pages_to_fetch):
-                        search_url = f"{self.BASE_URL}/works/search?work_search%5Bquery%5D={encoded_query}&page={target_page}"
-                        print(f"[AO3Scraper Playwright] Navigating to: {search_url}")
+                        search_url, mapping_applied = build_ao3_search_url(keyword, target_page)
+                        mode = "mapped CP tag" if mapping_applied else "free-text query"
+                        print(f"[AO3Scraper Playwright] Navigating with {mode}: {search_url}")
 
                         if idx > 0:
                             delay = random.uniform(0.8, 1.5)
@@ -122,9 +190,11 @@ class AO3Scraper(BaseScraper):
                                 summary_elem = work.select_one("blockquote.summary")
                                 summary = summary_elem.get_text(" ", strip=True) if summary_elem else ""
 
-                                tag_elements = work.select("ul.tags li")
-                                tags_list = [tag.get_text(" ", strip=True) for tag in tag_elements]
-                                tags = ", ".join([t for t in tags_list if t])
+                                relationship_tags, character_tags, other_tags = extract_ao3_tag_metadata(work)
+                                if mapped_tag and not relationship_matches_mapping(relationship_tags, mapped_tag):
+                                    print(f"[AO3Scraper Playwright] Skipping non-matching relationship for mapped CP '{mapped_tag}'")
+                                    continue
+                                tags = ", ".join(relationship_tags + character_tags + other_tags)
 
                                 word_count = "N/A"
                                 for dd in work.select("dl.stats dd"):
@@ -143,6 +213,9 @@ class AO3Scraper(BaseScraper):
                                         platform="AO3",
                                         url=url,
                                         tags=tags,
+                                        relationships=relationship_tags,
+                                        characters=character_tags,
+                                        wordCount=None if word_count == "N/A" else word_count,
                                         summary=summary,
                                         scraped_at=datetime.utcnow(),
                                         keyword=keyword,
@@ -162,7 +235,11 @@ class AO3Scraper(BaseScraper):
             self.last_warning = f"AO3 browser launch failed: {launch_err}"
             print(f"[AO3Scraper Playwright] Launch error: {launch_err}")
 
-        if total_works == 0 and all_results:
+        if mapped_tag and not all_results:
+            total_works = 0
+            total_pages = 0
+            self.last_warning = self.last_warning or f"AO3 mapped CP tag returned no exact relationship matches: {mapped_tag}"
+        elif total_works == 0 and all_results:
             total_works = len(all_results)
             total_pages = max(1, (total_works + 19) // 20)
 

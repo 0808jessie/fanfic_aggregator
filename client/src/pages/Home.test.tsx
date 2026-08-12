@@ -26,7 +26,7 @@ vi.mock("@/lib/trpc", async () => {
               window.setTimeout(() => {
                 const payload = hookId === 0
                   ? {
-                      items: [{ title: "PAGE ONE", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/9001", tags: "", summary: "", scraped_at: "2026-01-01T00:00:00Z" }],
+                      items: [{ title: "PAGE ONE", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/9001", tags: "富岡義勇/胡蝶忍, Post-Canon", relationships: ["富岡義勇/胡蝶忍"], characters: ["富岡義勇", "胡蝶忍"], summary: "", scraped_at: "2026-01-01T00:00:00Z" }],
                       totalWorks: 60,
                       totalPages: 3,
                       page: 1,
@@ -76,6 +76,9 @@ describe("Home pagination interactions", () => {
 
     await waitFor(() => expect(screen.getByText("60 STORIES FOUND")).toBeTruthy());
     expect(screen.getByText("PAGE ONE")).toBeTruthy();
+    const relationshipTag = screen.getByText("♡ 富岡義勇/胡蝶忍");
+    expect(relationshipTag.className).toContain("bg-[#ffe8f0]");
+    expect(screen.getByText("◇ 富岡義勇")).toBeTruthy();
     expect(screen.getByRole("button", { name: "LOAD MORE / PAGE 3" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "LOAD MORE / PAGE 3" }));

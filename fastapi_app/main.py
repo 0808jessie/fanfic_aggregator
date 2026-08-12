@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from .config import settings
 from .database import Fanfic, SessionLocal
 from .models import ScrapedFanfic, SearchQuery, SearchResponse
+from .scrapers.ao3_scraper import CP_TAG_MAPPING
 from .scrapers.index import SCRAPERS, parallel_search_platforms
 
 app = FastAPI(title="Fanfic Atlas Search API", version="0.1.3")
@@ -89,7 +90,18 @@ def get_cached_results(db: Session, keyword: str, platforms: list[str], ignore_t
     unique_records = {record.url: record for record in filtered}
     results = []
     for record in unique_records.values():
-        item = ScrapedFanfic.model_validate(record)
+        # SQLite ORM 的自動遞增 id 是整數；API StoryItem id 必須是跨平台穩定字串。
+        item = ScrapedFanfic(
+            id=f"{record.platform.lower()}:{record.url}",
+            title=record.title,
+            author=record.author,
+            platform=record.platform,
+            url=record.url,
+            tags=record.tags or "",
+            summary=record.summary or "",
+            scraped_at=record.scraped_at,
+            keyword=record.keyword,
+        )
         item.source = source_label
         if source_label == "fallback-cache":
             item.warning = "外部平台即時連線受阻或逾時，已自動載入本機歷史快取作品。"
@@ -219,8 +231,12 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
                 hasMore=has_more,
             )
         
-        # 4. Fallback to stale cache if external failed
-        stale_cached = get_cached_results(db, keyword, platforms, ignore_ttl=True, source_label="fallback-cache")
+        # 4. Fallback to stale cache if external failed. Mapped CP queries are
+        # excluded because legacy rows do not persist relationship arrays and
+        # cannot be proven to match the requested pairing.
+        stale_cached = None
+        if keyword not in CP_TAG_MAPPING:
+            stale_cached = get_cached_results(db, keyword, platforms, ignore_ttl=True, source_label="fallback-cache")
         if stale_cached:
             print(f"[SearchAPI] External failed, falling back to stale cache for '{keyword}'")
             stale_total_works = len(stale_cached)
@@ -240,16 +256,19 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
             )
 
         # 5. Rate-limit or block handling: return structured JSON indicating rate limit state
-        warning = (
+        default_warning = (
             "AO3 伺服器目前流量較高或觸發防護（HTTP 403/429/525），伺服器稍微休息中，請於 10 秒後再搜尋。"
         )
-        print(f"[SearchAPI] Rate limited / blocked for '{keyword}': {warning}")
+        warning = combined_warning or default_warning
+        rate_limit_markers = ("403", "429", "525", "timeout", "逾時", "challenge", "防護")
+        is_rate_limited = any(marker.casefold() in warning.casefold() for marker in rate_limit_markers)
+        print(f"[SearchAPI] No verified results for '{keyword}': {warning}")
         return SearchResponse(
             items=[],
             source="none",
             warning=warning,
             success=False,
-            isRateLimited=True,
+            isRateLimited=is_rate_limited,
             page=requested_page,
         )
 

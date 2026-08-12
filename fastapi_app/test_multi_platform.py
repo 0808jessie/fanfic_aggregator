@@ -26,10 +26,10 @@ class FakeAO3:
 
 class SafeFallbackLofter:
     def __init__(self):
-        self.last_warning = "[Lofter Adapter] Blocked or Offline (HTTP 403)"
+        self.last_warning = "[Lofter] Request blocked (HTTP 403)"
 
     def scrape(self, keyword: str, page: int = 1):
-        print("[Lofter Adapter] Blocked or Offline")
+        print("[Lofter] Request blocked")
         return []
 
 
@@ -43,7 +43,7 @@ def test_parallel_registry_keeps_successful_platform_when_another_fails():
     assert aggregate["items"][0].id == "ao3:https://archiveofourown.org/works/2001"
     assert aggregate["total_works"] == 100
     assert aggregate["total_pages"] == 5
-    assert any("Blocked or Offline" in warning for warning in aggregate["warnings"])
+    assert any("[Lofter] Request blocked" in warning for warning in aggregate["warnings"])
 
 
 class FakeLofterSuccess:
@@ -77,3 +77,35 @@ def test_parallel_registry_combines_totals_across_platforms():
     assert sorted(item.platform for item in aggregate["items"]) == ["AO3", "Lofter"]
     assert aggregate["total_works"] == 101
     assert aggregate["total_pages"] == 5
+
+
+class FakeBlockedResponse:
+    status_code = 403
+    ok = False
+    text = ""
+
+
+def test_real_lofter_adapter_isolates_http_block(capsys):
+    from fastapi_app.scrapers.lofter_scraper import LofterScraper
+
+    with patch("fastapi_app.scrapers.lofter_scraper.requests.get", return_value=FakeBlockedResponse()):
+        scraper = LofterScraper()
+        assert scraper.scrape("義忍") == []
+
+    assert "[Lofter] Request blocked" in capsys.readouterr().out
+    assert scraper.last_warning == "[Lofter] Request blocked (HTTP 403)"
+
+
+def test_real_lofter_adapter_isolates_connection_error(capsys):
+    import requests
+    from fastapi_app.scrapers.lofter_scraper import LofterScraper
+
+    with patch(
+        "fastapi_app.scrapers.lofter_scraper.requests.get",
+        side_effect=requests.RequestException("offline"),
+    ):
+        scraper = LofterScraper()
+        assert scraper.scrape("義忍") == []
+
+    assert "[Lofter] Request blocked" in capsys.readouterr().out
+    assert scraper.last_warning.startswith("[Lofter] Request blocked")

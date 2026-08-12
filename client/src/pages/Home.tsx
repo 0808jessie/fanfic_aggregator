@@ -243,7 +243,11 @@ export default function Home() {
               <div className="grid gap-4 md:grid-cols-2">
                 {results.map((result, index) => {
                   const meta = platformMeta(result.platform);
-                  const tags = (result.tags || "").split(",").map((tag) => tag.trim()).filter(Boolean).slice(0, 4);
+                  const allTags = (result.tags || "").split(",").map((tag) => tag.trim()).filter(Boolean);
+                  const relationshipTags = (result.relationships?.length ? result.relationships : allTags.filter((tag) => tag.includes("/") || tag.includes(" & "))).slice(0, 3);
+                  const characterTags = (result.characters || []).slice(0, 3);
+                  const highlightedTags = new Set([...relationshipTags, ...characterTags]);
+                  const tags = allTags.filter((tag) => !highlightedTags.has(tag)).slice(0, 4);
                   return (
                     <Card key={`${result.url}-${index}`} className="group rounded-none border-[#10151b]/15 bg-white/75 shadow-none transition-transform duration-200 hover:-translate-y-1 hover:border-[#10151b]/40">
                       <CardContent className="p-0">
@@ -268,7 +272,9 @@ export default function Home() {
                           <div className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-[#56646d]">BY / {result.author || "UNKNOWN AUTHOR"}</div>
                           <p className="mt-5 line-clamp-3 text-sm leading-6 text-[#69777f]">{result.summary || "No summary available."}</p>
                           <div className="mt-6 flex flex-wrap gap-1.5">
-                            {tags.map((tag) => <span key={tag} className="border border-[#10151b]/10 bg-[#f3f6f5] px-2 py-1 font-mono text-[9px] font-semibold text-[#6a777e]">#{tag}</span>)}
+                            {relationshipTags.map((tag) => <span key={`relationship-${tag}`} className="border border-[#e8a7bf] bg-[#ffe8f0] px-2 py-1 font-mono text-[9px] font-semibold text-[#8b3e59]">♡ {tag}</span>)}
+                            {characterTags.map((tag) => <span key={`character-${tag}`} className="border border-[#c9bcf2] bg-[#f0ecff] px-2 py-1 font-mono text-[9px] font-semibold text-[#5c4e87]">◇ {tag}</span>)}
+                            {tags.map((tag) => <span key={`tag-${tag}`} className="border border-[#10151b]/10 bg-[#f3f6f5] px-2 py-1 font-mono text-[9px] font-semibold text-[#6a777e]">#{tag}</span>)}
                           </div>
                           <a href={result.url} target="_blank" rel="noreferrer" className="mt-6 inline-flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#1d7f79] hover:text-[#e27d9d]">
                             OPEN ORIGINAL <ArrowUpRight className="h-3.5 w-3.5" />

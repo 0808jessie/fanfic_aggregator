@@ -5,6 +5,8 @@ export type SearchResult = {
   platform: string;
   url: string;
   tags: string;
+  relationships?: string[];
+  characters?: string[];
   summary: string;
   wordCount?: string | null;
   updatedAt?: string | null;

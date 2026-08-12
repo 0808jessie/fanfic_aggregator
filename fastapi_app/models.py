@@ -14,6 +14,8 @@ class ScrapedFanfic(BaseModel):
     platform: Literal["AO3", "Lofter", "晉江", "其他"] = "AO3"
     url: str
     tags: str = ""
+    relationships: list[str] = Field(default_factory=list)
+    characters: list[str] = Field(default_factory=list)
     summary: str = ""
     wordCount: Optional[str] = None
     updatedAt: Optional[str] = None
