@@ -42,4 +42,9 @@
 - [x] 補一個可重現的 mock AO3 mapped-tag 整合測試，驗證 API 到前端 relationship/character tag 契約
 - [x] 完成上述缺口後建立本輪 CP mapping checkpoint
 - [x] 儲存包含 AO3 CP mapping、relationship/character tag、義忍 UI 驗證與 mock 整合測試的最新 checkpoint，並記錄版本 ID
-- [ ] 儲存包含 AO3 CP mapping、relationship/character tag、義忍 UI 驗證與 mock 整合測試的最新 checkpoint，並在交付紀錄中記錄新版本 ID
+- [x] 儲存包含 AO3 CP mapping、relationship/character tag、義忍 UI 驗證與 mock 整合測試的最新 checkpoint，並在交付紀錄中記錄新版本 ID：fbc2fdec
+
+- [ ] 將 AO3 CP mapping 參數由 tag_names 改為 relationship_names
+- [ ] 將 CP 字典抽至 fastapi_app/constants/cp_tags.py
+- [ ] 實作 AO3 CP 搜尋失敗或 0 筆時自動降級至 work_search[query] 的 fallback 機制
+- [ ] 補上 CP 降級與常數模組的單元測試與端到端驗證

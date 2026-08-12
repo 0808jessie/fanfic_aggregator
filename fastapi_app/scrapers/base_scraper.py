@@ -1,15 +1,24 @@
 from abc import ABC, abstractmethod
+from typing import Any
 
-from ..models import ScrapedFanfic
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from models import ScrapedFanfic
 
 
-class BaseScraper(ABC):
-    """Contract implemented by every external fanfic platform adapter."""
-
-    def __init__(self) -> None:
+class BaseScraper(ABC, object):
+    def __init__(self):
         self.last_warning: str | None = None
 
     @abstractmethod
-    def scrape(self, keyword: str, page: int = 1) -> list[ScrapedFanfic] | dict:
-        """Search one platform and return normalized metadata records."""
-        raise NotImplementedError
+    def scrape(self, keyword: str, page: int = 1) -> dict[str, Any]:
+        """
+        Scrape fanfics from the platform.
+        Returns a dict containing:
+        - items: list[ScrapedFanfic]
+        - total_works: int
+        - total_pages: int
+        """
+        pass
