@@ -21,4 +21,4 @@
 - [x] 建立 FastAPI tRPC 代理 Vitest 測試
 - [x] 通過 TypeScript 檢查與 Vitest 測試
 - [x] 撰寫 README 文件與設定檔；GitHub 遠端建立保留給使用者確認後執行
-- [ ] 建立最終 checkpoint 並交付專案版本
+- [x] 建立最終 checkpoint 並交付專案版本
