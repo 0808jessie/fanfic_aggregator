@@ -24,6 +24,7 @@ class ScrapedFanfic(BaseModel):
 class SearchQuery(BaseModel):
     keyword: str = Field(min_length=1, max_length=120)
     platforms: Optional[list[str]] = None
+    page: int = Field(default=1, ge=1)
 
 
 class SearchResponse(BaseModel):
@@ -34,3 +35,9 @@ class SearchResponse(BaseModel):
     warning: Optional[str] = None
     success: bool = True
     isRateLimited: bool = False
+    totalWorks: int = 0
+    totalPages: int = 0
+    page: int = 1
+    loadedThroughPage: int = 0
+    nextPage: Optional[int] = None
+    hasMore: bool = False

@@ -1,4 +1,5 @@
 import { FormEvent, useMemo, useState } from "react";
+import React from "react";
 import {
   ArrowUpRight,
   BookOpen,
@@ -15,7 +16,16 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { extractIsRateLimited, extractSearchWarning, normalizeResults, type SearchResult } from "@/lib/searchResults";
+import {
+  appendUniqueResults,
+  extractIsRateLimited,
+  extractSearchPagination,
+  extractSearchWarning,
+  getLoadMoreLabel,
+  normalizeResults,
+  type SearchPagination,
+  type SearchResult,
+} from "@/lib/searchResults";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -49,12 +59,21 @@ export default function Home() {
   const [searchWarning, setSearchWarning] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [pagination, setPagination] = useState<SearchPagination>({
+    totalWorks: 0,
+    totalPages: 0,
+    page: 1,
+    loadedThroughPage: 0,
+    nextPage: null,
+    hasMore: false,
+  });
 
   const searchMutation = trpc.fastapi.proxy.useMutation({
     onSuccess: (payload) => {
       const isLimited = extractIsRateLimited(payload);
       const warningMsg = extractSearchWarning(payload);
       setResults(normalizeResults(payload));
+      setPagination(extractSearchPagination(payload));
       setSearchWarning(warningMsg);
       setHasSearched(true);
 
@@ -67,10 +86,25 @@ export default function Home() {
     onError: (error) => {
       setHasSearched(true);
       setResults([]);
+      setPagination({ totalWorks: 0, totalPages: 0, page: 1, loadedThroughPage: 0, nextPage: null, hasMore: false });
       setSearchWarning(error.message || "搜尋服務暫時無法連線，請確認 FastAPI 服務已啟動。");
       toast.error("搜尋服務暫時無法連線", {
         description: error.message || "請確認 FastAPI 服務已啟動。",
       });
+    },
+  });
+
+  const loadMoreMutation = trpc.fastapi.proxy.useMutation({
+    onSuccess: (payload) => {
+      const incoming = normalizeResults(payload);
+      setResults((current) => appendUniqueResults(current, incoming));
+      setPagination(extractSearchPagination(payload));
+      const warningMsg = extractSearchWarning(payload);
+      if (warningMsg) setSearchWarning(warningMsg);
+    },
+    onError: (error) => {
+      setSearchWarning(error.message || "翻頁載入失敗，請稍後再試。");
+      toast.error("翻頁載入失敗", { description: error.message || "請稍後再試。" });
     },
   });
 
@@ -96,10 +130,20 @@ export default function Home() {
       return;
     }
     setSearchWarning(null);
+    setPagination({ totalWorks: 0, totalPages: 0, page: 1, loadedThroughPage: 0, nextPage: null, hasMore: false });
     searchMutation.mutate({
       path: "/search",
       method: "POST",
-      data: { keyword: trimmedKeyword, platforms: selectedPlatforms },
+      data: { keyword: trimmedKeyword, platforms: selectedPlatforms, page: 1 },
+    });
+  };
+
+  const loadMore = () => {
+    if (!pagination.nextPage || loadMoreMutation.isPending || !keyword.trim()) return;
+    loadMoreMutation.mutate({
+      path: "/search",
+      method: "POST",
+      data: { keyword: keyword.trim(), platforms: selectedPlatforms, page: pagination.nextPage },
     });
   };
 
@@ -158,7 +202,7 @@ export default function Home() {
           {showFilters && <div className="mt-4 flex flex-col gap-4 border-t border-[#10151b]/10 pt-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#61707a]"><Filter className="h-3.5 w-3.5" /> SOURCE ADAPTERS</div><div className="flex flex-wrap gap-2">{PLATFORMS.map((platform) => { const active = selectedPlatforms.includes(platform.id); return <button key={platform.id} type="button" onClick={() => togglePlatform(platform.id)} className={`group flex items-center gap-2 border px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.13em] transition-colors ${active ? platform.tone === "cyan" ? "border-[#5acbc4] bg-[#d9f8f5] text-[#126762]" : "border-[#ec9db8] bg-[#ffe3eb] text-[#8b3e59]" : "border-[#10151b]/15 bg-white/50 text-[#86929a]"}`}>{active ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}{platform.label}</button>; })}</div></div>}
         </section>
 
-        <section className="mt-8 flex flex-col gap-3 border-b border-[#10151b]/15 pb-5 sm:flex-row sm:items-end sm:justify-between"><div><div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[#75838b]">SEARCH OUTPUT</div><h2 className="mt-2 text-3xl font-black tracking-[-0.07em] sm:text-4xl">{searchMutation.isPending ? "SCANNING ARCHIVES..." : hasSearched ? `${results.length.toString().padStart(2, "0")} STORIES FOUND` : "READY TO EXPLORE"}</h2></div><div className="flex items-center gap-4 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#6b7982]"><span>ADAPTERS: {selectedLabels}</span><span className="hidden h-4 w-px bg-[#10151b]/20 sm:block" /><span className="text-[#45b9b2]">CACHE: 01H TTL</span></div></section>
+        <section className="mt-8 flex flex-col gap-3 border-b border-[#10151b]/15 pb-5 sm:flex-row sm:items-end sm:justify-between"><div><div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[#75838b]">SEARCH OUTPUT</div><h2 className="mt-2 text-3xl font-black tracking-[-0.07em] sm:text-4xl">{searchMutation.isPending ? "SCANNING ARCHIVES..." : hasSearched ? pagination.totalWorks > 0 ? `${pagination.totalWorks.toLocaleString()} STORIES FOUND` : "NO VERIFIED STORIES FOUND" : "READY TO EXPLORE"}</h2>{hasSearched && pagination.totalWorks > 0 && <div className="mt-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#75838b]">LOADED THROUGH PAGE {pagination.loadedThroughPage} / {pagination.totalPages}</div>}</div><div className="flex items-center gap-4 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#6b7982]"><span>ADAPTERS: {selectedLabels}</span><span className="hidden h-4 w-px bg-[#10151b]/20 sm:block" /><span className="text-[#45b9b2]">CACHE: 30M TTL</span></div></section>
 
         <div className="mt-8">
           {!hasSearched && !searchMutation.isPending && <div className="relative overflow-hidden border border-[#10151b]/15 bg-white/60 p-8 sm:p-12"><div className="absolute right-0 top-0 h-24 w-24 border-b border-l border-[#f2a4bc]" /><div className="absolute bottom-0 left-0 h-16 w-16 border-r border-t border-[#72d2cc]" /><div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-center"><div><div className="mb-5 flex h-12 w-12 items-center justify-center border border-[#72d2cc] bg-[#d9f8f5] text-[#197b75]"><Sparkles className="h-5 w-5" /></div><h3 className="text-2xl font-black tracking-[-0.06em]">輸入一組關鍵字，開始建立你的閱讀座標。</h3><p className="mt-3 max-w-xl text-sm leading-6 text-[#64727a]">系統會透過獨立的平台 Adapter 同時查詢 AO3 與 Lofter，並將作品整理成可快速瀏覽的統一索引。</p></div><div className="grid grid-cols-2 gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#66757d]"><div className="border border-[#10151b]/10 bg-white/70 p-4"><Database className="mb-3 h-4 w-4 text-[#e27d9d]" />SQLITE CACHE</div><div className="border border-[#10151b]/10 bg-white/70 p-4"><BookOpen className="mb-3 h-4 w-4 text-[#45b9b2]" />UNIFIED META</div></div></div></div>}
@@ -234,6 +278,15 @@ export default function Home() {
                   );
                 })}
               </div>
+              {pagination.hasMore && pagination.nextPage && (
+                <div className="flex flex-col items-center gap-3 border-t border-[#10151b]/10 pt-6">
+                  <Button type="button" onClick={loadMore} disabled={loadMoreMutation.isPending} className="min-w-56 rounded-none bg-[#10151b] px-6 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white hover:bg-[#24313a]">
+                    {loadMoreMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowUpRight className="mr-2 h-4 w-4" />}
+                    {getLoadMoreLabel(loadMoreMutation.isPending, pagination.nextPage)}
+                  </Button>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#75838b]">{results.length.toLocaleString()} LOADED / {pagination.totalWorks.toLocaleString()} TOTAL WORKS</span>
+                </div>
+              )}
             </div>
           )}
         </div>

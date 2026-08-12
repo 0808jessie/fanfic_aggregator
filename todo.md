@@ -9,3 +9,17 @@
 - [x] 補上 URL 過濾與空結果回退的回歸測試
 - [x] 透過瀏覽器完成 live AO3 結果與 Discovery Halted 空結果的端到端驗證
 - [x] 建立 verification-notes.md，保存本次自動化與預覽驗證紀錄
+
+- [x] AO3 Adapter 支援 page 參數並於 page=1 自動抓取第 1、2 頁
+- [x] 解析 AO3 totalWorks / totalPages，並在 SearchResponse 回傳分頁 metadata
+- [x] 前端顯示真實總作品數，新增 Load More 追加結果與 loading 狀態
+- [x] 為多頁抓取、page-aware cache 與前端追加流程補上回歸測試
+- [x] 完成多頁端到端驗證並儲存新的 checkpoint
+- [x] 新增自動化回歸測試覆蓋 AO3 page=1 兩頁合併、page=3 後續載入與 page-aware memory cache metadata
+- [x] 新增 Home.tsx Load More append / loading 行為測試
+- [x] 在瀏覽器實際操作搜尋與 Load More，確認 totalWorks 顯示與結果追加
+- [x] 多頁功能驗證完成後儲存涵蓋本輪修改的新 checkpoint
+- [x] 新增 Home.tsx/前端層級互動測試，覆蓋 totalWorks 顯示、Load More append/去重與 pending 文案
+- [x] 完成 Home.tsx 互動測試後儲存涵蓋本輪多頁功能的新 checkpoint
+- [x] 在 Home.tsx 元件互動測試中加入重複 URL 回傳，確認既有卡片不會重複渲染
+- [x] 完成 Home.tsx 去重互動測試後建立新的多頁功能 checkpoint

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractIsRateLimited, extractSearchWarning, isDisplayableResult, normalizeResults } from "./searchResults";
+import { appendUniqueResults, extractIsRateLimited, extractSearchPagination, extractSearchWarning, getLoadMoreLabel, isDisplayableResult, normalizeResults } from "./searchResults";
 
 const verifiedAo3Result = {
   title: "Verified work",
@@ -35,6 +35,46 @@ describe("search result safety contract", () => {
     expect(normalizeResults(payload)).toEqual([]);
     expect(extractSearchWarning(payload)).toContain("伺服器稍微休息中");
     expect(extractIsRateLimited(payload)).toBe(true);
+  });
+
+  it("extracts pagination metadata for the initial two-page response", () => {
+    expect(extractSearchPagination({
+      totalWorks: 3500,
+      totalPages: 175,
+      page: 1,
+      loadedThroughPage: 2,
+      nextPage: 3,
+      hasMore: true,
+    })).toEqual({
+      totalWorks: 3500,
+      totalPages: 175,
+      page: 1,
+      loadedThroughPage: 2,
+      nextPage: 3,
+      hasMore: true,
+    });
+  });
+
+  it("disables Load More at the final page", () => {
+    expect(extractSearchPagination({
+      totalWorks: 20,
+      totalPages: 1,
+      page: 1,
+      loadedThroughPage: 1,
+      nextPage: null,
+      hasMore: false,
+    }).hasMore).toBe(false);
+  });
+
+  it("appends Load More results without duplicating URLs", () => {
+    const secondPage = { ...verifiedAo3Result, title: "Second page", url: "https://archiveofourown.org/works/2" };
+    expect(appendUniqueResults([verifiedAo3Result], [verifiedAo3Result, secondPage])).toEqual([verifiedAo3Result, secondPage]);
+  });
+
+  it("returns the translated loading label while Load More is pending", () => {
+    expect(getLoadMoreLabel(true, 3)).toBe("正在翻頁載入中...");
+    expect(getLoadMoreLabel(false, 3)).toBe("LOAD MORE / PAGE 3");
+    expect(getLoadMoreLabel(false, null)).toBe("NO MORE WORKS");
   });
 
   it("rejects Example Domain placeholder records", () => {

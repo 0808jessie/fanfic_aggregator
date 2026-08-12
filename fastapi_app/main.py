@@ -15,7 +15,7 @@ app = FastAPI(title="Fanfic Atlas Search API", version="0.1.3")
 CACHE_TTL = timedelta(seconds=settings.cache_ttl_seconds)
 
 # 30分鐘記憶體快取 (In-Memory Cache) 用以避免頻繁請求遭到 AO3 限流與 IP 封鎖
-_MEMORY_CACHE: dict[str, tuple[datetime, list[ScrapedFanfic]]] = {}
+_MEMORY_CACHE: dict[str, tuple[datetime, list[ScrapedFanfic], int, int, int]] = {}
 MEMORY_CACHE_TTL = timedelta(minutes=30)
 
 SCRAPERS: dict[str, Callable[[], object]] = {
@@ -128,76 +128,139 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
         raise HTTPException(status_code=400, detail="No supported platform was selected")
 
     try:
-        # 0. Try in-memory 1-hour cache first for speed and anti-rate-limiting
-        cache_key = f"{keyword}:{'-'.join(sorted(platforms))}"
-        if cache_key in _MEMORY_CACHE:
-            cached_time, cached_items = _MEMORY_CACHE[cache_key]
+        # 0. 先查以關鍵字、平台與頁碼隔離的 30 分鐘記憶體快取。
+        requested_page = query.page
+        cache_key = f"{keyword}:{'-'.join(sorted(platforms))}:page={requested_page}"
+        memory_entry = _MEMORY_CACHE.get(cache_key)
+        if memory_entry:
+            cached_time, cached_items, total_works, total_pages, loaded_through_page = memory_entry
             if datetime.utcnow() - cached_time < MEMORY_CACHE_TTL:
                 print(f"[SearchAPI] Memory cache hit for '{cache_key}'")
                 for item in cached_items:
                     item.source = "cache"
                     item.warning = None
+                safe_total_pages = max(total_pages, (total_works + 19) // 20, 1 if total_works else 0)
+                has_more = loaded_through_page < safe_total_pages
                 return SearchResponse(
                     items=sorted(cached_items, key=lambda item: item.scraped_at, reverse=True),
                     source="cache",
+                    totalWorks=total_works,
+                    totalPages=safe_total_pages,
+                    page=requested_page,
+                    loadedThroughPage=loaded_through_page,
+                    nextPage=loaded_through_page + 1 if has_more else None,
+                    hasMore=has_more,
                 )
-            else:
-                del _MEMORY_CACHE[cache_key]
+            del _MEMORY_CACHE[cache_key]
 
-        # 1. Try DB/SQLite cache hit
-        cached = get_cached_results(db, keyword, platforms, source_label="cache")
-        if cached:
-            print(f"[SearchAPI] SQLite cache hit for '{keyword}'")
-            _MEMORY_CACHE[cache_key] = (datetime.utcnow(), cached)
-            return SearchResponse(
-                items=sorted(cached, key=lambda item: item.scraped_at, reverse=True),
-                source="cache",
-            )
+        # 1. SQLite cache 只在首次 page=1 使用，避免舊資料被誤當成特定頁面。
+        if requested_page == 1 and "ao3" not in platforms:
+            cached = get_cached_results(db, keyword, platforms, source_label="cache")
+            if cached:
+                print(f"[SearchAPI] SQLite cache hit for '{keyword}'")
+                total_works = len(cached)
+                total_pages = max(1, (total_works + 19) // 20)
+                loaded_through_page = min(2, total_pages)
+                _MEMORY_CACHE[cache_key] = (
+                    datetime.utcnow(), cached, total_works, total_pages, loaded_through_page
+                )
+                has_more = loaded_through_page < total_pages
+                return SearchResponse(
+                    items=sorted(cached, key=lambda item: item.scraped_at, reverse=True),
+                    source="cache",
+                    totalWorks=total_works,
+                    totalPages=total_pages,
+                    page=requested_page,
+                    loadedThroughPage=loaded_through_page,
+                    nextPage=loaded_through_page + 1 if has_more else None,
+                    hasMore=has_more,
+                )
 
-        # 2. Try fresh scrape from external platforms
+        # 2. 呼叫平台 Adapter；AO3 接收 page，Lofter 維持既有介面。
         fresh_results: list[ScrapedFanfic] = []
+        total_works = 0
+        total_pages = 0
         any_success = False
         for platform in platforms:
             adapter = SCRAPERS[platform]()
             try:
-                print(f"[SearchAPI] Scraping '{platform}' for '{keyword}'")
-                platform_results = adapter.scrape(keyword)
-                if platform_results:
-                    trusted_results = [
-                        r for r in platform_results
-                        if is_real_platform_url(r.url, r.platform)
-                    ]
-                    if trusted_results:
-                        any_success = True
-                    for r in trusted_results:
-                        r.source = "live"
-                        r.warning = None
-                        fresh_results.append(r)
+                print(f"[SearchAPI] Scraping '{platform}' for '{keyword}', page={requested_page}")
+                raw_payload = (
+                    adapter.scrape(keyword, page=requested_page)
+                    if platform == "ao3"
+                    else adapter.scrape(keyword)
+                )
+                if isinstance(raw_payload, dict):
+                    platform_results = raw_payload.get("items", [])
+                    total_works = max(total_works, int(raw_payload.get("total_works", 0) or 0))
+                    total_pages = max(total_pages, int(raw_payload.get("total_pages", 0) or 0))
+                else:
+                    platform_results = raw_payload
+
+                trusted_results = [
+                    result for result in platform_results
+                    if is_real_platform_url(result.url, result.platform)
+                ]
+                if trusted_results:
+                    any_success = True
+                for result in trusted_results:
+                    result.source = "live"
+                    result.warning = None
+                    fresh_results.append(result)
             except Exception as error:
                 print(f"[SearchAPI] Adapter '{platform}' crashed: {error}")
 
-        # 3. If live scrape succeeded, save and return
+        # 3. 若即時抓取成功，保存結果與 AO3 分頁統計。
         if any_success and fresh_results:
             deduplicated: dict[str, ScrapedFanfic] = {}
             for result in fresh_results:
                 result.keyword = keyword
                 deduplicated[result.url] = result
                 save_fanfic_to_db(db, result)
-            final_items = list(deduplicated.values())
-            _MEMORY_CACHE[cache_key] = (datetime.utcnow(), final_items)
+            final_items = sorted(deduplicated.values(), key=lambda item: item.scraped_at, reverse=True)
+            total_works = max(total_works, len(final_items))
+            total_pages = max(total_pages, (total_works + 19) // 20)
+            loaded_through_page = min(
+                requested_page + (1 if requested_page == 1 else 0),
+                total_pages,
+            )
+            _MEMORY_CACHE[cache_key] = (
+                datetime.utcnow(),
+                final_items,
+                total_works,
+                total_pages,
+                loaded_through_page,
+            )
+            has_more = loaded_through_page < total_pages
             return SearchResponse(
-                items=sorted(final_items, key=lambda item: item.scraped_at, reverse=True),
+                items=final_items,
                 source="live",
+                totalWorks=total_works,
+                totalPages=total_pages,
+                page=requested_page,
+                loadedThroughPage=loaded_through_page,
+                nextPage=loaded_through_page + 1 if has_more else None,
+                hasMore=has_more,
             )
         
         # 4. Fallback to stale cache if external failed
         stale_cached = get_cached_results(db, keyword, platforms, ignore_ttl=True, source_label="fallback-cache")
         if stale_cached:
             print(f"[SearchAPI] External failed, falling back to stale cache for '{keyword}'")
+            stale_total_works = len(stale_cached)
+            stale_total_pages = max(1, (stale_total_works + 19) // 20)
             return SearchResponse(
                 items=sorted(stale_cached, key=lambda item: item.scraped_at, reverse=True),
                 source="fallback-cache",
                 warning="外部平台即時連線受阻或逾時，已自動載入本機歷史快取作品。",
+                totalWorks=stale_total_works,
+                totalPages=stale_total_pages,
+                page=requested_page,
+                loadedThroughPage=min(requested_page + (1 if requested_page == 1 else 0), stale_total_pages),
+                nextPage=(min(requested_page + (1 if requested_page == 1 else 0), stale_total_pages) + 1)
+                if min(requested_page + (1 if requested_page == 1 else 0), stale_total_pages) < stale_total_pages
+                else None,
+                hasMore=min(requested_page + (1 if requested_page == 1 else 0), stale_total_pages) < stale_total_pages,
             )
 
         # 5. Rate-limit or block handling: return structured JSON indicating rate limit state
@@ -211,6 +274,7 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
             warning=warning,
             success=False,
             isRateLimited=True,
+            page=requested_page,
         )
 
     except Exception as error:
@@ -218,4 +282,6 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
         return SearchResponse(
             source="none",
             warning="搜尋服務發生未預期錯誤，未回傳任何未驗證或佔位作品。",
+            success=False,
+            page=requested_page,
         )
