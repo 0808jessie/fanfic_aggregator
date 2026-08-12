@@ -1,6 +1,7 @@
 from bs4 import BeautifulSoup
 import sys
 import os
+from unittest.mock import MagicMock, patch
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -62,3 +63,31 @@ def test_relationship_names_url_construction_logic():
     assert "Tomioka" in search_url
     assert "relationship_names" in search_url
     assert "tag_names" not in search_url
+
+
+@patch("scrapers.ao3_scraper.sync_playwright")
+def test_ao3_scraper_triggers_fallback_when_relationship_returns_zero(mock_sync_playwright):
+    scraper = AO3Scraper()
+    
+    mock_fallback_result = {
+        "items": [],
+        "total_works": 0,
+        "total_pages": 1,
+    }
+    scraper._fallback_query_search = MagicMock(return_value=mock_fallback_result)
+    
+    mock_browser = MagicMock()
+    mock_context = MagicMock()
+    mock_page = MagicMock()
+    mock_page.content.return_value = "<html><body></body></html>"
+    
+    mock_context.new_page.return_value = mock_page
+    mock_browser.new_context.return_value = mock_context
+    mock_instance = MagicMock()
+    mock_instance.chromium.launch.return_value = mock_browser
+    mock_sync_playwright.return_value.__enter__.return_value = mock_instance
+
+    result = scraper.scrape("義忍", page=1)
+    
+    scraper._fallback_query_search.assert_called_once()
+    assert result == mock_fallback_result

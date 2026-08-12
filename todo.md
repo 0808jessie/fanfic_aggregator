@@ -49,5 +49,8 @@
 - [x] 實作 AO3 CP 搜尋失敗或 0 筆時自動降級至 work_search[query] 的 fallback 機制
 - [x] 補上 CP 降級與常數模組的單元測試與端到端驗證
 
-- [ ] 修正 AO3 Playwright `wait_domcontent_loaded=True` 為標準的 `wait_until="domcontentloaded"`，確保導航正確無誤
-- [ ] 補上針對 AO3 relationship_names URL 生成與 fallback 機制的整合單元測試
+- [x] 修正 AO3 Playwright `wait_domcontent_loaded=True` 為標準的 `wait_until="domcontentloaded"`，確保導航正確無誤
+- [x] 補上針對 AO3 relationship_names URL 生成與 fallback 機制的整合單元測試
+
+- [ ] 新增 AO3 fallback 實際 mock 整合測試，驗證 0 筆時會觸發 `_fallback_query_search`
+- [ ] 更新 verification 文件，確保記載 `relationship_names` 與受控降級流程
