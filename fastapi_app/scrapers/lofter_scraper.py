@@ -9,48 +9,83 @@ from ..models import ScrapedFanfic
 
 
 class LofterScraper(BaseScraper):
-    """Best-effort Lofter search adapter.
-
-    Lofter may require dynamic rendering or authentication. The adapter therefore
-    treats unavailable HTML as an empty result and never fabricates records.
-    """
+    """Lofter search adapter with browser headers and status code logging."""
 
     SEARCH_URL = "https://www.lofter.com/search"
 
     def scrape(self, keyword: str) -> list[ScrapedFanfic]:
+        # Lofter 搜尋 Headers
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Referer": "https://www.lofter.com/",
+            "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+        }
+
         try:
+            print(f"[LofterScraper] Searching keyword: {keyword}")
             response = requests.get(
                 self.SEARCH_URL,
                 params={"q": keyword, "query": keyword},
-                headers={"User-Agent": "FanficAtlas/0.1 (+local research tool)"},
+                headers=headers,
                 timeout=12,
             )
+            
+            if response.status_code != 200:
+                print(f"[LofterScraper] ERROR: Lofter returned HTTP Status Code {response.status_code} for keyword '{keyword}'")
+                return []
+                
             response.raise_for_status()
         except requests.RequestException as error:
-            print(f"[Lofter] request failed: {error}")
+            status_code = error.response.status_code if error.response else "Network Error"
+            print(f"[LofterScraper] Request failed for keyword '{keyword}': Status Code {status_code} - {error}")
             return []
 
         soup = BeautifulSoup(response.text, "html.parser")
         results: list[ScrapedFanfic] = []
-        for item in soup.select("article, .m-post, .post, [data-post-id]")[:20]:
-            title_link = item.select_one("a[title], h2 a, h3 a, .title a")
-            if title_link is None or not title_link.get("href"):
-                continue
+        
+        # 解析 Lofter 搜尋結果文章清單
+        post_items = soup.select("article, .m-post, .post, [data-post-id]")
+        print(f"[LofterScraper] Found {len(post_items)} post elements.")
 
-            href = title_link["href"]
-            if href.startswith("/"):
-                href = f"https://www.lofter.com{href}"
-            results.append(
-                ScrapedFanfic(
-                    title=title_link.get("title") or title_link.get_text(" ", strip=True),
-                    author=(item.select_one(".author, .user-name, [data-author]") or {}).get_text(" ", strip=True) or "Unknown author",
-                    platform="Lofter",
-                    url=href,
-                    tags=", ".join(tag.get_text(" ", strip=True) for tag in item.select(".tag, .tags a")),
-                    summary=(item.select_one(".summary, .excerpt, .content") or {}).get_text(" ", strip=True),
-                    scraped_at=datetime.utcnow(),
-                    keyword=keyword,
+        for item in post_items[:20]:
+            try:
+                title_link = item.select_one("a[title], h2 a, h3 a, .title a")
+                if title_link is None or not title_link.get("href"):
+                    continue
+
+                href = title_link["href"]
+                if href.startswith("/"):
+                    href = f"https://www.lofter.com{href}"
+
+                title = title_link.get("title") or title_link.get_text(" ", strip=True)
+                
+                # 作者解析
+                author_elem = item.select_one(".author, .user-name, [data-author], .user a")
+                author = author_elem.get_text(" ", strip=True) if author_elem else "Unknown author"
+
+                # 摘要解析
+                summary_elem = item.select_one(".summary, .excerpt, .content, .text")
+                summary = summary_elem.get_text(" ", strip=True) if summary_elem else ""
+
+                # 標籤解析
+                tag_elems = item.select(".tag, .tags a, .m-tag a")
+                tags = ", ".join([t.get_text(" ", strip=True) for t in tag_elems if t.get_text().strip()])
+
+                results.append(
+                    ScrapedFanfic(
+                        title=title,
+                        author=author,
+                        platform="Lofter",
+                        url=href,
+                        tags=tags,
+                        summary=summary,
+                        scraped_at=datetime.utcnow(),
+                        keyword=keyword,
+                    )
                 )
-            )
+            except Exception as parse_err:
+                print(f"[LofterScraper] Warning: Failed to parse Lofter post: {parse_err}")
+                continue
 
         return results

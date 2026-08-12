@@ -104,9 +104,12 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> list[Sc
         for platform in platforms:
             adapter = SCRAPERS[platform]()
             try:
-                fresh_results.extend(adapter.scrape(keyword))
+                print(f"[SearchAPI] Invoking adapter '{platform}' for keyword: '{keyword}'")
+                platform_results = adapter.scrape(keyword)
+                print(f"[SearchAPI] Adapter '{platform}' returned {len(platform_results)} items.")
+                fresh_results.extend(platform_results)
             except Exception as error:
-                print(f"[{platform}] adapter error: {error}")
+                print(f"[SearchAPI] ERROR in adapter '{platform}': {error}")
 
         deduplicated: dict[str, ScrapedFanfic] = {}
         for result in fresh_results:
