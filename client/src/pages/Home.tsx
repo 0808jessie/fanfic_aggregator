@@ -35,6 +35,8 @@ type SearchResult = {
   tags: string;
   summary: string;
   scraped_at: string;
+  source?: string;
+  warning?: string;
 };
 
 function normalizeResults(payload: unknown): SearchResult[] {
@@ -170,7 +172,54 @@ export default function Home() {
           {!hasSearched && !searchMutation.isPending && <div className="relative overflow-hidden border border-[#10151b]/15 bg-white/60 p-8 sm:p-12"><div className="absolute right-0 top-0 h-24 w-24 border-b border-l border-[#f2a4bc]" /><div className="absolute bottom-0 left-0 h-16 w-16 border-r border-t border-[#72d2cc]" /><div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-center"><div><div className="mb-5 flex h-12 w-12 items-center justify-center border border-[#72d2cc] bg-[#d9f8f5] text-[#197b75]"><Sparkles className="h-5 w-5" /></div><h3 className="text-2xl font-black tracking-[-0.06em]">輸入一組關鍵字，開始建立你的閱讀座標。</h3><p className="mt-3 max-w-xl text-sm leading-6 text-[#64727a]">系統會透過獨立的平台 Adapter 同時查詢 AO3 與 Lofter，並將作品整理成可快速瀏覽的統一索引。</p></div><div className="grid grid-cols-2 gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#66757d]"><div className="border border-[#10151b]/10 bg-white/70 p-4"><Database className="mb-3 h-4 w-4 text-[#e27d9d]" />SQLITE CACHE</div><div className="border border-[#10151b]/10 bg-white/70 p-4"><BookOpen className="mb-3 h-4 w-4 text-[#45b9b2]" />UNIFIED META</div></div></div></div>}
           {hasSearched && results.length === 0 && !searchMutation.isPending && <div className="border border-dashed border-[#10151b]/25 bg-white/45 px-6 py-16 text-center"><div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-[#e27d9d]">NO MATCHING RECORDS</div><p className="mt-3 text-sm text-[#66757d]">沒有找到符合條件的作品，請嘗試更換關鍵字或平台篩選。</p></div>}
           {searchMutation.isPending && <div className="grid gap-4 md:grid-cols-2">{[1, 2, 3, 4].map((item) => <div key={item} className="h-64 animate-pulse border border-[#10151b]/10 bg-white/55" />)}</div>}
-          {!searchMutation.isPending && results.length > 0 && <div className="grid gap-4 md:grid-cols-2">{results.map((result, index) => { const meta = platformMeta(result.platform); const tags = (result.tags || "").split(",").map((tag) => tag.trim()).filter(Boolean).slice(0, 4); return <Card key={`${result.url}-${index}`} className="group rounded-none border-[#10151b]/15 bg-white/75 shadow-none transition-transform duration-200 hover:-translate-y-1 hover:border-[#10151b]/40"><CardContent className="p-0"><div className="flex items-center justify-between border-b border-[#10151b]/10 px-5 py-3"><Badge className={`rounded-none border font-mono text-[9px] font-bold uppercase tracking-[0.16em] ${meta.tone === "cyan" ? "border-[#65cec8] bg-[#d9f8f5] text-[#197b75]" : "border-[#eea3bb] bg-[#ffe3eb] text-[#8b3e59]"}`}>{meta.label}</Badge><span className="font-mono text-[9px] font-bold tracking-[0.12em] text-[#8b979d]">{formatDate(result.scraped_at)}</span></div><div className="p-5 sm:p-6"><div className="mb-4 flex items-start justify-between gap-4"><h3 className="line-clamp-2 text-xl font-black leading-tight tracking-[-0.055em]">{result.title || "UNTITLED WORK"}</h3><ArrowUpRight className="mt-1 h-5 w-5 shrink-0 text-[#9ca8ad] transition-colors group-hover:text-[#e27d9d]" /></div><div className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-[#56646d]">BY / {result.author || "UNKNOWN AUTHOR"}</div><p className="mt-5 line-clamp-3 text-sm leading-6 text-[#69777f]">{result.summary || "No summary available."}</p><div className="mt-6 flex flex-wrap gap-1.5">{tags.map((tag) => <span key={tag} className="border border-[#10151b]/10 bg-[#f3f6f5] px-2 py-1 font-mono text-[9px] font-semibold text-[#6a777e]">#{tag}</span>)}</div><a href={result.url} target="_blank" rel="noreferrer" className="mt-6 inline-flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#1d7f79] hover:text-[#e27d9d]">OPEN ORIGINAL <ArrowUpRight className="h-3.5 w-3.5" /></a></div></CardContent></Card>; })}</div>}
+          {!searchMutation.isPending && results.length > 0 && (
+            <div className="space-y-6">
+              {results.some(r => r.warning) && (
+                <div className="border border-[#e27d9d]/40 bg-[#fff5f7] p-4 font-mono text-xs text-[#8b3e59]">
+                  <span className="font-bold uppercase tracking-wider">[NOTICE]</span> {results.find(r => r.warning)?.warning}
+                </div>
+              )}
+              <div className="grid gap-4 md:grid-cols-2">
+                {results.map((result, index) => {
+                  const meta = platformMeta(result.platform);
+                  const tags = (result.tags || "").split(",").map((tag) => tag.trim()).filter(Boolean).slice(0, 4);
+                  return (
+                    <Card key={`${result.url}-${index}`} className="group rounded-none border-[#10151b]/15 bg-white/75 shadow-none transition-transform duration-200 hover:-translate-y-1 hover:border-[#10151b]/40">
+                      <CardContent className="p-0">
+                        <div className="flex items-center justify-between border-b border-[#10151b]/10 px-5 py-3">
+                          <div className="flex items-center gap-2">
+                            <Badge className={`rounded-none border font-mono text-[9px] font-bold uppercase tracking-[0.16em] ${meta.tone === "cyan" ? "border-[#65cec8] bg-[#d9f8f5] text-[#197b75]" : "border-[#eea3bb] bg-[#ffe3eb] text-[#8b3e59]"}`}>
+                              {meta.label}
+                            </Badge>
+                            {result.source && (
+                              <span className="font-mono text-[9px] uppercase tracking-wider text-[#75838b]">
+                                [{result.source}]
+                              </span>
+                            )}
+                          </div>
+                          <span className="font-mono text-[9px] font-bold tracking-[0.12em] text-[#8b979d]">{formatDate(result.scraped_at)}</span>
+                        </div>
+                        <div className="p-5 sm:p-6">
+                          <div className="mb-4 flex items-start justify-between gap-4">
+                            <h3 className="line-clamp-2 text-xl font-black leading-tight tracking-[-0.055em]">{result.title || "UNTITLED WORK"}</h3>
+                            <ArrowUpRight className="mt-1 h-5 w-5 shrink-0 text-[#9ca8ad] transition-colors group-hover:text-[#e27d9d]" />
+                          </div>
+                          <div className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-[#56646d]">BY / {result.author || "UNKNOWN AUTHOR"}</div>
+                          <p className="mt-5 line-clamp-3 text-sm leading-6 text-[#69777f]">{result.summary || "No summary available."}</p>
+                          <div className="mt-6 flex flex-wrap gap-1.5">
+                            {tags.map((tag) => <span key={tag} className="border border-[#10151b]/10 bg-[#f3f6f5] px-2 py-1 font-mono text-[9px] font-semibold text-[#6a777e]">#{tag}</span>)}
+                          </div>
+                          <a href={result.url} target="_blank" rel="noreferrer" className="mt-6 inline-flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#1d7f79] hover:text-[#e27d9d]">
+                            OPEN ORIGINAL <ArrowUpRight className="h-3.5 w-3.5" />
+                          </a>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </main>
 

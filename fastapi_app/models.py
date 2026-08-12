@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ScrapedFanfic(BaseModel):
-    """Canonical metadata shape shared by every platform adapter."""
+    """Canonical metadata shape shared by every platform adapter, including source tracking."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -17,6 +17,8 @@ class ScrapedFanfic(BaseModel):
     summary: str = ""
     scraped_at: datetime = Field(default_factory=datetime.utcnow)
     keyword: Optional[str] = None
+    source: str = Field(default="live", description="Source of result: live, cache, or fallback")
+    warning: Optional[str] = Field(default=None, description="Diagnostic warning if live scraping failed")
 
 
 class SearchQuery(BaseModel):
