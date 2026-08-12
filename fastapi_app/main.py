@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-import random
 from typing import Callable
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -8,11 +7,11 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Fanfic, SessionLocal
-from .models import ScrapedFanfic, SearchQuery
+from .models import ScrapedFanfic, SearchQuery, SearchResponse
 from .scrapers.ao3_scraper import AO3Scraper
 from .scrapers.lofter_scraper import LofterScraper
 
-app = FastAPI(title="Fanfic Atlas Search API", version="0.1.1")
+app = FastAPI(title="Fanfic Atlas Search API", version="0.1.2")
 CACHE_TTL = timedelta(seconds=settings.cache_ttl_seconds)
 SCRAPERS: dict[str, Callable[[], object]] = {
     "ao3": AO3Scraper,
@@ -38,11 +37,32 @@ def canonical_platforms(platforms: list[str] | None) -> list[str]:
     return normalized
 
 
+def is_real_platform_url(url: str, platform: str | None = None) -> bool:
+    """Reject placeholder, local, and unrelated URLs before they reach the UI or cache."""
+    normalized_url = url.strip().lower()
+    if not normalized_url.startswith(("https://", "http://")):
+        return False
+    if any(blocked in normalized_url for blocked in ("example.com", "example.org", "localhost", "127.0.0.1")):
+        return False
+    if platform:
+        allowed_hosts = {
+            "ao3": ("archiveofourown.org",),
+            "lofter": ("lofter.com",),
+        }
+        hosts = allowed_hosts.get(platform.lower())
+        if hosts and not any(host in normalized_url for host in hosts):
+            return False
+    return True
+
+
 def save_fanfic_to_db(db: Session, fanfic: ScrapedFanfic) -> None:
-    """Upsert one canonical record by URL."""
+    """Upsert only persistent metadata; source/warning are response-only fields."""
+    if not is_real_platform_url(fanfic.url, fanfic.platform):
+        print(f"[Database] Skipping untrusted URL: {fanfic.url}")
+        return
     try:
         record = db.query(Fanfic).filter(Fanfic.url == fanfic.url).first()
-        values = fanfic.model_dump()
+        values = fanfic.model_dump(exclude={"source", "warning"})
         if record is None:
             db.add(Fanfic(**values))
         else:
@@ -62,7 +82,10 @@ def get_cached_results(db: Session, keyword: str, platforms: list[str], ignore_t
         query = query.filter(Fanfic.scraped_at >= cutoff)
     cached_records = query.all()
     platform_set = {p.lower() for p in platforms}
-    filtered = [r for r in cached_records if r.platform.lower() in platform_set]
+    filtered = [
+        r for r in cached_records
+        if r.platform.lower() in platform_set and is_real_platform_url(r.url, r.platform)
+    ]
     if not filtered:
         return None
     unique_records = {record.url: record for record in filtered}
@@ -71,37 +94,14 @@ def get_cached_results(db: Session, keyword: str, platforms: list[str], ignore_t
         item = ScrapedFanfic.model_validate(record)
         item.source = source_label
         if source_label == "fallback-cache":
-            item.warning = "即時連線逾時，已自動載入歷史快取資料。"
+            item.warning = "外部平台即時連線受阻或逾時，已自動載入本機歷史快取作品。"
         results.append(item)
     return results
 
 
-def generate_fallback_data(keyword: str, platforms: list[str]) -> list[ScrapedFanfic]:
-    """Generate intelligent mock data when both scrapers and cache fail."""
-    print(f"[SearchAPI] Generating fallback data for keyword: {keyword}")
-    fallbacks = []
-    for p in platforms:
-        p_name = p.upper()
-        fallbacks.append(
-            ScrapedFanfic(
-                title=f"關於「{keyword}」的探索作品",
-                author="Atlas-Index",
-                platform=p_name,
-                url=f"https://example.com/fallback/{p}/{random.randint(1000,9999)}",
-                tags=f"Fallback, {keyword}, 示範資料",
-                summary=f"外部平台（如 AO3 / Lofter）因網路防護或連線逾時無法直接存取，系統已為您啟用智慧備用索引，以維護搜尋體驗。",
-                scraped_at=datetime.utcnow(),
-                keyword=keyword,
-                source="fallback",
-                warning="外部平台即時抓取逾時，目前顯示系統備用索引資料。"
-            )
-        )
-    return fallbacks
-
-
 @app.get("/fastapi-status")
 def fastapi_status() -> dict[str, str]:
-    return {"status": "ok", "service": "fastapi-search", "version": "0.1.1"}
+    return {"status": "ok", "service": "fastapi-search", "version": "0.1.2"}
 
 
 @app.get("/platforms")
@@ -112,8 +112,8 @@ def list_platforms() -> list[dict[str, str]]:
     ]
 
 
-@app.post("/search", response_model=list[ScrapedFanfic])
-def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> list[ScrapedFanfic]:
+@app.post("/search", response_model=SearchResponse)
+def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchResponse:
     keyword = query.keyword.strip()
     if not keyword:
         raise HTTPException(status_code=422, detail="keyword cannot be empty")
@@ -127,9 +127,12 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> list[Sc
         cached = get_cached_results(db, keyword, platforms, source_label="cache")
         if cached:
             print(f"[SearchAPI] Cache hit for '{keyword}'")
-            return sorted(cached, key=lambda item: item.scraped_at, reverse=True)
+            return SearchResponse(
+                items=sorted(cached, key=lambda item: item.scraped_at, reverse=True),
+                source="cache",
+            )
 
-        # 2. Try fresh scrape
+        # 2. Try fresh scrape from external platforms
         fresh_results: list[ScrapedFanfic] = []
         any_success = False
         for platform in platforms:
@@ -138,32 +141,53 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> list[Sc
                 print(f"[SearchAPI] Scraping '{platform}' for '{keyword}'")
                 platform_results = adapter.scrape(keyword)
                 if platform_results:
-                    any_success = True
-                    for r in platform_results:
+                    trusted_results = [
+                        r for r in platform_results
+                        if is_real_platform_url(r.url, r.platform)
+                    ]
+                    if trusted_results:
+                        any_success = True
+                    for r in trusted_results:
                         r.source = "live"
                         r.warning = None
                         fresh_results.append(r)
             except Exception as error:
                 print(f"[SearchAPI] Adapter '{platform}' crashed: {error}")
 
-        # 3. Handle results or fallbacks
+        # 3. If live scrape succeeded, save and return
         if any_success and fresh_results:
             deduplicated: dict[str, ScrapedFanfic] = {}
             for result in fresh_results:
                 result.keyword = keyword
                 deduplicated[result.url] = result
                 save_fanfic_to_db(db, result)
-            return sorted(deduplicated.values(), key=lambda item: item.scraped_at, reverse=True)
+            return SearchResponse(
+                items=sorted(deduplicated.values(), key=lambda item: item.scraped_at, reverse=True),
+                source="live",
+            )
         
         # 4. Fallback to stale cache if external failed
         stale_cached = get_cached_results(db, keyword, platforms, ignore_ttl=True, source_label="fallback-cache")
         if stale_cached:
             print(f"[SearchAPI] External failed, falling back to stale cache for '{keyword}'")
-            return sorted(stale_cached, key=lambda item: item.scraped_at, reverse=True)
-            
-        # 5. Final fallback to mock data (Ensures search success)
-        return generate_fallback_data(keyword, platforms)
+            return SearchResponse(
+                items=sorted(stale_cached, key=lambda item: item.scraped_at, reverse=True),
+                source="fallback-cache",
+                warning="外部平台即時連線受阻或逾時，已自動載入本機歷史快取作品。",
+            )
+
+        # 5. No fake data / no example domain: return an explicit machine-readable status.
+        warning = (
+            f"未從 {', '.join(platforms).upper()} 取得可驗證作品。"
+            "外部平台可能回傳 HTTP 403/404/429/525、觸發反爬防護或發生網路逾時；"
+            "本次沒有使用任何佔位連結。"
+        )
+        print(f"[SearchAPI] Discovery halted for '{keyword}': {warning}")
+        return SearchResponse(source="none", warning=warning)
 
     except Exception as error:
         print(f"[SearchAPI] Unexpected failure: {error}")
-        return generate_fallback_data(keyword, platforms)
+        return SearchResponse(
+            source="none",
+            warning="搜尋服務發生未預期錯誤，未回傳任何未驗證或佔位作品。",
+        )

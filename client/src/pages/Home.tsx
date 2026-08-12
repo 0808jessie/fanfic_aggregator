@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { extractSearchWarning, normalizeResults, type SearchResult } from "@/lib/searchResults";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,27 +27,6 @@ const PLATFORMS = [
 ] as const;
 
 type PlatformId = (typeof PLATFORMS)[number]["id"];
-
-type SearchResult = {
-  title: string;
-  author: string;
-  platform: string;
-  url: string;
-  tags: string;
-  summary: string;
-  scraped_at: string;
-  source?: string;
-  warning?: string;
-};
-
-function normalizeResults(payload: unknown): SearchResult[] {
-  if (Array.isArray(payload)) return payload as SearchResult[];
-  if (payload && typeof payload === "object" && "data" in payload) {
-    const data = (payload as { data?: unknown }).data;
-    return Array.isArray(data) ? (data as SearchResult[]) : [];
-  }
-  return [];
-}
 
 function platformMeta(platform: string) {
   const normalized = platform.toLowerCase();
@@ -66,17 +46,20 @@ export default function Home() {
   const [keyword, setKeyword] = useState("");
   const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformId[]>(["ao3", "lofter"]);
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [searchWarning, setSearchWarning] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
   const searchMutation = trpc.fastapi.proxy.useMutation({
     onSuccess: (payload) => {
       setResults(normalizeResults(payload));
+      setSearchWarning(extractSearchWarning(payload));
       setHasSearched(true);
     },
     onError: (error) => {
       setHasSearched(true);
       setResults([]);
+      setSearchWarning(error.message || "搜尋服務暫時無法連線，請確認 FastAPI 服務已啟動。");
       toast.error("搜尋服務暫時無法連線", {
         description: error.message || "請確認 FastAPI 服務已啟動。",
       });
@@ -104,6 +87,7 @@ export default function Home() {
       toast.error("請先輸入搜尋關鍵字");
       return;
     }
+    setSearchWarning(null);
     searchMutation.mutate({
       path: "/search",
       method: "POST",
@@ -170,13 +154,37 @@ export default function Home() {
 
         <div className="mt-8">
           {!hasSearched && !searchMutation.isPending && <div className="relative overflow-hidden border border-[#10151b]/15 bg-white/60 p-8 sm:p-12"><div className="absolute right-0 top-0 h-24 w-24 border-b border-l border-[#f2a4bc]" /><div className="absolute bottom-0 left-0 h-16 w-16 border-r border-t border-[#72d2cc]" /><div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-center"><div><div className="mb-5 flex h-12 w-12 items-center justify-center border border-[#72d2cc] bg-[#d9f8f5] text-[#197b75]"><Sparkles className="h-5 w-5" /></div><h3 className="text-2xl font-black tracking-[-0.06em]">輸入一組關鍵字，開始建立你的閱讀座標。</h3><p className="mt-3 max-w-xl text-sm leading-6 text-[#64727a]">系統會透過獨立的平台 Adapter 同時查詢 AO3 與 Lofter，並將作品整理成可快速瀏覽的統一索引。</p></div><div className="grid grid-cols-2 gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#66757d]"><div className="border border-[#10151b]/10 bg-white/70 p-4"><Database className="mb-3 h-4 w-4 text-[#e27d9d]" />SQLITE CACHE</div><div className="border border-[#10151b]/10 bg-white/70 p-4"><BookOpen className="mb-3 h-4 w-4 text-[#45b9b2]" />UNIFIED META</div></div></div></div>}
-          {hasSearched && results.length === 0 && !searchMutation.isPending && <div className="border border-dashed border-[#10151b]/25 bg-white/45 px-6 py-16 text-center"><div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-[#e27d9d]">NO MATCHING RECORDS</div><p className="mt-3 text-sm text-[#66757d]">沒有找到符合條件的作品，請嘗試更換關鍵字或平台篩選。</p></div>}
+          {hasSearched && results.length === 0 && !searchMutation.isPending && (
+            <div className="relative overflow-hidden border border-dashed border-[#10151b]/25 bg-white/45 px-6 py-16 text-center">
+              <div className="absolute right-0 top-0 h-16 w-16 border-b border-l border-[#e27d9d]/20" />
+              <div className="mx-auto max-w-md">
+                <div className="mb-6 inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#fff5f7] text-[#e27d9d]">
+                  <X className="h-6 w-6" />
+                </div>
+                <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-[#e27d9d]">DISCOVERY HALTED</div>
+                <h3 className="mt-4 text-xl font-black tracking-tight">目前無法取得外部作品索引。</h3>
+                <p className="mt-4 text-sm leading-relaxed text-[#66757d]">
+                  這可能是因為 AO3 / Lofter 伺服器目前有連線限制或防火牆阻擋，導致無法即時抓取。
+                  <br /><br />
+                  <span className="font-mono text-[10px] font-bold uppercase text-[#10151b]/40">Diagnostic / {searchWarning || "外部平台連線逾時或受阻，沒有可驗證作品。"}</span>
+                </p>
+                <Button 
+                  type="button"
+                  variant="outline" 
+                  onClick={() => setHasSearched(false)}
+                  className="mt-8 h-10 border-[#10151b]/10 font-mono text-[10px] font-bold uppercase tracking-widest"
+                >
+                  RETURN TO BASE
+                </Button>
+              </div>
+            </div>
+          )}
           {searchMutation.isPending && <div className="grid gap-4 md:grid-cols-2">{[1, 2, 3, 4].map((item) => <div key={item} className="h-64 animate-pulse border border-[#10151b]/10 bg-white/55" />)}</div>}
           {!searchMutation.isPending && results.length > 0 && (
             <div className="space-y-6">
-              {results.some(r => r.warning) && (
+              {searchWarning && (
                 <div className="border border-[#e27d9d]/40 bg-[#fff5f7] p-4 font-mono text-xs text-[#8b3e59]">
-                  <span className="font-bold uppercase tracking-wider">[NOTICE]</span> {results.find(r => r.warning)?.warning}
+                  <span className="font-bold uppercase tracking-wider">[NOTICE]</span> {searchWarning}
                 </div>
               )}
               <div className="grid gap-4 md:grid-cols-2">

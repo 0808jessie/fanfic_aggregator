@@ -43,6 +43,29 @@ describe("fastapi.proxy", () => {
     );
   });
 
+  it("preserves the explicit empty-result envelope from FastAPI", async () => {
+    const emptyEnvelope = {
+      items: [],
+      source: "none",
+      warning: "未從 AO3, LOFTER 取得可驗證作品",
+    };
+    vi.mocked(axios.request).mockResolvedValue({ status: 200, data: emptyEnvelope } as never);
+
+    const caller = appRouter.createCaller({
+      user: undefined,
+      req: {} as never,
+      res: {} as never,
+    });
+
+    const result = await caller.fastapi.proxy({
+      path: "/search",
+      method: "POST",
+      data: { keyword: "__no_match__", platforms: ["ao3", "lofter"] },
+    });
+
+    expect(result).toEqual(emptyEnvelope);
+  });
+
   it("rejects upstream HTTP errors", async () => {
     vi.mocked(axios.request).mockResolvedValue({ status: 503, data: { detail: "down" } } as never);
 

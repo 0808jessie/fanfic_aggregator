@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -24,3 +24,11 @@ class ScrapedFanfic(BaseModel):
 class SearchQuery(BaseModel):
     keyword: str = Field(min_length=1, max_length=120)
     platforms: Optional[list[str]] = None
+
+
+class SearchResponse(BaseModel):
+    """Machine-readable search status plus only verified work records."""
+
+    items: list[ScrapedFanfic] = Field(default_factory=list)
+    source: Literal["live", "cache", "fallback-cache", "none"] = "none"
+    warning: Optional[str] = None
