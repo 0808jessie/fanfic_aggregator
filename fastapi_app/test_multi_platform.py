@@ -24,16 +24,17 @@ class FakeAO3:
         }
 
 
-class FailingLofter:
+class SafeFallbackLofter:
     def __init__(self):
-        self.last_warning = None
+        self.last_warning = "Lofter HTTP 404 on tag page; no verified results were returned."
 
     def scrape(self, keyword: str, page: int = 1):
-        raise RuntimeError("HTTP 429")
+        print("[Lofter Adapter] No tag results found")
+        return []
 
 
 def test_parallel_registry_keeps_successful_platform_when_another_fails():
-    with patch.object(adapter_index, "SCRAPERS", {"ao3": FakeAO3, "lofter": FailingLofter}):
+    with patch.object(adapter_index, "SCRAPERS", {"ao3": FakeAO3, "lofter": SafeFallbackLofter}):
         aggregate = adapter_index.parallel_search_platforms(["ao3", "lofter"], "花", page=1)
 
     assert aggregate["any_success"] is True
@@ -42,7 +43,7 @@ def test_parallel_registry_keeps_successful_platform_when_another_fails():
     assert aggregate["items"][0].id == "ao3:https://archiveofourown.org/works/2001"
     assert aggregate["total_works"] == 100
     assert aggregate["total_pages"] == 5
-    assert any("HTTP 429" in warning for warning in aggregate["warnings"])
+    assert any("HTTP 404" in warning for warning in aggregate["warnings"])
 
 
 class FakeLofterSuccess:

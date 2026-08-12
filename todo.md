@@ -29,3 +29,6 @@
 - [x] 接上前端平台複選、平台 Badge 與搜尋請求 platforms 參數
 - [x] 補上多平台平行搜尋、錯誤隔離與前端平台篩選回歸測試
 - [x] 完成混合平台端到端驗證並儲存新的 checkpoint
+- [x] 將 Lofter Adapter 重構為 /tag/{keyword} 模式，使用行動裝置 UA、10 秒等待與 auto-scroll 觸發動態加載
+- [x] 加入 Lofter 404/Timeout 安全空結果 fallback 與錯誤日誌記錄，確保單一平台失敗不阻斷 AO3
+- [x] 通過 Python 多平台 registry 測試、分頁測試、TypeScript、Vitest 與 production build 驗證
