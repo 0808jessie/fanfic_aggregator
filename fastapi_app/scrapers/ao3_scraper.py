@@ -107,7 +107,7 @@ class AO3Scraper(BaseScraper):
                         print(f"[AO3Scraper Playwright] Navigating with query: {search_url}")
 
                     try:
-                        response = page_obj.goto(search_url, timeout=15000, wait_domcontent_loaded=True)
+                        response = page_obj.goto(search_url, timeout=15000, wait_until="domcontentloaded")
                         status_code = response.status if response else 200
                         if status_code in (403, 429, 525):
                             err_msg = f"AO3 HTTP {status_code} on page {target_page}; results may be partial."
@@ -257,7 +257,7 @@ class AO3Scraper(BaseScraper):
                     print(f"[AO3Scraper Fallback] Navigating with query fallback: {search_url}")
 
                     try:
-                        page_obj.goto(search_url, timeout=15000, wait_domcontent_loaded=True)
+                        page_obj.goto(search_url, timeout=15000, wait_until="domcontentloaded")
                     except Exception:
                         continue
 

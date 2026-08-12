@@ -44,7 +44,10 @@
 - [x] 儲存包含 AO3 CP mapping、relationship/character tag、義忍 UI 驗證與 mock 整合測試的最新 checkpoint，並記錄版本 ID
 - [x] 儲存包含 AO3 CP mapping、relationship/character tag、義忍 UI 驗證與 mock 整合測試的最新 checkpoint，並在交付紀錄中記錄新版本 ID：fbc2fdec
 
-- [ ] 將 AO3 CP mapping 參數由 tag_names 改為 relationship_names
-- [ ] 將 CP 字典抽至 fastapi_app/constants/cp_tags.py
-- [ ] 實作 AO3 CP 搜尋失敗或 0 筆時自動降級至 work_search[query] 的 fallback 機制
-- [ ] 補上 CP 降級與常數模組的單元測試與端到端驗證
+- [x] 將 AO3 CP mapping 參數由 tag_names 改為 relationship_names
+- [x] 將 CP 字典抽至 fastapi_app/constants/cp_tags.py
+- [x] 實作 AO3 CP 搜尋失敗或 0 筆時自動降級至 work_search[query] 的 fallback 機制
+- [x] 補上 CP 降級與常數模組的單元測試與端到端驗證
+
+- [ ] 修正 AO3 Playwright `wait_domcontent_loaded=True` 為標準的 `wait_until="domcontentloaded"`，確保導航正確無誤
+- [ ] 補上針對 AO3 relationship_names URL 生成與 fallback 機制的整合單元測試

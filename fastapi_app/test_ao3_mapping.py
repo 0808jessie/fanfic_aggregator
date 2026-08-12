@@ -2,7 +2,7 @@ from bs4 import BeautifulSoup
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from constants.cp_tags import CP_TAG_MAP
 from scrapers.ao3_scraper import AO3Scraper, matches_expected_relationship, extract_ao3_tag_metadata
@@ -47,3 +47,18 @@ def test_ao3_tag_parser_separates_relationships_and_characters():
     assert relationships == ["富岡義勇/胡蝶忍"]
     assert characters == ["富岡義勇", "胡蝶忍"]
     assert other == ["Post-Canon"]
+
+
+def test_relationship_names_url_construction_logic():
+    keyword = "義忍"
+    mapped_cp = CP_TAG_MAP.get(keyword.strip())
+    assert mapped_cp == "Tomioka Giyuu/Kochou Shinobu"
+    
+    import urllib.parse
+    encoded_rel = urllib.parse.quote(mapped_cp, safe="")
+    search_url = f"https://archiveofourown.org/works/search?work_search%5Brelationship_names%5D={encoded_rel}&page=1"
+    
+    assert "work_search%5Brelationship_names%5D=" in search_url
+    assert "Tomioka" in search_url
+    assert "relationship_names" in search_url
+    assert "tag_names" not in search_url
