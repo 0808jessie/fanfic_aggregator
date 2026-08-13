@@ -2,11 +2,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, Any
 from models import ScrapedFanfic
 from scrapers.ao3_scraper import AO3Scraper
+from scrapers.doujin_scraper import DoujinScraper
 from scrapers.lofter_scraper import LofterScraper
 
 SCRAPERS: dict[str, Callable[[], object]] = {
     "ao3": AO3Scraper,
     "lofter": LofterScraper,
+    "doujin": DoujinScraper,
 }
 
 

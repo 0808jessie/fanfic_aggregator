@@ -96,7 +96,9 @@ describe("Home pagination interactions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /FILTERS/ }));
     const lofterCheckbox = screen.getByRole("checkbox", { name: "搜尋 LOFTER" });
+    const doujinCheckbox = screen.getByRole("checkbox", { name: "搜尋 同人誌中心" });
     expect(lofterCheckbox.getAttribute("aria-checked")).toBe("true");
+    expect(doujinCheckbox.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(lofterCheckbox);
     expect(lofterCheckbox.getAttribute("aria-checked")).toBe("false");
 
@@ -106,6 +108,6 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "花", platforms: ["ao3"], page: 1, forceRefresh: false },
+      data: { keyword: "花", platforms: ["ao3", "doujin"], page: 1, forceRefresh: false },
     }));
   });

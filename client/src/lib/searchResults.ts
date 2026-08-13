@@ -8,6 +8,7 @@ export type SearchResult = {
   relationships?: string[];
   characters?: string[];
   summary: string;
+  coverUrl?: string | null;
   wordCount?: string | null;
   updatedAt?: string | null;
   isComplete?: boolean | null;
@@ -39,6 +40,7 @@ export function isDisplayableResult(value: unknown): value is SearchResult {
   const platform = result.platform.toLowerCase();
   if (platform.includes("ao3")) return normalizedUrl.includes("archiveofourown.org");
   if (platform.includes("lofter")) return normalizedUrl.includes("lofter.com");
+  if (platform.includes("同人誌中心") || platform.includes("doujin")) return normalizedUrl.includes("doujin.com.tw");
   return false;
 }
 

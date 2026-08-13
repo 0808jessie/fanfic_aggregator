@@ -76,6 +76,7 @@ def is_real_platform_url(url: str, platform: str | None = None) -> bool:
         allowed_hosts = {
             "ao3": ("archiveofourown.org",),
             "lofter": ("lofter.com",),
+            "同人誌中心": ("doujin.com.tw",),
         }
         hosts = allowed_hosts.get(platform.lower())
         if hosts and not any(host in normalized_url for host in hosts):
@@ -90,7 +91,7 @@ def save_fanfic_to_db(db: Session, fanfic: ScrapedFanfic) -> None:
         return
     try:
         record = db.query(Fanfic).filter(Fanfic.url == fanfic.url).first()
-        values = fanfic.model_dump(exclude={"id", "source", "warning", "wordCount", "updatedAt", "relationships", "characters", "isComplete", "relevanceScore"})
+        values = fanfic.model_dump(exclude={"id", "source", "warning", "coverUrl", "wordCount", "updatedAt", "relationships", "characters", "isComplete", "relevanceScore"})
         if record is None:
             db.add(Fanfic(**values))
         else:
@@ -147,6 +148,7 @@ def list_platforms() -> list[dict[str, str]]:
     return [
         {"id": "ao3", "label": "AO3", "status": "ready"},
         {"id": "lofter", "label": "Lofter", "status": "ready"},
+        {"id": "doujin", "label": "同人誌中心", "status": "best-effort"},
     ]
 
 

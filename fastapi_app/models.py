@@ -11,12 +11,13 @@ class ScrapedFanfic(BaseModel):
     id: str = ""
     title: str = "Untitled work"
     author: str = "Unknown author"
-    platform: Literal["AO3", "Lofter", "晉江", "其他"] = "AO3"
+    platform: Literal["AO3", "Lofter", "同人誌中心", "晉江", "其他"] = "AO3"
     url: str
     tags: str = ""
     relationships: list[str] = Field(default_factory=list)
     characters: list[str] = Field(default_factory=list)
     summary: str = ""
+    coverUrl: Optional[str] = None
     wordCount: Optional[str] = None
     updatedAt: Optional[str] = None
     isComplete: Optional[bool] = None

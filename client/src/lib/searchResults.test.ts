@@ -96,6 +96,15 @@ describe("search result safety contract", () => {
     ).toBe(false);
   });
 
+  it("accepts a verified 同人誌中心 work URL while preserving source validation", () => {
+    expect(isDisplayableResult({
+      ...verifiedAo3Result,
+      platform: "同人誌中心",
+      url: "https://www.doujin.com.tw/books/info/70859",
+      coverUrl: "https://cdn.doujin.com.tw/books/cover.webp",
+    })).toBe(true);
+  });
+
   it("sorts local results by backend relevance before update date and word count", () => {
     const lowerScore = { ...verifiedAo3Result, title: "義忍標題", url: "https://archiveofourown.org/works/2", relevanceScore: 50, wordCount: "20,000" };
     const higherScore = { ...verifiedAo3Result, title: "關係標籤命中", url: "https://archiveofourown.org/works/3", relevanceScore: 100, wordCount: "1,000" };
