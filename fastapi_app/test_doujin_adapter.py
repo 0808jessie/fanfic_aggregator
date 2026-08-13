@@ -4,42 +4,27 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from scrapers.doujin_scraper import DoujinScraper
+from scrapers.doujin_scraper import DoujinScraper, _PublicListingUnavailable
 import main
 from scrapers.index import SCRAPERS
 
 
-class FakeResponse:
-    status_code = 200
-
-    text = """
+RENDERED_BOOK_RESULTS = """
     <article class="book-card">
       <a href="/books/info/70859"><img src="/covers/giyushino.webp" alt="義忍：夏日短篇" />義忍：夏日短篇</a>
       <span class="author">島嶼繪師</span>
       <p class="summary">義忍的全年齡短篇同人誌。</p>
     </article>
-    """
-
-    def raise_for_status(self):
-        return None
-
-
-class FakeChallengeResponse:
-    status_code = 200
-    text = "<html><title>Just a moment...</title><div>Cloudflare</div></html>"
-
-    def raise_for_status(self):
-        return None
+"""
 
 
 def test_doujin_adapter_parses_only_matching_verified_book_links():
-    with patch("scrapers.doujin_scraper.requests.get", return_value=FakeResponse()) as request:
-        payload = DoujinScraper().scrape("義忍")
+    scraper = DoujinScraper()
+    with patch.object(scraper, "_render_public_search_html", return_value=RENDERED_BOOK_RESULTS):
+        payload = scraper.scrape("義忍")
 
-    request.assert_called_once()
-    headers = request.call_args.kwargs["headers"]
+    headers = scraper.headers
     assert headers["Referer"] == "https://www.doujin.com.tw/"
-    assert headers["Origin"] == "https://www.doujin.com.tw"
     assert "Windows NT 10.0" in headers["User-Agent"]
     assert headers["Accept-Language"] == "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7"
     assert payload["total_works"] == 1
@@ -52,12 +37,13 @@ def test_doujin_adapter_parses_only_matching_verified_book_links():
 
 
 def test_doujin_adapter_isolates_cloudflare_challenge_without_inventing_results():
-    with patch("scrapers.doujin_scraper.requests.get", return_value=FakeChallengeResponse()):
-        scraper = DoujinScraper()
+    scraper = DoujinScraper()
+    with patch.object(scraper, "_render_public_search_html", side_effect=_PublicListingUnavailable("Triggered verification page, skipping cleanly")):
         payload = scraper.scrape("義忍")
 
     assert payload["items"] == []
-    assert "Triggered Challenge" in (scraper.last_warning or "")
+    assert "Triggered verification page" in (scraper.last_warning or "")
+    assert DoujinScraper._is_protected_page("Just a moment... Cloudflare captcha")
 
 
 def test_doujin_platform_is_registered_and_uses_a_trusted_host_boundary():

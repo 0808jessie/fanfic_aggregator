@@ -20,6 +20,13 @@ WATERWRITER_RESULTS = """
 </div>
 """
 
+WATERWRITER_MULTI_RESULTS = """
+<div id="threadlist"><ul>
+  <li class="pbm mbw thread_num_default" id="100"><h3 class="xs3"><a href="forum.php?mod=viewthread&amp;tid=100">義忍：第一篇</a></h3><div>第一篇摘要</div><span class="xg1"><a href="home.php?mod=space&amp;uid=1">作者甲</a> 2026-08-01</span></li>
+  <li class="pbm mbw thread_num_default" id="101"><h3 class="xs3"><a href="forum.php?mod=viewthread&amp;tid=101">義忍：第二篇</a></h3><div>第二篇摘要</div><span class="xg1"><a href="home.php?mod=space&amp;uid=2">作者乙</a> 2026-08-02</span></li>
+</ul></div>
+"""
+
 PENANA_RESULTS = """
 <div class="newXbox p0 storydata" data-id="205687">
   <div class="newBookTextInfo">
@@ -65,11 +72,29 @@ def test_waterwriter_challenge_markers_are_isolated_without_creating_results():
     assert WaterWriterScraper._is_challenge_page('<a href="/cdn-cgi/content">blocked</a>')
     assert WaterWriterScraper._is_challenge_page('<img src="/template/error.jpg">')
     assert not WaterWriterScraper._is_challenge_page(WATERWRITER_RESULTS)
-    assert "iPhone" in WaterWriterScraper.headers["User-Agent"]
+    assert "Windows NT 10.0" in WaterWriterScraper.headers["User-Agent"]
     assert WaterWriterScraper._is_search_cooldown_page("請等待 20 秒後再試")
     assert WaterWriterScraper._is_search_cooldown_page("Search is too frequent")
     assert not WaterWriterScraper._is_search_cooldown_page(WATERWRITER_RESULTS)
     assert "srchtxt=%E7%BE%A9%E5%BF%8D" in WaterWriterScraper.build_search_url("義忍")
+
+
+def test_waterwriter_browser_rendered_search_results_are_standardized():
+    scraper = WaterWriterScraper()
+    with patch.object(scraper, "_render_public_search_html", return_value=WATERWRITER_RESULTS):
+        payload = scraper.scrape("義忍")
+
+    assert payload["total_works"] == 1
+    assert payload["items"][0].url == "https://slashtw.space/forum.php?mod=viewthread&tid=24680"
+
+
+def test_waterwriter_keeps_each_rendered_discuz_row_title_and_summary_separate():
+    items = WaterWriterScraper().parse_results(WATERWRITER_MULTI_RESULTS, "義忍")
+
+    assert [item.title for item in items] == ["義忍：第一篇", "義忍：第二篇"]
+    assert [item.author for item in items] == ["作者甲", "作者乙"]
+    assert "第一篇摘要" in items[0].summary
+    assert "第二篇摘要" in items[1].summary
 
 
 def test_penana_parser_standardizes_public_story_cards_without_mislabeling_reads_as_words():

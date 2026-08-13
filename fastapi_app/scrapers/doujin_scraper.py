@@ -1,115 +1,159 @@
-"""Best-effort adapter for publicly visible Doujinshi Center book listings.
+"""Public-listing adapter for Doujinshi Center (同人誌中心).
 
-The source may place a Cloudflare challenge in front of automated requests. This
-adapter never attempts to bypass that challenge: it returns an isolated empty
-result with a diagnostic warning, so the other platform adapters continue.
+It renders only public search results. A CAPTCHA or timeout is treated as an
+unavailable source and is never solved, retried aggressively, or transformed
+into a result card.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
-from urllib.parse import urljoin
+from urllib.parse import urlencode, urljoin
 
-import requests
 from bs4 import BeautifulSoup
 
 from models import ScrapedFanfic
 from scrapers.base_scraper import BaseScraper
 
+try:
+    from playwright.sync_api import sync_playwright
+except ImportError:  # pragma: no cover - deployment dependency guard
+    sync_playwright = None
+
+
+class _PublicListingUnavailable(RuntimeError):
+    """Raised for protected or unavailable public book listing pages."""
+
 
 class DoujinScraper(BaseScraper):
-    """Parse verified public /books/info/ listing cards from doujin.com.tw."""
+    """Parse verified public `/books/info/` cards from rendered search listings."""
 
     base_url = "https://www.doujin.com.tw"
     search_url = f"{base_url}/books/search"
-    blocked_statuses = frozenset((403, 429, 503, 520, 521, 522, 525))
+    user_agent = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+    )
+    headers = {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer": "https://www.doujin.com.tw/",
+        "User-Agent": user_agent,
+    }
+    result_selectors = (".work_item", ".book_item", ".work-list-item", "div[class*='book']")
+
+    @classmethod
+    def build_search_url(cls, keyword: str) -> str:
+        return f"{cls.search_url}?{urlencode({'q': keyword})}"
 
     def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False) -> dict[str, object]:
         self.last_warning = None
-        normalized_keyword = keyword.strip().casefold()
-        if not normalized_keyword:
+        if not keyword.strip():
             return {"items": [], "total_works": 0, "total_pages": 1}
 
         try:
-            response = requests.get(
-                self.search_url,
-                params={"q": keyword},
-                headers={
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-                    "Referer": "https://www.doujin.com.tw/",
-                    "Origin": "https://www.doujin.com.tw",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-                },
-                timeout=12,
-            )
-            if response.status_code in self.blocked_statuses:
-                self.last_warning = f"[同人誌中心] Request blocked (HTTP {response.status_code}), skipping cleanly"
-                print(self.last_warning)
-                return {"items": [], "total_works": 0, "total_pages": 1}
-
-            response.raise_for_status()
-            page_text = response.text.casefold()
-            if "just a moment" in page_text or "cf-chl" in page_text or "cloudflare" in page_text and "/books/info/" not in page_text:
-                self.last_warning = "[同人誌中心] Triggered Challenge, skipping cleanly"
-                print(self.last_warning)
-                return {"items": [], "total_works": 0, "total_pages": 1}
-
-            soup = BeautifulSoup(response.text, "html.parser")
-            results: list[ScrapedFanfic] = []
-            seen_urls: set[str] = set()
-
-            for anchor in soup.select('a[href*="/books/info/"]'):
-                href = anchor.get("href")
-                if not href:
-                    continue
-                url = urljoin(self.base_url, href)
-                if url in seen_urls or not url.startswith(f"{self.base_url}/books/info/"):
-                    continue
-
-                card = anchor.find_parent(["article", "li", "section", "div"]) or anchor
-                title = anchor.get_text(" ", strip=True)
-                if not title:
-                    image = anchor.select_one("img[alt]")
-                    title = image.get("alt", "") if image else ""
-                card_text = card.get_text(" ", strip=True)
-                # A challenge page or generic listing may show unrelated books. Keep only
-                # cards whose visible public metadata contains the requested keyword.
-                if normalized_keyword not in f"{title} {card_text}".casefold():
-                    continue
-
-                image = anchor.select_one("img[src]") or card.select_one("img[src]")
-                cover_url = urljoin(self.base_url, image.get("src")) if image and image.get("src") else None
-                author_node = card.select_one(".author, .artist, [data-author]")
-                author = author_node.get_text(" ", strip=True) if author_node else "同人誌中心創作者"
-                summary_node = card.select_one(".summary, .description, .intro, p")
-                summary = summary_node.get_text(" ", strip=True) if summary_node else card_text
-                summary = summary[:800]
-
-                results.append(
-                    ScrapedFanfic(
-                        id=f"doujin:{url}",
-                        title=title[:240] or f"同人誌中心作品：{keyword}",
-                        author=author[:160],
-                        platform="同人誌中心",
-                        url=url,
-                        tags=keyword,
-                        summary=summary,
-                        coverUrl=cover_url,
-                        scraped_at=datetime.utcnow(),
-                        keyword=keyword,
-                    )
-                )
-                seen_urls.add(url)
-
-            if not results:
+            html = self._render_public_search_html(keyword)
+            items = self.parse_results(html, keyword)
+            print(f"[同人誌中心] 成功抓取 {len(items)} 筆")
+            if not items:
                 self.last_warning = f"[同人誌中心] No verified public result matched '{keyword}'"
-            return {"items": results, "total_works": len(results), "total_pages": 1}
-        except requests.RequestException as error:
-            self.last_warning = f"[同人誌中心] Request unavailable: {error}"
+            return {"items": items, "total_works": len(items), "total_pages": 1}
+        except _PublicListingUnavailable as error:
+            self.last_warning = f"[同人誌中心] {error}"
             print(self.last_warning)
-            return {"items": [], "total_works": 0, "total_pages": 1}
         except Exception as error:
-            self.last_warning = f"[同人誌中心] Parse failed safely: {error}"
+            self.last_warning = f"[同人誌中心] Browser render failed safely: {error}"
             print(self.last_warning)
-            return {"items": [], "total_works": 0, "total_pages": 1}
+        return {"items": [], "total_works": 0, "total_pages": 1}
+
+    def _render_public_search_html(self, keyword: str) -> str:
+        if sync_playwright is None:
+            raise _PublicListingUnavailable("Playwright is unavailable; skipping cleanly")
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+            )
+            try:
+                context = browser.new_context(
+                    user_agent=self.user_agent,
+                    locale="zh-TW",
+                    viewport={"width": 1280, "height": 900},
+                    extra_http_headers={"Accept-Language": self.headers["Accept-Language"], "Referer": self.headers["Referer"]},
+                )
+                page = context.new_page()
+                response = page.goto(self.build_search_url(keyword), timeout=18000, wait_until="domcontentloaded")
+                if response and response.status in (403, 429, 503, 520, 521, 522, 525):
+                    raise _PublicListingUnavailable(f"Request blocked (HTTP {response.status}), skipping cleanly")
+
+                page.wait_for_timeout(1200)
+                body_text = page.locator("body").inner_text(timeout=3000)
+                if self._is_protected_page(body_text):
+                    raise _PublicListingUnavailable("Triggered verification page, skipping cleanly")
+
+                for selector in self.result_selectors:
+                    try:
+                        page.wait_for_selector(selector, timeout=2000)
+                        break
+                    except Exception:
+                        continue
+                return page.content()
+            finally:
+                try:
+                    context.close()
+                finally:
+                    browser.close()
+
+    @staticmethod
+    def _is_protected_page(text: str) -> bool:
+        lowered = text.casefold()
+        return any(marker in lowered for marker in ("cloudflare", "cf-chl", "just a moment", "captcha", "驗證"))
+
+    def parse_results(self, html: str, keyword: str) -> list[ScrapedFanfic]:
+        soup = BeautifulSoup(html, "html.parser")
+        normalized_keyword = keyword.strip().casefold()
+        results: list[ScrapedFanfic] = []
+        seen_urls: set[str] = set()
+
+        for anchor in soup.select('a[href*="/books/info/"]'):
+            href = anchor.get("href")
+            if not href:
+                continue
+            url = urljoin(self.base_url, href)
+            if url in seen_urls or not url.startswith(f"{self.base_url}/books/info/"):
+                continue
+
+            card = anchor.find_parent(["article", "li", "section", "div"]) or anchor
+            title_node = card.select_one(".title, .book_name, h3, h4")
+            title = (title_node or anchor).get_text(" ", strip=True)
+            if not title:
+                image = anchor.select_one("img[alt]") or card.select_one("img[alt]")
+                title = image.get("alt", "").strip() if image else ""
+            card_text = card.get_text(" ", strip=True)
+            if not title or normalized_keyword not in f"{title} {card_text}".casefold():
+                continue
+
+            image = anchor.select_one("img[src]") or card.select_one("img[src]")
+            cover_url = urljoin(self.base_url, image.get("src")) if image and image.get("src") else None
+            author_node = card.select_one(".author, .author_name, .artist, [data-author]")
+            author = author_node.get_text(" ", strip=True) if author_node else "未知創作者"
+            summary_node = card.select_one(".summary, .description, .intro, p")
+            summary = (summary_node.get_text(" ", strip=True) if summary_node else card_text)[:800]
+
+            results.append(
+                ScrapedFanfic(
+                    id=f"doujin:{url}",
+                    title=title[:240],
+                    author=author[:160],
+                    platform="同人誌中心",
+                    url=url,
+                    tags=keyword,
+                    summary=summary,
+                    coverUrl=cover_url,
+                    scraped_at=datetime.utcnow(),
+                    keyword=keyword,
+                )
+            )
+            seen_urls.add(url)
+        return results

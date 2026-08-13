@@ -1,115 +1,131 @@
-"""Best-effort adapter for publicly searchable Written in Waters forum posts.
+"""Public-search adapter for Written in Waters (在水裡寫字).
 
-The public Discuz forum may show a Cloudflare challenge to automated requests.
-This adapter deliberately does not bypass any verification screen: it returns an
-isolated empty payload and warning so other platform adapters keep working.
+The forum may require human verification or apply Discuz search cooldowns. This
+adapter renders only the public result page, detects those responses, and exits
+cleanly without trying to solve a challenge or reuse verification credentials.
 """
 
 from __future__ import annotations
 
 import re
 from datetime import datetime
-from urllib.parse import urljoin
+from urllib.parse import urlencode, urljoin
 
-import requests
 from bs4 import BeautifulSoup
 
 from models import ScrapedFanfic
 from scrapers.base_scraper import BaseScraper
 
+try:
+    from playwright.sync_api import sync_playwright
+except ImportError:  # pragma: no cover - deployment dependency guard
+    sync_playwright = None
+
+
+class _PublicPageUnavailable(RuntimeError):
+    """Raised only for a protected, cooled-down, or unavailable public page."""
+
 
 class WaterWriterScraper(BaseScraper):
-    """Parse verified public forum search results from slashtw.space."""
+    """Parse publicly rendered Discuz thread search results from slashtw.space."""
 
     base_url = "https://slashtw.space"
     search_url = f"{base_url}/search.php"
-    blocked_statuses = frozenset((403, 429, 503, 520, 521, 522, 525))
+    desktop_user_agent = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+    )
     headers = {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
-        "Referer": "https://slashtw.space/",
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+        "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer": f"{base_url}/",
+        "User-Agent": desktop_user_agent,
     }
+    result_selectors = ("#threadlist", ".threadlist", ".pbw", "dt.xs0")
 
     @classmethod
     def build_search_url(cls, keyword: str) -> str:
-        """Expose the public Discuz quick-search URL without side effects."""
-        from urllib.parse import urlencode
-
+        """Build the public Discuz quick-search URL without hidden form state."""
         return f"{cls.search_url}?{urlencode({'srchtxt': keyword, 'searchsubmit': 'yes'})}"
 
     def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False) -> dict[str, object]:
         self.last_warning = None
-        normalized_keyword = keyword.strip().casefold()
-        if not normalized_keyword:
+        if not keyword.strip():
             return {"items": [], "total_works": 0, "total_pages": 1}
 
         try:
-            with requests.Session() as session:
-                session.headers.update(self.headers)
-                form_response = session.get(self.search_url, timeout=12)
-                if form_response.status_code in self.blocked_statuses:
-                    return self._blocked(form_response.status_code)
-                form_response.raise_for_status()
-                if self._is_challenge_page(form_response.text):
-                    self.last_warning = "[水裡寫字] Triggered Challenge, skipping cleanly"
-                    print(self.last_warning)
-                    return {"items": [], "total_works": 0, "total_pages": 1}
-
-                form_soup = BeautifulSoup(form_response.text, "html.parser")
-                formhash_input = form_soup.select_one('input[name="formhash"]')
-                formhash = formhash_input.get("value") if formhash_input else None
-                if not formhash:
-                    self.last_warning = "[在水裡寫字] Search form did not expose a public formhash"
-                    return {"items": [], "total_works": 0, "total_pages": 1}
-
-                result_response = session.post(
-                    f"{self.search_url}?mod=forum",
-                    data={"formhash": formhash, "srchtxt": keyword, "searchsubmit": "yes"},
-                    timeout=16,
-                )
-                if result_response.status_code in self.blocked_statuses:
-                    return self._blocked(result_response.status_code)
-                result_response.raise_for_status()
-                if self._is_challenge_page(result_response.text):
-                    self.last_warning = "[水裡寫字] Triggered Challenge, skipping cleanly"
-                    print(self.last_warning)
-                    return {"items": [], "total_works": 0, "total_pages": 1}
-                if self._is_search_cooldown_page(result_response.text):
-                    self.last_warning = "[水裡寫字] Search cooldown active, skipping cleanly"
-                    print(self.last_warning)
-                    return {"items": [], "total_works": 0, "total_pages": 1}
-
-                items = self.parse_results(result_response.text, keyword)
-                if not items:
-                    self.last_warning = f"[在水裡寫字] No verified public result matched '{keyword}'"
-                return {"items": items, "total_works": len(items), "total_pages": 1}
-        except requests.RequestException as error:
-            self.last_warning = f"[在水裡寫字] Request unavailable: {error}"
+            html = self._render_public_search_html(keyword)
+            items = self.parse_results(html, keyword)
+            print(f"[在水裡寫字] 成功抓取 {len(items)} 筆")
+            if not items:
+                self.last_warning = f"[在水裡寫字] No verified public result matched '{keyword}'"
+            return {"items": items, "total_works": len(items), "total_pages": 1}
+        except _PublicPageUnavailable as error:
+            self.last_warning = f"[在水裡寫字] {error}"
             print(self.last_warning)
-            return {"items": [], "total_works": 0, "total_pages": 1}
         except Exception as error:
-            self.last_warning = f"[在水裡寫字] Parse failed safely: {error}"
+            self.last_warning = f"[在水裡寫字] Browser render failed safely: {error}"
             print(self.last_warning)
-            return {"items": [], "total_works": 0, "total_pages": 1}
-
-    def _blocked(self, status_code: int) -> dict[str, object]:
-        self.last_warning = f"[水裡寫字] Request blocked (HTTP {status_code}), skipping cleanly"
-        print(self.last_warning)
         return {"items": [], "total_works": 0, "total_pages": 1}
 
-    @staticmethod
-    def _is_challenge_page(html: str) -> bool:
-        page_text = html.casefold()
-        return any(marker in page_text for marker in ("cdn-cgi", "cf-chl", "cloudflare", "error.jpg"))
+    def _render_public_search_html(self, keyword: str) -> str:
+        if sync_playwright is None:
+            raise _PublicPageUnavailable("Playwright is unavailable; skipping cleanly")
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+            )
+            try:
+                context = browser.new_context(
+                    user_agent=self.desktop_user_agent,
+                    locale="zh-TW",
+                    viewport={"width": 1280, "height": 900},
+                    extra_http_headers={"Accept-Language": self.headers["Accept-Language"], "Referer": self.headers["Referer"]},
+                )
+                page = context.new_page()
+                response = page.goto(self.build_search_url(keyword), timeout=18000, wait_until="domcontentloaded")
+                if response and response.status in (403, 429, 503, 520, 521, 522, 525):
+                    raise _PublicPageUnavailable(f"Request blocked (HTTP {response.status}), skipping cleanly")
+
+                # This is a bounded rendering wait, not an attempt to complete verification.
+                page.wait_for_timeout(1200)
+                body_text = page.locator("body").inner_text(timeout=3000)
+                if self._is_challenge_page(body_text):
+                    raise _PublicPageUnavailable("Triggered Challenge, skipping cleanly")
+                if self._is_search_cooldown_page(body_text):
+                    raise _PublicPageUnavailable("Blocked by Rate Limit, skipping cleanly")
+
+                for selector in self.result_selectors:
+                    try:
+                        page.wait_for_selector(selector, timeout=2000)
+                        break
+                    except Exception:
+                        continue
+
+                return page.content()
+            finally:
+                try:
+                    context.close()
+                finally:
+                    browser.close()
 
     @staticmethod
-    def _is_search_cooldown_page(html: str) -> bool:
-        page_text = html.casefold()
-        return any(marker in page_text for marker in ("20 秒", "20秒", "search is too frequent", "flood control", "請等待"))
+    def _is_challenge_page(text: str) -> bool:
+        page_text = text.casefold()
+        return any(marker in page_text for marker in ("cdn-cgi", "cf-chl", "cloudflare", "just a moment", "captcha", "error.jpg"))
+
+    @staticmethod
+    def _is_search_cooldown_page(text: str) -> bool:
+        page_text = text.casefold()
+        return any(
+            marker in page_text
+            for marker in ("20 秒", "20秒", "search is too frequent", "flood control", "請等待", "只能進行一次搜尋")
+        )
 
     def parse_results(self, html: str, keyword: str) -> list[ScrapedFanfic]:
-        """Parse only forum thread cards that expose a verified public thread URL."""
+        """Parse only verified public viewthread links from rendered Discuz markup."""
         soup = BeautifulSoup(html, "html.parser")
         results: list[ScrapedFanfic] = []
         seen_urls: set[str] = set()
@@ -119,23 +135,25 @@ class WaterWriterScraper(BaseScraper):
             if not href:
                 continue
             url = urljoin(self.base_url, href)
-            if url in seen_urls or not url.startswith(self.base_url):
+            if url in seen_urls or not url.startswith(f"{self.base_url}/forum.php"):
                 continue
 
-            card = anchor.find_parent(["li", "dl", "article", "div"]) or anchor
-            title_node = card.select_one("h3 a, h4 a, .xs2 a, a")
-            title = (title_node or anchor).get_text(" ", strip=True)
+            # Discuz places each result in an individual ``li`` below #threadlist.
+            # Select that closest row instead of its shared list wrapper, otherwise
+            # every parsed item would inherit the first row's title and summary.
+            card = anchor.find_parent("li") or anchor.find_parent(["dl", "article", "div"]) or anchor
+            title = anchor.get_text(" ", strip=True)
             card_text = card.get_text(" ", strip=True)
             if not title or keyword.casefold() not in f"{title} {card_text}".casefold():
                 continue
 
-            author_node = card.select_one(".xg1 a, .author a, a[href*='mod=space']")
-            author = author_node.get_text(" ", strip=True) if author_node else "在水裡寫字作者"
+            author_node = card.select_one(".xg1 a[href*='mod=space'], .author a, a[href*='mod=space']")
+            author = author_node.get_text(" ", strip=True) if author_node else "未知作者"
             time_node = card.select_one("time, .xg1, .xg2")
             updated_at = time_node.get_text(" ", strip=True) if time_node else None
             tags = [
                 tag.get_text(" ", strip=True)
-                for tag in card.select(".tag a, .p_pop a, a[href*='mod=forum']")
+                for tag in card.select(".tag a, .p_pop a, a[href*='mod=forumdisplay']")
                 if tag.get_text(" ", strip=True)
             ]
             summary = re.sub(r"\s+", " ", card_text).strip()[:800]
