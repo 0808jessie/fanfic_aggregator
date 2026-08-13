@@ -8,15 +8,19 @@ from sqlalchemy.orm import Session
 from config import settings
 from database import Fanfic, SessionLocal
 from models import ScrapedFanfic, SearchQuery, SearchResponse
-from constants.cp_tags import CP_CACHE_ALIASES, CP_TAG_MAP, LIVE_ONLY_CP_ALIASES
+from constants.cp_tags import CP_CACHE_ALIASES, CP_TAG_MAP
+from relevance import rank_results
 from scrapers.index import SCRAPERS, parallel_search_platforms
 
 app = FastAPI(title="Fanfic Atlas Search API", version="0.1.4")
 CACHE_TTL = timedelta(seconds=settings.cache_ttl_seconds)
 
-# 30分鐘記憶體快取 (In-Memory Cache) 用以避免頻繁請求遭到 AO3 限流與 IP 封鎖
-_MEMORY_CACHE: dict[str, tuple[datetime, list[ScrapedFanfic], int, int, int]] = {}
-MEMORY_CACHE_TTL = timedelta(minutes=30)
+# 每個快取 entry 的最後一欄是本次結果的可信度 TTL（秒）。舊的五欄 entry
+# 仍可被讀取，並以一般關鍵字 TTL 處理，讓開發中的記憶體內容安全降級。
+_MEMORY_CACHE: dict[str, tuple[Any, ...]] = {}
+HIGH_CONFIDENCE_CACHE_TTL = timedelta(hours=2)
+NORMAL_CONFIDENCE_CACHE_TTL = timedelta(minutes=30)
+LOW_CONFIDENCE_CACHE_TTL = timedelta(minutes=5)
 
 
 def get_db():
@@ -52,6 +56,15 @@ def clear_live_only_cp_memory_cache(keyword: str) -> list[str]:
     return matching_keys
 
 
+def cache_ttl_for(keyword: str, result_count: int) -> timedelta:
+    """Select cache lifetime from explicit CP confidence and verified result count."""
+    if keyword in CP_TAG_MAP:
+        return HIGH_CONFIDENCE_CACHE_TTL
+    if result_count < 3:
+        return LOW_CONFIDENCE_CACHE_TTL
+    return NORMAL_CONFIDENCE_CACHE_TTL
+
+
 def is_real_platform_url(url: str, platform: str | None = None) -> bool:
     """Reject placeholder, local, and unrelated URLs before they reach the UI or cache."""
     normalized_url = url.strip().lower()
@@ -77,7 +90,7 @@ def save_fanfic_to_db(db: Session, fanfic: ScrapedFanfic) -> None:
         return
     try:
         record = db.query(Fanfic).filter(Fanfic.url == fanfic.url).first()
-        values = fanfic.model_dump(exclude={"id", "source", "warning", "wordCount", "updatedAt", "relationships", "characters"})
+        values = fanfic.model_dump(exclude={"id", "source", "warning", "wordCount", "updatedAt", "relationships", "characters", "isComplete", "relevanceScore"})
         if record is None:
             db.add(Fanfic(**values))
         else:
@@ -150,16 +163,16 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
     try:
         requested_page = query.page
         cache_key = f"{keyword}:{'-'.join(sorted(platforms))}:page={requested_page}"
-        # CP 簡稱屬於容易受舊 mapping、繁簡字與歷史資料影響的高敏感查詢。
-        # 在穩定前不允許它讀取或寫入本機快取，僅使用當次平台的即時結果。
-        bypass_persistent_cache = keyword in LIVE_ONLY_CP_ALIASES
+        # 強制更新只影響此次請求：略過既有快取、重新啟動 Adapter，並用成功結果覆寫快取。
+        bypass_persistent_cache = query.forceRefresh
         if bypass_persistent_cache:
             clear_live_only_cp_memory_cache(keyword)
 
         memory_entry = None if bypass_persistent_cache else _MEMORY_CACHE.get(cache_key)
         if memory_entry:
-            cached_time, cached_items, total_works, total_pages, loaded_through_page = memory_entry
-            if datetime.utcnow() - cached_time < MEMORY_CACHE_TTL and cached_items:
+            cached_time, cached_items, total_works, total_pages, loaded_through_page = memory_entry[:5]
+            entry_ttl = memory_entry[5] if len(memory_entry) > 5 else NORMAL_CONFIDENCE_CACHE_TTL
+            if datetime.utcnow() - cached_time < entry_ttl and cached_items:
                 print(f"[SearchAPI] Memory cache hit for '{cache_key}'")
                 for item in cached_items:
                     item.source = "cache"
@@ -167,7 +180,7 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
                 safe_total_pages = max(total_pages, (total_works + 19) // 20, 1 if total_works else 0)
                 has_more = loaded_through_page < safe_total_pages
                 return SearchResponse(
-                    items=sorted(cached_items, key=lambda item: item.scraped_at, reverse=True),
+                    items=rank_results(cached_items, keyword),
                     source="cache",
                     totalWorks=total_works,
                     totalPages=safe_total_pages,
@@ -180,11 +193,15 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
                 del _MEMORY_CACHE[cache_key]
 
         # 2. 透過 Adapter registry 平行查詢所有已選平台
-        aggregate = parallel_search_platforms(platforms, keyword, requested_page)
-        fresh_results = [
+        aggregate = (
+            parallel_search_platforms(platforms, keyword, requested_page, force_refresh=True)
+            if query.forceRefresh
+            else parallel_search_platforms(platforms, keyword, requested_page)
+        )
+        fresh_results = rank_results([
             result for result in aggregate["items"]
             if is_real_platform_url(result.url, result.platform)
-        ]
+        ], keyword)
         total_works = int(aggregate.get("total_works", 0) or 0)
         total_pages = int(aggregate.get("total_pages", 0) or 0)
         any_success = bool(aggregate.get("any_success")) and bool(fresh_results)
@@ -196,29 +213,28 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
             result.warning = combined_warning
 
         # 3. 若即時抓取成功且有真實結果，寫入資料庫與記憶體快取。
-        # CP 簡稱暫時保持即時模式，不讓舊資料覆蓋或污染下一次搜尋。
+        # forceRefresh 只略過舊快取讀取；新結果仍需覆寫快取。
         if any_success and fresh_results:
             deduplicated: dict[str, ScrapedFanfic] = {}
             for result in fresh_results:
                 result.keyword = keyword
                 deduplicated[result.url] = result
-                if not bypass_persistent_cache:
-                    save_fanfic_to_db(db, result)
-            final_items = sorted(deduplicated.values(), key=lambda item: item.scraped_at, reverse=True)
+                save_fanfic_to_db(db, result)
+            final_items = rank_results(list(deduplicated.values()), keyword)
             total_works = max(total_works, len(final_items))
             total_pages = max(total_pages, (total_works + 19) // 20)
             loaded_through_page = min(
                 requested_page + (1 if requested_page == 1 else 0),
                 total_pages,
             )
-            if not bypass_persistent_cache:
-                _MEMORY_CACHE[cache_key] = (
-                    datetime.utcnow(),
-                    final_items,
-                    total_works,
-                    total_pages,
-                    loaded_through_page,
-                )
+            _MEMORY_CACHE[cache_key] = (
+                datetime.utcnow(),
+                final_items,
+                total_works,
+                total_pages,
+                loaded_through_page,
+                cache_ttl_for(keyword, len(final_items)),
+            )
             has_more = loaded_through_page < total_pages
             return SearchResponse(
                 items=final_items,
@@ -234,7 +250,7 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
 
         # 4. 若即時抓取為 0 筆或失敗，絕對不寫入快取，且對 CP 映射關鍵字不使用 stale SQLite cache 避免污染
         stale_cached = None
-        if keyword not in CP_TAG_MAP:
+        if not query.forceRefresh and keyword not in CP_TAG_MAP:
             stale_cached = get_cached_results(db, keyword, platforms, ignore_ttl=True, source_label="fallback-cache")
         if stale_cached:
             print(f"[SearchAPI] External failed, falling back to stale cache for '{keyword}'")

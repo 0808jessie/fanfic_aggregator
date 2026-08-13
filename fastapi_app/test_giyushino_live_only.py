@@ -9,7 +9,7 @@ import main
 from models import ScrapedFanfic, SearchQuery
 
 
-def test_giyushino_bypasses_old_memory_and_database_cache():
+def test_giyushino_force_refresh_bypasses_old_memory_and_database_cache():
     stale_item = ScrapedFanfic(
         title="STALE CACHE ITEM",
         author="Old cache",
@@ -47,15 +47,15 @@ def test_giyushino_bypasses_old_memory_and_database_cache():
         main, "get_cached_results"
     ) as get_cached:
         response = main.search_fanfics(
-            SearchQuery(keyword="義忍", platforms=["ao3"], page=1), object()
+            SearchQuery(keyword="義忍", platforms=["ao3"], page=1, forceRefresh=True), object()
         )
 
     assert response.source == "live"
     assert response.totalWorks == 40
     assert response.items[0].title == "【義忍】LIVE RESULT"
-    parallel_search.assert_called_once_with(["ao3"], "義忍", 1)
-    save_to_db.assert_not_called()
+    parallel_search.assert_called_once_with(["ao3"], "義忍", 1, force_refresh=True)
+    save_to_db.assert_called_once()
     get_cached.assert_not_called()
-    assert stale_key not in memory_cache
+    assert memory_cache[stale_key][1][0].title == "【義忍】LIVE RESULT"
     assert simplified_stale_key not in memory_cache
     assert unrelated_key in memory_cache

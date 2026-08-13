@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendUniqueResults, extractIsRateLimited, extractSearchPagination, extractSearchWarning, getLoadMoreLabel, isDisplayableResult, normalizeResults } from "./searchResults";
+import { appendUniqueResults, extractIsRateLimited, extractSearchPagination, extractSearchWarning, filterAndSortResults, getLoadMoreLabel, isDisplayableResult, normalizeResults, parseWordCount } from "./searchResults";
 
 const verifiedAo3Result = {
   title: "Verified work",
@@ -94,5 +94,58 @@ describe("search result safety contract", () => {
         url: "https://www.lofter.com/post/123",
       }),
     ).toBe(false);
+  });
+
+  it("sorts local results by backend relevance before update date and word count", () => {
+    const lowerScore = { ...verifiedAo3Result, title: "義忍標題", url: "https://archiveofourown.org/works/2", relevanceScore: 50, wordCount: "20,000" };
+    const higherScore = { ...verifiedAo3Result, title: "關係標籤命中", url: "https://archiveofourown.org/works/3", relevanceScore: 100, wordCount: "1,000" };
+    const sorted = filterAndSortResults([lowerScore, higherScore], "義忍", { wordCount: "all", completion: "all", sort: "relevance" });
+    expect(sorted.map((item) => item.url)).toEqual([higherScore.url, lowerScore.url]);
+  });
+
+  it("filters completed medium-length works without re-querying the API", () => {
+    const completeMedium = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/4", wordCount: "5,000", isComplete: true, relevanceScore: 100 };
+    const ongoingLong = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/5", wordCount: "15,000", isComplete: false, relevanceScore: 90 };
+    const filtered = filterAndSortResults([completeMedium, ongoingLong], "花", { wordCount: "medium", completion: "complete", sort: "relevance" });
+    expect(filtered).toEqual([completeMedium]);
+    expect(parseWordCount("12,345")).toBe(12345);
+  });
+
+  it("sorts filtered results by newest update or highest word count locally", () => {
+    const olderLong = {
+      ...verifiedAo3Result,
+      url: "https://archiveofourown.org/works/6",
+      wordCount: "20,000",
+      isComplete: false,
+      updatedAt: "2024-01-01",
+    };
+    const newerMedium = {
+      ...verifiedAo3Result,
+      url: "https://archiveofourown.org/works/7",
+      wordCount: "5,000",
+      isComplete: true,
+      updatedAt: "2024-06-01",
+    };
+    const newestShort = {
+      ...verifiedAo3Result,
+      url: "https://archiveofourown.org/works/8",
+      wordCount: "500",
+      isComplete: true,
+      updatedAt: "2024-08-01",
+    };
+
+    const newestComplete = filterAndSortResults(
+      [olderLong, newerMedium, newestShort],
+      "花",
+      { wordCount: "all", completion: "complete", sort: "updated" },
+    );
+    const longestFirst = filterAndSortResults(
+      [olderLong, newerMedium, newestShort],
+      "花",
+      { wordCount: "all", completion: "all", sort: "words" },
+    );
+
+    expect(newestComplete.map((item) => item.url)).toEqual([newestShort.url, newerMedium.url]);
+    expect(longestFirst.map((item) => item.url)).toEqual([olderLong.url, newerMedium.url, newestShort.url]);
   });
 });

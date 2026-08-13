@@ -10,9 +10,21 @@ export type SearchResult = {
   summary: string;
   wordCount?: string | null;
   updatedAt?: string | null;
+  isComplete?: boolean | null;
+  relevanceScore?: number;
   scraped_at: string;
   source?: string;
   warning?: string;
+};
+
+export type WordCountFilter = "all" | "short" | "medium" | "long";
+export type CompletionFilter = "all" | "complete" | "ongoing";
+export type ResultSortMode = "relevance" | "updated" | "words";
+
+export type ResultViewFilters = {
+  wordCount: WordCountFilter;
+  completion: CompletionFilter;
+  sort: ResultSortMode;
 };
 
 export function isDisplayableResult(value: unknown): value is SearchResult {
@@ -95,4 +107,59 @@ export function extractSearchPagination(payload: unknown): SearchPagination {
     nextPage: nextPageValue > 0 ? nextPageValue : null,
     hasMore: Boolean(value.hasMore) && loadedThroughPage < totalPages,
   };
+}
+
+export function parseWordCount(value: string | null | undefined): number {
+  const digits = (value || "").replace(/[^\d]/g, "");
+  return digits ? Number(digits) : 0;
+}
+
+function normalized(value: string | null | undefined): string {
+  return (value || "").trim().toLocaleLowerCase();
+}
+
+function localRelevanceScore(result: SearchResult, keyword: string): number {
+  const query = normalized(keyword);
+  if (!query) return 0;
+  const tags = [...(result.relationships || []), ...(result.tags || "").split(",")].map(normalized);
+  let score = tags.some((tag) => tag.includes(query)) ? 100 : 0;
+  if (normalized(result.title).includes(query)) score += 50;
+  if (normalized(result.summary).includes(query)) score += 20;
+  return score;
+}
+
+function updatedTimestamp(result: SearchResult): number {
+  const timestamp = Date.parse(result.updatedAt || result.scraped_at);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+export function filterAndSortResults(
+  results: SearchResult[],
+  keyword: string,
+  filters: ResultViewFilters,
+): SearchResult[] {
+  const filtered = results.filter((result) => {
+    const words = parseWordCount(result.wordCount);
+    const wordMatch = filters.wordCount === "all"
+      || (filters.wordCount === "short" && words > 0 && words < 1_000)
+      || (filters.wordCount === "medium" && words >= 1_000 && words <= 10_000)
+      || (filters.wordCount === "long" && words > 10_000);
+    const completionMatch = filters.completion === "all"
+      || (filters.completion === "complete" && result.isComplete === true)
+      || (filters.completion === "ongoing" && result.isComplete === false);
+    return wordMatch && completionMatch;
+  });
+
+  return filtered
+    .map((result, index) => ({ result, index }))
+    .sort((left, right) => {
+      const relevanceDelta = (right.result.relevanceScore ?? localRelevanceScore(right.result, keyword))
+        - (left.result.relevanceScore ?? localRelevanceScore(left.result, keyword));
+      const updatedDelta = updatedTimestamp(right.result) - updatedTimestamp(left.result);
+      const wordsDelta = parseWordCount(right.result.wordCount) - parseWordCount(left.result.wordCount);
+      if (filters.sort === "updated") return updatedDelta || relevanceDelta || wordsDelta || left.index - right.index;
+      if (filters.sort === "words") return wordsDelta || relevanceDelta || updatedDelta || left.index - right.index;
+      return relevanceDelta || updatedDelta || wordsDelta || left.index - right.index;
+    })
+    .map(({ result }) => result);
 }

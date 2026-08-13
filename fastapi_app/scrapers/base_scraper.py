@@ -13,7 +13,7 @@ class BaseScraper(ABC, object):
         self.last_warning: str | None = None
 
     @abstractmethod
-    def scrape(self, keyword: str, page: int = 1) -> dict[str, Any]:
+    def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False) -> dict[str, Any]:
         """
         Scrape fanfics from the platform.
         Returns a dict containing:

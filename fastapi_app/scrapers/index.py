@@ -10,7 +10,7 @@ SCRAPERS: dict[str, Callable[[], object]] = {
 }
 
 
-def search_single_platform(platform_key: str, keyword: str, page: int = 1) -> tuple[str, list[ScrapedFanfic], int, int, str | None]:
+def search_single_platform(platform_key: str, keyword: str, page: int = 1, force_refresh: bool = False) -> tuple[str, list[ScrapedFanfic], int, int, str | None]:
     """Execute single platform scrape with isolated exception handling."""
     adapter_cls = SCRAPERS.get(platform_key)
     if not adapter_cls:
@@ -18,7 +18,11 @@ def search_single_platform(platform_key: str, keyword: str, page: int = 1) -> tu
 
     adapter = adapter_cls()
     try:
-        payload = adapter.scrape(keyword, page=page)
+        payload = (
+            adapter.scrape(keyword, page=page, force_refresh=True)
+            if force_refresh
+            else adapter.scrape(keyword, page=page)
+        )
 
         items = []
         total_works = 0
@@ -44,7 +48,7 @@ def search_single_platform(platform_key: str, keyword: str, page: int = 1) -> tu
         return platform_key, [], 0, 0, error_msg
 
 
-def parallel_search_platforms(platforms: list[str], keyword: str, page: int = 1) -> dict[str, Any]:
+def parallel_search_platforms(platforms: list[str], keyword: str, page: int = 1, force_refresh: bool = False) -> dict[str, Any]:
     """
     Parallel search across requested platforms using ThreadPoolExecutor (Promise.allSettled equivalent),
     ensuring a failure in one platform (e.g. Lofter / AO3 rate limit) does not block others.
@@ -57,7 +61,7 @@ def parallel_search_platforms(platforms: list[str], keyword: str, page: int = 1)
 
     with ThreadPoolExecutor(max_workers=len(platforms) or 1) as executor:
         future_to_platform = {
-            executor.submit(search_single_platform, p, keyword, page): p
+            executor.submit(search_single_platform, p, keyword, page, force_refresh): p
             for p in platforms
         }
 

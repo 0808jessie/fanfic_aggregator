@@ -1,14 +1,14 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import React from "react";
 import {
   ArrowUpRight,
   BookOpen,
-  Check,
   ChevronDown,
   Database,
   Filter,
   Loader2,
   Search,
+  RotateCw,
   SlidersHorizontal,
   Sparkles,
   Terminal,
@@ -21,10 +21,14 @@ import {
   extractIsRateLimited,
   extractSearchPagination,
   extractSearchWarning,
+  filterAndSortResults,
   getLoadMoreLabel,
   normalizeResults,
+  type CompletionFilter,
+  type ResultSortMode,
   type SearchPagination,
   type SearchResult,
+  type WordCountFilter,
 } from "@/lib/searchResults";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,6 +64,12 @@ export default function Home() {
   const [searchWarning, setSearchWarning] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [wordCountFilter, setWordCountFilter] = useState<WordCountFilter>("all");
+  const [completionFilter, setCompletionFilter] = useState<CompletionFilter>("all");
+  const [sortMode, setSortMode] = useState<ResultSortMode>("relevance");
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [completedElapsedMs, setCompletedElapsedMs] = useState<number | null>(null);
+  const searchStartedAt = useRef<number | null>(null);
   const [pagination, setPagination] = useState<SearchPagination>({
     totalWorks: 0,
     totalPages: 0,
@@ -77,6 +87,10 @@ export default function Home() {
       setPagination(extractSearchPagination(payload));
       setSearchWarning(warningMsg);
       setHasSearched(true);
+      if (searchStartedAt.current !== null) {
+        setCompletedElapsedMs(performance.now() - searchStartedAt.current);
+        searchStartedAt.current = null;
+      }
 
       if (isLimited) {
         toast.error("伺服器稍微休息中，請於 10 秒後再搜尋", {
@@ -89,6 +103,10 @@ export default function Home() {
       setResults([]);
       setPagination({ totalWorks: 0, totalPages: 0, page: 1, loadedThroughPage: 0, nextPage: null, hasMore: false });
       setSearchWarning(error.message || "搜尋服務暫時無法連線，請確認 FastAPI 服務已啟動。");
+      if (searchStartedAt.current !== null) {
+        setCompletedElapsedMs(performance.now() - searchStartedAt.current);
+        searchStartedAt.current = null;
+      }
       toast.error("搜尋服務暫時無法連線", {
         description: error.message || "請確認 FastAPI 服務已啟動。",
       });
@@ -114,6 +132,25 @@ export default function Home() {
     [selectedPlatforms],
   );
 
+  const displayedResults = useMemo(
+    () => filterAndSortResults(results, keyword.trim(), {
+      wordCount: wordCountFilter,
+      completion: completionFilter,
+      sort: sortMode,
+    }),
+    [results, keyword, wordCountFilter, completionFilter, sortMode],
+  );
+
+  useEffect(() => {
+    if (!searchMutation.isPending) return;
+    const timer = window.setInterval(() => {
+      if (searchStartedAt.current !== null) {
+        setElapsedMs(performance.now() - searchStartedAt.current);
+      }
+    }, 100);
+    return () => window.clearInterval(timer);
+  }, [searchMutation.isPending]);
+
   const togglePlatform = (platform: PlatformId) => {
     setSelectedPlatforms((current) => {
       if (current.includes(platform)) {
@@ -123,20 +160,27 @@ export default function Home() {
     });
   };
 
-  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const runSearch = (forceRefresh: boolean) => {
     const trimmedKeyword = keyword.trim();
     if (!trimmedKeyword) {
       toast.error("請先輸入搜尋關鍵字");
       return;
     }
     setSearchWarning(null);
+    setElapsedMs(0);
+    setCompletedElapsedMs(null);
+    searchStartedAt.current = performance.now();
     setPagination({ totalWorks: 0, totalPages: 0, page: 1, loadedThroughPage: 0, nextPage: null, hasMore: false });
     searchMutation.mutate({
       path: "/search",
       method: "POST",
-      data: { keyword: trimmedKeyword, platforms: selectedPlatforms, page: 1 },
+      data: { keyword: trimmedKeyword, platforms: selectedPlatforms, page: 1, forceRefresh },
     });
+  };
+
+  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    runSearch(false);
   };
 
   const loadMore = () => {
@@ -144,7 +188,7 @@ export default function Home() {
     loadMoreMutation.mutate({
       path: "/search",
       method: "POST",
-      data: { keyword: keyword.trim(), platforms: selectedPlatforms, page: pagination.nextPage },
+      data: { keyword: keyword.trim(), platforms: selectedPlatforms, page: pagination.nextPage, forceRefresh: false },
     });
   };
 
@@ -197,13 +241,37 @@ export default function Home() {
             <div className="flex flex-1 items-center gap-3"><Search className="h-5 w-5 shrink-0 text-[#e27d9d]" /><Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜尋角色、配對、作品名或關鍵字..." className="h-14 border-0 bg-transparent px-0 text-lg font-medium shadow-none placeholder:text-[#98a4aa] focus-visible:ring-0 sm:text-xl" aria-label="搜尋同人作品" /></div>
             <div className="flex flex-wrap items-center gap-3">
               <Button type="button" variant="outline" onClick={() => setShowFilters((current) => !current)} className="h-11 border-[#10151b]/20 bg-white/60 font-mono text-[10px] font-bold uppercase tracking-[0.14em]"><SlidersHorizontal className="mr-2 h-4 w-4" /> FILTERS <ChevronDown className={`ml-2 h-4 w-4 transition-transform ${showFilters ? "rotate-180" : ""}`} /></Button>
+              <Button type="button" variant="outline" onClick={() => runSearch(true)} disabled={searchMutation.isPending || !keyword.trim()} aria-label="強制重新抓取" className="h-11 border-[#10151b]/20 bg-white/60 font-mono text-[10px] font-bold uppercase tracking-[0.14em] hover:border-[#45b9b2] hover:text-[#197b75]"><RotateCw className={`h-4 w-4 ${searchMutation.isPending ? "animate-spin" : ""}`} /><span className="sr-only">強制重新抓取</span></Button>
               <Button type="submit" disabled={searchMutation.isPending} className="h-11 min-w-36 bg-[#10151b] px-6 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white hover:bg-[#24313a]">{searchMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Terminal className="mr-2 h-4 w-4" />}{searchMutation.isPending ? "SCANNING" : "RUN SEARCH"}</Button>
             </div>
           </form>
-          {showFilters && <div className="mt-4 flex flex-col gap-4 border-t border-[#10151b]/10 pt-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#61707a]"><Filter className="h-3.5 w-3.5" /> SOURCE ADAPTERS</div><div className="flex flex-wrap gap-2">{PLATFORMS.map((platform) => { const active = selectedPlatforms.includes(platform.id); return <label key={platform.id} className={`group flex cursor-pointer items-center gap-2 border px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.13em] transition-colors ${active ? platform.tone === "cyan" ? "border-[#5acbc4] bg-[#d9f8f5] text-[#126762]" : "border-[#ec9db8] bg-[#ffe3eb] text-[#8b3e59]" : "border-[#10151b]/15 bg-white/50 text-[#86929a]"}`}><Checkbox checked={active} onCheckedChange={() => togglePlatform(platform.id)} aria-label={`搜尋 ${platform.label}`} className="rounded-none border-[#10151b]/30 data-[state=checked]:border-[#10151b] data-[state=checked]:bg-[#10151b] data-[state=checked]:text-white" />{platform.label}</label>; })}</div></div>}
+          {searchMutation.isPending && <div className="mt-3 border-t border-[#10151b]/10 pt-3 font-mono text-[10px] font-bold tracking-[0.13em] text-[#197b75]" aria-live="polite">正在掃描 AO3 數據庫...（已耗時 {(elapsedMs / 1000).toFixed(1)} 秒）</div>}
+          {showFilters && (
+            <div className="mt-4 grid gap-5 border-t border-[#10151b]/10 pt-4 lg:grid-cols-[1.25fr_0.75fr_0.75fr_0.9fr]">
+              <div>
+                <div className="mb-2 flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#61707a]"><Filter className="h-3.5 w-3.5" /> SOURCE ADAPTERS</div>
+                <div className="flex flex-wrap gap-2">{PLATFORMS.map((platform) => { const active = selectedPlatforms.includes(platform.id); return <label key={platform.id} className={`group flex cursor-pointer items-center gap-2 border px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.13em] transition-colors ${active ? platform.tone === "cyan" ? "border-[#5acbc4] bg-[#d9f8f5] text-[#126762]" : "border-[#ec9db8] bg-[#ffe3eb] text-[#8b3e59]" : "border-[#10151b]/15 bg-white/50 text-[#86929a]"}`}><Checkbox checked={active} onCheckedChange={() => togglePlatform(platform.id)} aria-label={`搜尋 ${platform.label}`} className="rounded-none border-[#10151b]/30 data-[state=checked]:border-[#10151b] data-[state=checked]:bg-[#10151b] data-[state=checked]:text-white" />{platform.label}</label>; })}</div>
+              </div>
+              <label className="grid gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#61707a]">字數區間
+                <select value={wordCountFilter} onChange={(event) => setWordCountFilter(event.target.value as WordCountFilter)} className="h-10 border border-[#10151b]/15 bg-white px-3 text-[#10151b] outline-none focus:border-[#45b9b2]">
+                  <option value="all">全部</option><option value="short">1,000 字以下</option><option value="medium">1,000–10,000 字</option><option value="long">10,000 字以上</option>
+                </select>
+              </label>
+              <label className="grid gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#61707a]">完結狀態
+                <select value={completionFilter} onChange={(event) => setCompletionFilter(event.target.value as CompletionFilter)} className="h-10 border border-[#10151b]/15 bg-white px-3 text-[#10151b] outline-none focus:border-[#45b9b2]">
+                  <option value="all">全部</option><option value="complete">僅看已完結</option><option value="ongoing">僅看連載中</option>
+                </select>
+              </label>
+              <label className="grid gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#61707a]">排序方式
+                <select value={sortMode} onChange={(event) => setSortMode(event.target.value as ResultSortMode)} className="h-10 border border-[#10151b]/15 bg-white px-3 text-[#10151b] outline-none focus:border-[#45b9b2]">
+                  <option value="relevance">相關度最高</option><option value="updated">最新更新</option><option value="words">字數最多</option>
+                </select>
+              </label>
+            </div>
+          )}
         </section>
 
-        <section className="mt-8 flex flex-col gap-3 border-b border-[#10151b]/15 pb-5 sm:flex-row sm:items-end sm:justify-between"><div><div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[#75838b]">SEARCH OUTPUT</div><h2 className="mt-2 text-3xl font-black tracking-[-0.07em] sm:text-4xl">{searchMutation.isPending ? "SCANNING ARCHIVES..." : hasSearched ? pagination.totalWorks > 0 ? `${pagination.totalWorks.toLocaleString()} STORIES FOUND` : "NO VERIFIED STORIES FOUND" : "READY TO EXPLORE"}</h2>{hasSearched && pagination.totalWorks > 0 && <div className="mt-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#75838b]">LOADED THROUGH PAGE {pagination.loadedThroughPage} / {pagination.totalPages}</div>}</div><div className="flex items-center gap-4 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#6b7982]"><span>ADAPTERS: {selectedLabels}</span><span className="hidden h-4 w-px bg-[#10151b]/20 sm:block" /><span className="text-[#45b9b2]">CACHE: 30M TTL</span></div></section>
+        <section className="mt-8 flex flex-col gap-3 border-b border-[#10151b]/15 pb-5 sm:flex-row sm:items-end sm:justify-between"><div><div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[#75838b]">SEARCH OUTPUT</div><h2 className="mt-2 text-3xl font-black tracking-[-0.07em] sm:text-4xl">{searchMutation.isPending ? "SCANNING ARCHIVES..." : hasSearched ? pagination.totalWorks > 0 ? `${pagination.totalWorks.toLocaleString()} STORIES FOUND` : "NO VERIFIED STORIES FOUND" : "READY TO EXPLORE"}</h2>{hasSearched && pagination.totalWorks > 0 && <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#75838b]"><span>LOADED THROUGH PAGE {pagination.loadedThroughPage} / {pagination.totalPages}</span><span>顯示 {displayedResults.length} / {results.length} 筆</span>{completedElapsedMs !== null && <span className="text-[#197b75]">已於 {(completedElapsedMs / 1000).toFixed(1)} 秒內完成查詢</span>}</div>}</div><div className="flex items-center gap-4 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#6b7982]"><span>ADAPTERS: {selectedLabels}</span><span className="hidden h-4 w-px bg-[#10151b]/20 sm:block" /><span className="text-[#45b9b2]">CACHE: CP 2H / NORMAL 30M / LOW 5M</span></div></section>
 
         <div className="mt-8">
           {!hasSearched && !searchMutation.isPending && <div className="relative overflow-hidden border border-[#10151b]/15 bg-white/60 p-8 sm:p-12"><div className="absolute right-0 top-0 h-24 w-24 border-b border-l border-[#f2a4bc]" /><div className="absolute bottom-0 left-0 h-16 w-16 border-r border-t border-[#72d2cc]" /><div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-center"><div><div className="mb-5 flex h-12 w-12 items-center justify-center border border-[#72d2cc] bg-[#d9f8f5] text-[#197b75]"><Sparkles className="h-5 w-5" /></div><h3 className="text-2xl font-black tracking-[-0.06em]">輸入一組關鍵字，開始建立你的閱讀座標。</h3><p className="mt-3 max-w-xl text-sm leading-6 text-[#64727a]">系統會透過獨立的平台 Adapter 同時查詢 AO3 與 Lofter，並將作品整理成可快速瀏覽的統一索引。</p></div><div className="grid grid-cols-2 gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#66757d]"><div className="border border-[#10151b]/10 bg-white/70 p-4"><Database className="mb-3 h-4 w-4 text-[#e27d9d]" />SQLITE CACHE</div><div className="border border-[#10151b]/10 bg-white/70 p-4"><BookOpen className="mb-3 h-4 w-4 text-[#45b9b2]" />UNIFIED META</div></div></div></div>}
@@ -233,6 +301,7 @@ export default function Home() {
             </div>
           )}
           {searchMutation.isPending && <div className="grid gap-4 md:grid-cols-2">{[1, 2, 3, 4].map((item) => <div key={item} className="h-64 animate-pulse border border-[#10151b]/10 bg-white/55" />)}</div>}
+          {!searchMutation.isPending && results.length > 0 && displayedResults.length === 0 && <div className="border border-dashed border-[#10151b]/25 bg-white/45 px-6 py-12 text-center"><div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#e27d9d]">NO FILTER MATCH</div><p className="mt-3 text-sm text-[#66757d]">目前沒有作品符合這組前端篩選條件；可調整字數、完結狀態或排序方式。</p></div>}
           {!searchMutation.isPending && results.length > 0 && (
             <div className="space-y-6">
               {searchWarning && (
@@ -241,7 +310,7 @@ export default function Home() {
                 </div>
               )}
               <div className="grid gap-4 md:grid-cols-2">
-                {results.map((result, index) => {
+                {displayedResults.map((result, index) => {
                   const meta = platformMeta(result.platform);
                   const allTags = (result.tags || "").split(",").map((tag) => tag.trim()).filter(Boolean);
                   const relationshipTags = (result.relationships?.length ? result.relationships : allTags.filter((tag) => tag.includes("/") || tag.includes(" & "))).slice(0, 3);
@@ -270,6 +339,7 @@ export default function Home() {
                             <ArrowUpRight className="mt-1 h-5 w-5 shrink-0 text-[#9ca8ad] transition-colors group-hover:text-[#e27d9d]" />
                           </div>
                           <div className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-[#56646d]">BY / {result.author || "UNKNOWN AUTHOR"}</div>
+                          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#75838b]"><span>{result.wordCount ? `${result.wordCount} WORDS` : "WORD COUNT UNKNOWN"}</span>{result.isComplete !== null && result.isComplete !== undefined && <span className={result.isComplete ? "text-[#197b75]" : "text-[#b46d25]"}>{result.isComplete ? "COMPLETED" : "IN PROGRESS"}</span>}{typeof result.relevanceScore === "number" && <span className="text-[#8b3e59]">RELEVANCE {result.relevanceScore}</span>}</div>
                           <p className="mt-5 line-clamp-3 text-sm leading-6 text-[#69777f]">{result.summary || "No summary available."}</p>
                           <div className="mt-6 flex flex-wrap gap-1.5">
                             {relationshipTags.map((tag) => <span key={`relationship-${tag}`} className="border border-[#e8a7bf] bg-[#ffe8f0] px-2 py-1 font-mono text-[9px] font-semibold text-[#8b3e59]">♡ {tag}</span>)}

@@ -9,7 +9,7 @@ from models import ScrapedFanfic
 class LofterScraper(BaseScraper):
     """Lofter best-effort adapter with silent error isolation (returns [] on 403/429/525 or offline)."""
 
-    def scrape(self, keyword: str, page: int = 1) -> list[ScrapedFanfic]:
+    def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False) -> list[ScrapedFanfic]:
         self.last_warning = None
         results: list[ScrapedFanfic] = []
 

@@ -19,6 +19,8 @@ class ScrapedFanfic(BaseModel):
     summary: str = ""
     wordCount: Optional[str] = None
     updatedAt: Optional[str] = None
+    isComplete: Optional[bool] = None
+    relevanceScore: int = 0
     scraped_at: datetime = Field(default_factory=datetime.utcnow)
     keyword: Optional[str] = None
     source: str = Field(default="live", description="Source of result: live, cache, or fallback")
@@ -29,6 +31,7 @@ class SearchQuery(BaseModel):
     keyword: str = Field(min_length=1, max_length=120)
     platforms: Optional[list[str]] = None
     page: int = Field(default=1, ge=1)
+    forceRefresh: bool = False
 
 
 class SearchResponse(BaseModel):

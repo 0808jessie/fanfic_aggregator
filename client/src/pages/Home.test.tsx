@@ -106,6 +106,6 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "花", platforms: ["ao3"], page: 1 },
+      data: { keyword: "花", platforms: ["ao3"], page: 1, forceRefresh: false },
     }));
   });

@@ -7,7 +7,7 @@ CP_TAG_MAP: dict[str, str] = {
 }
 
 # 這些簡稱在 AO3 上容易受到繁簡字、舊 mapping 或暫時性上游防護影響。
-# 它們一律採即時搜尋，不讀取也不寫入本機記憶體／SQLite 搜尋快取。
+# forceRefresh 時會清除同義 key 並略過舊快取讀取，再以成功的即時結果覆寫快取。
 LIVE_ONLY_CP_ALIASES = frozenset((*CP_TAG_MAP.keys(), "义忍"))
 
 # 同一組配對的繁簡別名需要一起被清除，避免任一舊 key 汙染即時搜尋診斷。

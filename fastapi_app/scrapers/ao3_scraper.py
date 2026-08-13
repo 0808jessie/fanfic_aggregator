@@ -7,7 +7,7 @@ from typing import Any
 
 from scrapers.base_scraper import BaseScraper
 from models import ScrapedFanfic
-from constants.cp_tags import CP_TAG_MAP, LIVE_ONLY_CP_ALIASES
+from constants.cp_tags import CP_TAG_MAP
 
 try:
     from playwright.sync_api import sync_playwright
@@ -46,16 +46,15 @@ class AO3Scraper(BaseScraper):
         self._memory_cache: dict[str, tuple[datetime, dict[str, Any]]] = {}
         self.cache_ttl = 1800  # 30 minutes
 
-    def scrape(self, keyword: str, page: int = 1) -> dict[str, Any]:
+    def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False) -> dict[str, Any]:
         self.last_warning = None
         trimmed_kw = keyword.strip()
         if not trimmed_kw:
             return {"items": [], "total_works": 0, "total_pages": 1}
 
         cache_key = f"{trimmed_kw}:page={page}"
-        # 已知 CP 簡稱（尤其繁簡混用的中文詞）不使用 scraper 層快取。
-        # 這讓每次請求能直接驗證 AO3 的當前回應，而不被早期失敗結果污染。
-        bypass_memory_cache = trimmed_kw in LIVE_ONLY_CP_ALIASES
+        # 強制更新會跳過 Adapter cache；一般 CP 則由 API 的高可信度 TTL 管理。
+        bypass_memory_cache = force_refresh
         if bypass_memory_cache:
             self._memory_cache.pop(cache_key, None)
         now = datetime.utcnow()
@@ -183,6 +182,10 @@ class AO3Scraper(BaseScraper):
                             updated_el = work.select_one("p.datetime")
                             updated_at = updated_el.get_text(strip=True) if updated_el else None
 
+                            status_el = work.select_one("dd.status")
+                            status_text = status_el.get_text(" ", strip=True) if status_el else ""
+                            is_complete = status_text.casefold().startswith("completed")
+
                             if not url or not is_real_url(url):
                                 continue
 
@@ -198,6 +201,7 @@ class AO3Scraper(BaseScraper):
                                 summary=summary,
                                 wordCount=word_count,
                                 updatedAt=updated_at,
+                                isComplete=is_complete,
                                 scraped_at=datetime.utcnow(),
                                 keyword=trimmed_kw,
                             )
