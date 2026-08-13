@@ -31,3 +31,7 @@
 全套 Python 測試（38 項）、Vitest（31 項）與 TypeScript 型別檢查均已通過。實際以義忍對 AO3、同人誌中心及在水裡寫字發送公開搜尋時，服務正確回傳了每個平台的轉譯查詢字串與安全的 `error` 狀態；沒有建立任何佔位或未驗證作品資料。
 
 同日的獨立瀏覽器檢查顯示 AO3 的上游 Cloudflare 頁面回傳 HTTP 525「SSL handshake failed」，並明確標示瀏覽器與 Cloudflare 正常、來源主機錯誤。因此，當次實際 AO3 結果無法作為成功資料驗證；此為當下外部主機可用性限制，狀態列與單一來源重試正是用來呈現並處理此類情況。待 AO3 恢復可用後，需再以同一實際義忍請求確認 live 結果。
+
+### 2026-08-13 AO3 恢復後的實際成功驗證
+
+AO3 公開搜尋頁恢復後，瀏覽器可顯示 `47 Found`。隨即以 FastAPI 對 `keyword="義忍"`、`platforms=["ao3"]`、`forceRefresh=true` 執行實測，回傳 `source="live"`、`success=true`、`totalWorks=47`、`platformStatuses[0].status="success"`、`itemCount=47`，且 `translatedQuery` 為 `"Tomioka Giyuu/Kochou Shinobu" OR "義忍"`。回應包含可驗證的 AO3 作品 URL，例如 `https://archiveofourown.org/works/69215346`；因此可確認外部主機恢復後，原始 CP 別名、AO3 OR 查詢、官方總筆數與平台狀態回傳的整條流程均正常。
