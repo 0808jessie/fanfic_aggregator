@@ -56,13 +56,13 @@ def is_real_platform_url(url: str, platform: str | None = None) -> bool:
 
 
 def save_fanfic_to_db(db: Session, fanfic: ScrapedFanfic) -> None:
-    """Upsert only persistent metadata; source/warning are response-only fields."""
+    """Upsert only persistent metadata; source/warning/relationships are response-only fields."""
     if not is_real_platform_url(fanfic.url, fanfic.platform):
         print(f"[Database] Skipping untrusted URL: {fanfic.url}")
         return
     try:
         record = db.query(Fanfic).filter(Fanfic.url == fanfic.url).first()
-        values = fanfic.model_dump(exclude={"id", "source", "warning", "wordCount", "updatedAt"})
+        values = fanfic.model_dump(exclude={"id", "source", "warning", "wordCount", "updatedAt", "relationships", "characters"})
         if record is None:
             db.add(Fanfic(**values))
         else:

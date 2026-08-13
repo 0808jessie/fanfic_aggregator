@@ -71,3 +71,7 @@
 - [x] 在專案根目錄下執行測試，驗證從根目錄以 package 形式載入 `fastapi_app` 與 `fastapi_app.main` 完全正常
 
 - [x] 在測試中明確斷言 `from fastapi_app import main` 與 `import fastapi_app` 成功載入
+
+- [ ] 執行專門針對「義忍」的診斷腳本，對比 AO3 原始回應、URL 構建與解析結果
+- [ ] 檢查前端或後端對「義忍」是否有特殊字元過濾、mapping 衝突或快取阻擋
+- [ ] 修復義忍搜尋並通過完整回歸測試與端到端驗證
