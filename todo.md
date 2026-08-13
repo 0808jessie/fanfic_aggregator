@@ -54,3 +54,7 @@
 
 - [x] 新增 AO3 fallback 實際 mock 整合測試，驗證 0 筆時會觸發 `_fallback_query_search`
 - [x] 更新 verification 文件，確保記載 `relationship_names` 與受控降級流程
+
+- [ ] 移除硬式 CP map 複寫，改用原生的 `work_search[query]` 傳遞中文/非 ASCII 關鍵字
+- [ ] 建立 `fastapi_app/scripts/fix_ao3_search.py` 診斷腳本測試中文 CP 標籤
+- [ ] 驗證中文關鍵字搜尋並儲存 checkpoint

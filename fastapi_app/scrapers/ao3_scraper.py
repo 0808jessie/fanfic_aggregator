@@ -10,11 +10,8 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from constants.cp_tags import CP_TAG_MAP
 from models import ScrapedFanfic
 from scrapers.base_scraper import BaseScraper
-
-CP_TAG_MAPPING = CP_TAG_MAP
 
 
 def extract_ao3_tag_metadata(work) -> tuple[list[str], list[str], list[str]]:
@@ -42,18 +39,13 @@ class AO3Scraper(BaseScraper):
 
     def scrape(self, keyword: str, page: int = 1) -> dict[str, Any]:
         """
-        Scrape AO3 works using Playwright with Advanced Compound Query.
-        Supports:
-          1. Composite OR query for mapped CP (e.g. '義忍' -> '"Tomioka Giyuu/Kochou Shinobu" OR "義忍" OR ...').
-          2. Fresh context/cookies and 20s timeout.
-          3. Multi-page pagination (pages=[1, 2] on page=1).
+        Scrape AO3 works using Playwright with direct work_search[query] parameter.
+        Ensures Chinese and non-ASCII queries (e.g. '義忍', '胡蝶忍', '五夏') are
+        correctly passed to https://archiveofourown.org/works/search.
         """
         target_pages = [page] if page > 1 else [1, 2]
         trimmed_kw = keyword.strip()
-        print(f"[AO3Scraper Playwright] Starting advanced compound query scrape for '{trimmed_kw}', pages: {target_pages}")
-
-        mapped_query = CP_TAG_MAPPING.get(trimmed_kw)
-        query_to_use = mapped_query if mapped_query else trimmed_kw
+        print(f"[AO3Scraper Playwright] Starting search for keyword '{trimmed_kw}', pages: {target_pages}")
 
         with sync_playwright() as p:
             browser = p.chromium.launch(
@@ -66,7 +58,6 @@ class AO3Scraper(BaseScraper):
                     "--disable-gpu",
                 ],
             )
-            # 每次請求建立全新 context 搭配隨機 User-Agent 與清除快取/cookies
             context = browser.new_context(
                 user_agent=(
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -90,9 +81,9 @@ class AO3Scraper(BaseScraper):
                         print(f"[AO3Scraper Playwright] Waiting {sleep_secs:.2f}s before fetching page {target_page}...")
                         time.sleep(sleep_secs)
 
-                    encoded_q = urllib.parse.quote(query_to_use, safe="")
-                    search_url = f"https://archiveofourown.org/works/search?work_search%5Bquery%5D={encoded_q}&page={target_page}"
-                    print(f"[AO3Scraper Playwright] Navigating with compound query: {search_url}")
+                    encoded_q = urllib.parse.quote(trimmed_kw, safe="")
+                    search_url = f"https://archiveofourown.org/works/search?work_search%5Bquery%5D={encoded_q}&commit=Search&page={target_page}"
+                    print(f"[AO3Scraper Playwright] Navigating to: {search_url}")
 
                     try:
                         response = page_obj.goto(search_url, timeout=20000, wait_until="domcontentloaded")
