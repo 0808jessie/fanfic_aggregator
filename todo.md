@@ -130,4 +130,4 @@
 - [x] 更新義忍首頁測試的預設平台請求斷言，涵蓋在水裡寫字與 Penana
 - [x] 補強 Penana Adapter：從可驗證的公開詳細頁提取字數與完結狀態，並對無資料情境採用明確空值降級
 - [x] 補上 Penana 詳細頁 metadata 解析回歸測試與 P0 版本檢查點
-- [ ] 儲存 WaterWriter／Penana P0 擴充與 Penana 詳細頁安全降級的最終 checkpoint
+- [x] 儲存 WaterWriter／Penana P0 擴充與 Penana 詳細頁安全降級的最終 checkpoint（6857a4f7）
