@@ -59,5 +59,15 @@
 - [x] 建立 `fastapi_app/scripts/fix_ao3_search.py` 診斷腳本測試中文 CP 標籤
 - [x] 驗證中文關鍵字搜尋並儲存 checkpoint
 
-- [ ] 檢查並修正 `fastapi_app/main.py` 的匯入路徑，確保 FastAPI 服務正常啟動
-- [ ] 執行 FastAPI `/search` 中文關鍵字 API smoke test，驗證 API 回傳合約
+- [x] 檢查並修正 `fastapi_app/main.py` 的匯入路徑，確保 FastAPI 服務正常啟動
+- [x] 執行 FastAPI `/search` 中文關鍵字 API smokeTest，驗證 API 回傳合約
+
+- [x] 補上 package-style 匯入回歸測試，確認根目錄與 fastapi_app 目錄皆可正確匯入
+- [x] 擴充 `test_fastapi_chinese_search.py` 斷言中文搜尋回傳 items 非空及完整 title/author/url 欄位
+
+- [x] 補上真正的 package-style 匯入回歸測試 (`from fastapi_app import main`)
+- [x] 在 `test_fastapi_chinese_search.py` 中強制斷言中文搜尋回傳 `items` 長度大於 0
+
+- [x] 在專案根目錄下執行測試，驗證從根目錄以 package 形式載入 `fastapi_app` 與 `fastapi_app.main` 完全正常
+
+- [x] 在測試中明確斷言 `from fastapi_app import main` 與 `import fastapi_app` 成功載入
