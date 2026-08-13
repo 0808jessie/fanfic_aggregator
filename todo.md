@@ -86,4 +86,10 @@
 
 - [x] 執行前端 UI 搜尋「義忍」的整合煙霧測試，確保代理與前端渲染完全正常
 
-- [ ] 執行不 mock payload 的真實前端/代理整合煙霧測試，確保代理打到真實 FastAPI 服務
+- [x] 執行不 mock payload 的真實前端/代理整合煙霧測試，確保代理打到真實 FastAPI 服務
+
+- [x] 撰寫嚴格不吞錯、透過 tRPC 代理打到真實 FastAPI 服務的整合測試，斷言「義忍」回傳非空 items
+
+- [x] 補上透過 tRPC `fastapiTrpcRouter` 呼call的端到端代理單元測試，驗證非 mock 狀態下的路由轉發合約
+
+- [x] 撰寫真實呼叫 tRPC proxy 的單元測試，驗證傳入 `keyword: "義忍"` 時正確呼叫 Axios 並透傳 FastAPI 響應
