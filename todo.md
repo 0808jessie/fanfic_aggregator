@@ -145,4 +145,4 @@
 - [x] 補上 AO3 總筆數、台灣平台隔離及混合搜尋回歸測試
 - [x] 完成實際 AO3／混合搜尋驗證、全套測試與最終 checkpoint
 - [x] 新增 AO3 成功搜尋頁 heading 與 API totalWorks 的可追溯診斷／回歸驗證，確認兩者精確一致
-- [ ] 儲存 AO3 原生總筆數與台灣平台公開搜尋修正的最終 checkpoint
+- [x] 儲存 AO3 原生總筆數與台灣平台公開搜尋修正的最終 checkpoint（4d5c7d80）
