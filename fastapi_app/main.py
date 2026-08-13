@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from config import settings
 from database import Fanfic, SessionLocal
 from models import ScrapedFanfic, SearchQuery, SearchResponse
-from constants.cp_tags import CP_TAG_MAP
+from constants.cp_tags import CP_CACHE_ALIASES, CP_TAG_MAP, LIVE_ONLY_CP_ALIASES
 from scrapers.index import SCRAPERS, parallel_search_platforms
 
 app = FastAPI(title="Fanfic Atlas Search API", version="0.1.4")
@@ -35,6 +35,21 @@ def canonical_platforms(platforms: list[str] | None) -> list[str]:
         if key in SCRAPERS and key not in normalized:
             normalized.append(key)
     return normalized
+
+
+def clear_live_only_cp_memory_cache(keyword: str) -> list[str]:
+    """Remove every in-memory cache key belonging to a live-only CP alias group."""
+    aliases = CP_CACHE_ALIASES.get(keyword, frozenset((keyword,)))
+    matching_keys = [
+        cache_key
+        for cache_key in _MEMORY_CACHE
+        if any(cache_key.startswith(f"{alias}:") for alias in aliases)
+    ]
+    for cache_key in matching_keys:
+        _MEMORY_CACHE.pop(cache_key, None)
+    if matching_keys:
+        print(f"[SearchAPI] Cleared CP memory cache keys: {matching_keys}")
+    return matching_keys
 
 
 def is_real_platform_url(url: str, platform: str | None = None) -> bool:
@@ -135,8 +150,13 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
     try:
         requested_page = query.page
         cache_key = f"{keyword}:{'-'.join(sorted(platforms))}:page={requested_page}"
+        # CP 簡稱屬於容易受舊 mapping、繁簡字與歷史資料影響的高敏感查詢。
+        # 在穩定前不允許它讀取或寫入本機快取，僅使用當次平台的即時結果。
+        bypass_persistent_cache = keyword in LIVE_ONLY_CP_ALIASES
+        if bypass_persistent_cache:
+            clear_live_only_cp_memory_cache(keyword)
 
-        memory_entry = _MEMORY_CACHE.get(cache_key)
+        memory_entry = None if bypass_persistent_cache else _MEMORY_CACHE.get(cache_key)
         if memory_entry:
             cached_time, cached_items, total_works, total_pages, loaded_through_page = memory_entry
             if datetime.utcnow() - cached_time < MEMORY_CACHE_TTL and cached_items:
@@ -175,13 +195,15 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
             result.source = "live"
             result.warning = combined_warning
 
-        # 3. 若即時抓取成功且有真實結果，寫入資料庫與記憶體快取
+        # 3. 若即時抓取成功且有真實結果，寫入資料庫與記憶體快取。
+        # CP 簡稱暫時保持即時模式，不讓舊資料覆蓋或污染下一次搜尋。
         if any_success and fresh_results:
             deduplicated: dict[str, ScrapedFanfic] = {}
             for result in fresh_results:
                 result.keyword = keyword
                 deduplicated[result.url] = result
-                save_fanfic_to_db(db, result)
+                if not bypass_persistent_cache:
+                    save_fanfic_to_db(db, result)
             final_items = sorted(deduplicated.values(), key=lambda item: item.scraped_at, reverse=True)
             total_works = max(total_works, len(final_items))
             total_pages = max(total_pages, (total_works + 19) // 20)
@@ -189,13 +211,14 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
                 requested_page + (1 if requested_page == 1 else 0),
                 total_pages,
             )
-            _MEMORY_CACHE[cache_key] = (
-                datetime.utcnow(),
-                final_items,
-                total_works,
-                total_pages,
-                loaded_through_page,
-            )
+            if not bypass_persistent_cache:
+                _MEMORY_CACHE[cache_key] = (
+                    datetime.utcnow(),
+                    final_items,
+                    total_works,
+                    total_pages,
+                    loaded_through_page,
+                )
             has_more = loaded_through_page < total_pages
             return SearchResponse(
                 items=final_items,

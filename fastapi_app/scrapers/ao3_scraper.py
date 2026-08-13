@@ -7,7 +7,7 @@ from typing import Any
 
 from scrapers.base_scraper import BaseScraper
 from models import ScrapedFanfic
-from constants.cp_tags import CP_TAG_MAP
+from constants.cp_tags import CP_TAG_MAP, LIVE_ONLY_CP_ALIASES
 
 try:
     from playwright.sync_api import sync_playwright
@@ -53,8 +53,13 @@ class AO3Scraper(BaseScraper):
             return {"items": [], "total_works": 0, "total_pages": 1}
 
         cache_key = f"{trimmed_kw}:page={page}"
+        # 已知 CP 簡稱（尤其繁簡混用的中文詞）不使用 scraper 層快取。
+        # 這讓每次請求能直接驗證 AO3 的當前回應，而不被早期失敗結果污染。
+        bypass_memory_cache = trimmed_kw in LIVE_ONLY_CP_ALIASES
+        if bypass_memory_cache:
+            self._memory_cache.pop(cache_key, None)
         now = datetime.utcnow()
-        if cache_key in self._memory_cache:
+        if not bypass_memory_cache and cache_key in self._memory_cache:
             cached_time, cached_payload = self._memory_cache[cache_key]
             if (now - cached_time).total_seconds() < self.cache_ttl:
                 print(f"[AO3Scraper] Memory cache hit for '{cache_key}'")
@@ -218,7 +223,7 @@ class AO3Scraper(BaseScraper):
             "total_pages": total_pages,
         }
 
-        if all_items:
+        if all_items and not bypass_memory_cache:
             self._memory_cache[cache_key] = (datetime.utcnow(), payload)
         elif cache_key in self._memory_cache:
             del self._memory_cache[cache_key]

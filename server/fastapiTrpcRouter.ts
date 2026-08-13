@@ -24,7 +24,9 @@ export const fastapiTrpcRouter = router({
           url: targetUrl,
           params: input.params,
           data: input.data,
-          timeout: 45_000,
+          // AO3 的即時搜尋會依序載入兩頁並等待動態 DOM；CP 查詢在上游較慢時
+          // 可超過原本的 45 秒。代理必須比 scraper 的逾時更長，避免把有效結果誤判為失敗。
+          timeout: 120_000,
           headers: { "Content-Type": "application/json" },
           validateStatus: () => true,
         });

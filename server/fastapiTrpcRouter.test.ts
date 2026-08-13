@@ -37,7 +37,7 @@ describe("fastapi.proxy", () => {
         method: "POST",
         url: "http://localhost:8000/search",
         data: { keyword: "星光", platforms: ["ao3"] },
-        timeout: 45_000,
+        timeout: 120_000,
         headers: { "Content-Type": "application/json" },
       }),
     );
