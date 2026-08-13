@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "./Home";
 
-const mockState = vi.hoisted(() => ({ nextHookId: 0, lastVariables: null as unknown }));
+const mockState = vi.hoisted(() => ({ nextHookId: 0, lastVariables: null as unknown, responseWarning: null as string | null }));
 
 vi.mock("sonner", () => ({
   toast: { error: vi.fn() },
@@ -33,6 +33,7 @@ vi.mock("@/lib/trpc", async () => {
                       loadedThroughPage: 2,
                       nextPage: 3,
                       hasMore: true,
+                      warning: mockState.responseWarning,
                     }
                   : {
                       items: [
@@ -65,6 +66,7 @@ afterEach(() => {
 beforeEach(() => {
   mockState.nextHookId = 0;
   mockState.lastVariables = null;
+  mockState.responseWarning = null;
 });
 
 describe("Home pagination interactions", () => {
@@ -88,6 +90,18 @@ describe("Home pagination interactions", () => {
     expect(screen.getAllByText("PAGE ONE", { exact: true })).toHaveLength(1);
     expect(screen.getByText("LOADED THROUGH PAGE 3 / 3")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "LOAD MORE / PAGE 3" })).toBeNull();
+  });
+
+  it("keeps verified results clear of a single platform diagnostic", async () => {
+    mockState.responseWarning = "[水裡寫字] Triggered Challenge, skipping cleanly";
+    render(<Home />);
+
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "花" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+
+    await waitFor(() => expect(screen.getByText("PAGE ONE")).toBeTruthy());
+    expect(screen.queryByText("[NOTICE]")).toBeNull();
+    expect(screen.queryByText(/Triggered Challenge/)).toBeNull();
   });
 });
 

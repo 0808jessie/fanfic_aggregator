@@ -128,9 +128,10 @@ export default function Home() {
     onSuccess: (payload) => {
       const isLimited = extractIsRateLimited(payload);
       const warningMsg = extractSearchWarning(payload);
-      setResults(normalizeResults(payload));
+      const incoming = normalizeResults(payload);
+      setResults(incoming);
       setPagination(extractSearchPagination(payload));
-      setSearchWarning(warningMsg);
+      setSearchWarning(incoming.length ? null : warningMsg);
       setHasSearched(true);
       if (searchStartedAt.current !== null) {
         setCompletedElapsedMs(performance.now() - searchStartedAt.current);
@@ -447,7 +448,7 @@ export default function Home() {
                             <ArrowUpRight className="mt-1 h-5 w-5 shrink-0 text-[#9ca8ad] transition-colors group-hover:text-[#e27d9d]" />
                           </div>
                           <div className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-[#56646d]">BY / {result.author || "UNKNOWN AUTHOR"}</div>
-                          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#75838b]"><span>{result.wordCount ? `${result.wordCount} WORDS` : "WORD COUNT UNKNOWN"}</span>{result.isComplete !== null && result.isComplete !== undefined && <span className={result.isComplete ? "text-[#197b75]" : "text-[#b46d25]"}>{result.isComplete ? "COMPLETED" : "IN PROGRESS"}</span>}{typeof result.relevanceScore === "number" && <span className="text-[#8b3e59]">RELEVANCE {result.relevanceScore}</span>}</div>
+                          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#75838b]"><span>{result.wordCount ? `${result.wordCount} WORDS` : "WORD COUNT / 原站"}</span>{result.isComplete !== null && result.isComplete !== undefined && <span className={result.isComplete ? "text-[#197b75]" : "text-[#b46d25]"}>{result.isComplete ? "COMPLETED" : "IN PROGRESS"}</span>}{typeof result.relevanceScore === "number" && <span className="text-[#8b3e59]">RELEVANCE {result.relevanceScore}</span>}</div>
                           <p className="mt-5 line-clamp-3 text-sm leading-6 text-[#69777f]">{result.summary || "No summary available."}</p>
                           <div className="mt-6 flex flex-wrap gap-1.5">
                             {relationshipTags.map((tag) => <span key={`relationship-${tag}`} className="border border-[#e8a7bf] bg-[#ffe8f0] px-2 py-1 font-mono text-[9px] font-semibold text-[#8b3e59]">♡ {tag}</span>)}

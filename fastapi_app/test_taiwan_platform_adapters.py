@@ -1,9 +1,12 @@
 from pathlib import Path
 import sys
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import main
+from fastapi.testclient import TestClient
+from models import ScrapedFanfic
 from scrapers.index import SCRAPERS
 from scrapers.penana_scraper import PenanaScraper
 from scrapers.waterwriter_scraper import WaterWriterScraper
@@ -38,6 +41,14 @@ PENANA_DETAIL = """
 """
 
 
+class PublicFinderResponse:
+    status_code = 200
+    text = PENANA_RESULTS
+
+    def raise_for_status(self):
+        return None
+
+
 def test_waterwriter_parser_standardizes_verified_thread_results():
     results = WaterWriterScraper().parse_results(WATERWRITER_RESULTS, "義忍")
 
@@ -54,6 +65,7 @@ def test_waterwriter_challenge_markers_are_isolated_without_creating_results():
     assert WaterWriterScraper._is_challenge_page('<a href="/cdn-cgi/content">blocked</a>')
     assert WaterWriterScraper._is_challenge_page('<img src="/template/error.jpg">')
     assert not WaterWriterScraper._is_challenge_page(WATERWRITER_RESULTS)
+    assert "iPhone" in WaterWriterScraper.headers["User-Agent"]
 
 
 def test_penana_parser_standardizes_public_story_cards_without_mislabeling_reads_as_words():
@@ -79,6 +91,47 @@ def test_penana_detail_metadata_uses_labelled_word_count_and_explicit_status_onl
     assert unknown == {"wordCount": None, "isComplete": None}
     assert PenanaScraper._is_verification_page('<div>Just a moment… Cloudflare</div>')
     assert not PenanaScraper._is_verification_page(PENANA_DETAIL)
+
+
+def test_penana_uses_ordinary_public_finder_headers_before_rendered_fallback():
+    with patch("scrapers.penana_scraper.requests.get", return_value=PublicFinderResponse()) as request:
+        html = PenanaScraper()._fetch_public_search_html("fanfiction")
+
+    assert html == PENANA_RESULTS
+    headers = request.call_args.kwargs["headers"]
+    assert headers["Referer"] == "https://www.penana.com/"
+    assert "Windows NT 10.0" in headers["User-Agent"]
+
+
+def test_partial_platform_warnings_are_silent_when_a_verified_result_exists():
+    item = ScrapedFanfic(
+        id="ao3:silent-warning",
+        title="Verified AO3 result",
+        author="Author",
+        platform="AO3",
+        url="https://archiveofourown.org/works/24680",
+        tags="fanfiction",
+        summary="Verified public result",
+        keyword="fanfiction",
+    )
+    aggregate = {
+        "items": [item],
+        "any_success": True,
+        "total_works": 1,
+        "total_pages": 1,
+        "warnings": ["[水裡寫字] Triggered Challenge, skipping cleanly"],
+    }
+    with patch("main.parallel_search_platforms", return_value=aggregate), patch("main.save_fanfic_to_db"):
+        response = TestClient(main.app).post(
+            "/search",
+            json={"keyword": "fanfiction", "platforms": ["ao3", "waterwriter"], "forceRefresh": True},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["items"][0]["title"] == "Verified AO3 result"
+    assert body.get("warning") is None
+    assert body["items"][0].get("warning") is None
 
 
 def test_taiwan_platforms_are_registered_and_constrained_to_trusted_hosts():

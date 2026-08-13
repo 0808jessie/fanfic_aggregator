@@ -37,6 +37,9 @@ def test_doujin_adapter_parses_only_matching_verified_book_links():
         payload = DoujinScraper().scrape("義忍")
 
     request.assert_called_once()
+    headers = request.call_args.kwargs["headers"]
+    assert headers["Referer"] == "https://www.doujin.com.tw/"
+    assert headers["Origin"] == "https://www.doujin.com.tw"
     assert payload["total_works"] == 1
     item = payload["items"][0]
     assert item.platform == "同人誌中心"
@@ -52,7 +55,7 @@ def test_doujin_adapter_isolates_cloudflare_challenge_without_inventing_results(
         payload = scraper.scrape("義忍")
 
     assert payload["items"] == []
-    assert "verification challenge" in (scraper.last_warning or "")
+    assert "Triggered Challenge" in (scraper.last_warning or "")
 
 
 def test_doujin_platform_is_registered_and_uses_a_trusted_host_boundary():

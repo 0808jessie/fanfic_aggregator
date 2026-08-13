@@ -27,7 +27,8 @@ class WaterWriterScraper(BaseScraper):
     headers = {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
+        "Referer": "https://slashtw.space/",
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
     }
 
     def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False) -> dict[str, object]:
@@ -60,7 +61,7 @@ class WaterWriterScraper(BaseScraper):
                     return self._blocked(result_response.status_code)
                 result_response.raise_for_status()
                 if self._is_challenge_page(result_response.text):
-                    self.last_warning = "[在水裡寫字] Search page is protected by a verification challenge"
+                    self.last_warning = "[水裡寫字] Triggered Challenge, skipping cleanly"
                     print(self.last_warning)
                     return {"items": [], "total_works": 0, "total_pages": 1}
 
@@ -78,7 +79,7 @@ class WaterWriterScraper(BaseScraper):
             return {"items": [], "total_works": 0, "total_pages": 1}
 
     def _blocked(self, status_code: int) -> dict[str, object]:
-        self.last_warning = f"[在水裡寫字] Request blocked (HTTP {status_code})"
+        self.last_warning = f"[水裡寫字] Request blocked (HTTP {status_code}), skipping cleanly"
         print(self.last_warning)
         return {"items": [], "total_works": 0, "total_pages": 1}
 

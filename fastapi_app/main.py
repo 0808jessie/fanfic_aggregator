@@ -212,7 +212,10 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
         total_pages = int(aggregate.get("total_pages", 0) or 0)
         any_success = bool(aggregate.get("any_success")) and bool(fresh_results)
         platform_warnings = [str(message) for message in aggregate.get("warnings", []) if message]
-        combined_warning = "；".join(platform_warnings) if platform_warnings else None
+        # A best-effort platform being blocked must not interrupt results from an
+        # available source. Diagnostics remain in adapter/server logs and are only
+        # exposed when no verified work can be shown.
+        combined_warning = None if any_success else ("；".join(platform_warnings) if platform_warnings else None)
 
         for result in fresh_results:
             result.source = "live"

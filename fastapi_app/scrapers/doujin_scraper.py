@@ -37,19 +37,21 @@ class DoujinScraper(BaseScraper):
                 headers={
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                     "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+                    "Referer": "https://www.doujin.com.tw/",
+                    "Origin": "https://www.doujin.com.tw",
                     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
                 },
                 timeout=12,
             )
             if response.status_code in self.blocked_statuses:
-                self.last_warning = f"[同人誌中心] Request blocked (HTTP {response.status_code})"
+                self.last_warning = f"[同人誌中心] Request blocked (HTTP {response.status_code}), skipping cleanly"
                 print(self.last_warning)
                 return {"items": [], "total_works": 0, "total_pages": 1}
 
             response.raise_for_status()
             page_text = response.text.casefold()
             if "just a moment" in page_text or "cf-chl" in page_text or "cloudflare" in page_text and "/books/info/" not in page_text:
-                self.last_warning = "[同人誌中心] Search page is protected by a verification challenge"
+                self.last_warning = "[同人誌中心] Triggered Challenge, skipping cleanly"
                 print(self.last_warning)
                 return {"items": [], "total_works": 0, "total_pages": 1}
 
