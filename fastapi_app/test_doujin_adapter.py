@@ -40,6 +40,8 @@ def test_doujin_adapter_parses_only_matching_verified_book_links():
     headers = request.call_args.kwargs["headers"]
     assert headers["Referer"] == "https://www.doujin.com.tw/"
     assert headers["Origin"] == "https://www.doujin.com.tw"
+    assert "Windows NT 10.0" in headers["User-Agent"]
+    assert headers["Accept-Language"] == "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7"
     assert payload["total_works"] == 1
     item = payload["items"][0]
     assert item.platform == "同人誌中心"

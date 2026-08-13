@@ -66,6 +66,10 @@ def test_waterwriter_challenge_markers_are_isolated_without_creating_results():
     assert WaterWriterScraper._is_challenge_page('<img src="/template/error.jpg">')
     assert not WaterWriterScraper._is_challenge_page(WATERWRITER_RESULTS)
     assert "iPhone" in WaterWriterScraper.headers["User-Agent"]
+    assert WaterWriterScraper._is_search_cooldown_page("請等待 20 秒後再試")
+    assert WaterWriterScraper._is_search_cooldown_page("Search is too frequent")
+    assert not WaterWriterScraper._is_search_cooldown_page(WATERWRITER_RESULTS)
+    assert "srchtxt=%E7%BE%A9%E5%BF%8D" in WaterWriterScraper.build_search_url("義忍")
 
 
 def test_penana_parser_standardizes_public_story_cards_without_mislabeling_reads_as_words():

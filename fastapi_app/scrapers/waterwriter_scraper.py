@@ -31,6 +31,13 @@ class WaterWriterScraper(BaseScraper):
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
     }
 
+    @classmethod
+    def build_search_url(cls, keyword: str) -> str:
+        """Expose the public Discuz quick-search URL without side effects."""
+        from urllib.parse import urlencode
+
+        return f"{cls.search_url}?{urlencode({'srchtxt': keyword, 'searchsubmit': 'yes'})}"
+
     def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False) -> dict[str, object]:
         self.last_warning = None
         normalized_keyword = keyword.strip().casefold()
@@ -44,6 +51,10 @@ class WaterWriterScraper(BaseScraper):
                 if form_response.status_code in self.blocked_statuses:
                     return self._blocked(form_response.status_code)
                 form_response.raise_for_status()
+                if self._is_challenge_page(form_response.text):
+                    self.last_warning = "[水裡寫字] Triggered Challenge, skipping cleanly"
+                    print(self.last_warning)
+                    return {"items": [], "total_works": 0, "total_pages": 1}
 
                 form_soup = BeautifulSoup(form_response.text, "html.parser")
                 formhash_input = form_soup.select_one('input[name="formhash"]')
@@ -62,6 +73,10 @@ class WaterWriterScraper(BaseScraper):
                 result_response.raise_for_status()
                 if self._is_challenge_page(result_response.text):
                     self.last_warning = "[水裡寫字] Triggered Challenge, skipping cleanly"
+                    print(self.last_warning)
+                    return {"items": [], "total_works": 0, "total_pages": 1}
+                if self._is_search_cooldown_page(result_response.text):
+                    self.last_warning = "[水裡寫字] Search cooldown active, skipping cleanly"
                     print(self.last_warning)
                     return {"items": [], "total_works": 0, "total_pages": 1}
 
@@ -87,6 +102,11 @@ class WaterWriterScraper(BaseScraper):
     def _is_challenge_page(html: str) -> bool:
         page_text = html.casefold()
         return any(marker in page_text for marker in ("cdn-cgi", "cf-chl", "cloudflare", "error.jpg"))
+
+    @staticmethod
+    def _is_search_cooldown_page(html: str) -> bool:
+        page_text = html.casefold()
+        return any(marker in page_text for marker in ("20 秒", "20秒", "search is too frequent", "flood control", "請等待"))
 
     def parse_results(self, html: str, keyword: str) -> list[ScrapedFanfic]:
         """Parse only forum thread cards that expose a verified public thread URL."""

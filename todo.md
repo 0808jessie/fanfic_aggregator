@@ -138,3 +138,11 @@
 - [x] 補上防護隔離、metadata 空值與混合搜尋回歸測試，完成實測與新 checkpoint
 - [x] 更新同人誌中心 Challenge 測試訊息，對齊新的 clean skip 降級契約
 - [x] 儲存台灣平台靜默降級與合規公開請求設定的最終 checkpoint（d230f5f1）
+- [x] 核對 AO3 官方原生搜尋 query URL、無隱藏過濾條件與 heading 總筆數格式
+- [x] 修正 AO3 Adapter 的原生 query 組裝與 totalWorks 解析，保留官網回傳的精準總數
+- [x] 強化同人誌中心公開搜尋 Header 與作品列表解析，受保護時快速靜默降級
+- [x] 強化在水裡寫字的公開搜尋與頻率限制偵測，驗證／冷卻時安全返回空結果
+- [x] 補上 AO3 總筆數、台灣平台隔離及混合搜尋回歸測試
+- [x] 完成實際 AO3／混合搜尋驗證、全套測試與最終 checkpoint
+- [x] 新增 AO3 成功搜尋頁 heading 與 API totalWorks 的可追溯診斷／回歸驗證，確認兩者精確一致
+- [ ] 儲存 AO3 原生總筆數與台灣平台公開搜尋修正的最終 checkpoint
