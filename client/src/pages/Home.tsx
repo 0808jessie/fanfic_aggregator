@@ -61,6 +61,8 @@ const PLATFORMS = [
   { id: "ao3", label: "AO3", detail: "ARCHIVE OF OUR OWN", tone: "cyan" },
   { id: "lofter", label: "LOFTER", detail: "LOFTER.COM", tone: "pink" },
   { id: "doujin", label: "同人誌中心", detail: "DOUJIN.COM.TW", tone: "violet" },
+  { id: "waterwriter", label: "在水裡寫字", detail: "SLASHTW.SPACE", tone: "amber" },
+  { id: "penana", label: "PENANA", detail: "PENANA.COM", tone: "teal" },
 ] as const;
 
 type PlatformId = (typeof PLATFORMS)[number]["id"];
@@ -73,6 +75,8 @@ function platformMeta(platform: string) {
 function platformToneClass(tone: (typeof PLATFORMS)[number]["tone"]) {
   if (tone === "pink") return "border-[#eea3bb] bg-[#ffe3eb] text-[#8b3e59]";
   if (tone === "violet") return "border-[#c9bcf2] bg-[#f0ecff] text-[#5c4e87]";
+  if (tone === "amber") return "border-[#e8c681] bg-[#fff4d8] text-[#8b671e]";
+  if (tone === "teal") return "border-[#79cdbd] bg-[#ddf6ef] text-[#176d61]";
   return "border-[#10151b] bg-[#10151b] text-white";
 }
 
@@ -93,7 +97,7 @@ function formatDate(value: string) {
 export default function Home() {
   const [keyword, setKeyword] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
-  const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformId[]>(["ao3", "lofter", "doujin"]);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformId[]>(["ao3", "lofter", "doujin", "waterwriter", "penana"]);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [activeView, setActiveView] = useState<"search" | "bookmarks">("search");
   const [bookmarks, setBookmarks] = useState<BookmarkRecord[]>([]);
@@ -376,7 +380,7 @@ export default function Home() {
               onRemove={removeBookmark}
             />
           ) : <>
-          {!hasSearched && !searchMutation.isPending && <div className="relative overflow-hidden border border-[#10151b]/15 bg-white/60 p-8 sm:p-12"><div className="absolute right-0 top-0 h-24 w-24 border-b border-l border-[#f2a4bc]" /><div className="absolute bottom-0 left-0 h-16 w-16 border-r border-t border-[#72d2cc]" /><div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-center"><div><div className="mb-5 flex h-12 w-12 items-center justify-center border border-[#72d2cc] bg-[#d9f8f5] text-[#197b75]"><Sparkles className="h-5 w-5" /></div><h3 className="text-2xl font-black tracking-[-0.06em]">輸入一組關鍵字，開始建立你的閱讀座標。</h3><p className="mt-3 max-w-xl text-sm leading-6 text-[#64727a]">系統會透過獨立的平台 Adapter 同時查詢 AO3、Lofter 與同人誌中心，並將可驗證作品整理成統一索引。</p></div><div className="grid grid-cols-2 gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#66757d]"><div className="border border-[#10151b]/10 bg-white/70 p-4"><Database className="mb-3 h-4 w-4 text-[#e27d9d]" />SQLITE CACHE</div><div className="border border-[#10151b]/10 bg-white/70 p-4"><BookOpen className="mb-3 h-4 w-4 text-[#45b9b2]" />UNIFIED META</div></div></div></div>}
+          {!hasSearched && !searchMutation.isPending && <div className="relative overflow-hidden border border-[#10151b]/15 bg-white/60 p-8 sm:p-12"><div className="absolute right-0 top-0 h-24 w-24 border-b border-l border-[#f2a4bc]" /><div className="absolute bottom-0 left-0 h-16 w-16 border-r border-t border-[#72d2cc]" /><div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-center"><div><div className="mb-5 flex h-12 w-12 items-center justify-center border border-[#72d2cc] bg-[#d9f8f5] text-[#197b75]"><Sparkles className="h-5 w-5" /></div><h3 className="text-2xl font-black tracking-[-0.06em]">輸入一組關鍵字，開始建立你的閱讀座標。</h3><p className="mt-3 max-w-xl text-sm leading-6 text-[#64727a]">系統會透過獨立的平台 Adapter 同時查詢 AO3、Lofter、同人誌中心、在水裡寫字與 Penana，並將可驗證作品整理成統一索引。</p></div><div className="grid grid-cols-2 gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#66757d]"><div className="border border-[#10151b]/10 bg-white/70 p-4"><Database className="mb-3 h-4 w-4 text-[#e27d9d]" />SQLITE CACHE</div><div className="border border-[#10151b]/10 bg-white/70 p-4"><BookOpen className="mb-3 h-4 w-4 text-[#45b9b2]" />UNIFIED META</div></div></div></div>}
           {hasSearched && results.length === 0 && !searchMutation.isPending && (
             <div className="relative overflow-hidden border border-dashed border-[#10151b]/25 bg-white/45 px-6 py-16 text-center">
               <div className="absolute right-0 top-0 h-16 w-16 border-b border-l border-[#e27d9d]/20" />

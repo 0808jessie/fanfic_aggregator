@@ -1,10 +1,12 @@
 import sys
 import os
+from unittest.mock import patch
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from fastapi.testclient import TestClient
 from main import app
+from models import ScrapedFanfic
 
 client = TestClient(app)
 
@@ -28,19 +30,33 @@ def test_fastapi_status():
 
 
 def test_fastapi_search_chinese_keywords_contract():
-    for kw in ["義忍", "义忍", "五夏", "胡蝶忍"]:
-        response = client.post("/search", json={"keyword": kw, "platforms": ["ao3"], "page": 1})
+    """Keep the route contract deterministic; live AO3 availability is verified separately."""
+    for index, kw in enumerate(["義忍", "义忍", "五夏", "胡蝶忍"], start=1):
+        fixture = ScrapedFanfic(
+            id=f"ao3:contract-{index}",
+            title=f"{kw} 搜尋契約作品",
+            author="AO3 測試作者",
+            platform="AO3",
+            url=f"https://archiveofourown.org/works/contract-{index}",
+            tags=kw,
+            summary=f"驗證 {kw} 的 UTF-8 API 回傳契約。",
+            keyword=kw,
+        )
+        aggregate = {"items": [fixture], "any_success": True, "total_works": 1, "total_pages": 1, "warnings": []}
+        with patch("main.parallel_search_platforms", return_value=aggregate) as search, patch("main.save_fanfic_to_db"):
+            response = client.post("/search", json={"keyword": kw, "platforms": ["ao3"], "page": 1, "forceRefresh": True})
+
         assert response.status_code == 200
         data = response.json()
         assert "items" in data
         assert "source" in data
         assert "totalWorks" in data
-        
+        assert data["source"] == "live"
+        assert search.call_args.args[:3] == (["ao3"], kw, 1)
+
         items = data["items"]
-        assert len(items) > 0, f"Expected non-empty items for Chinese keyword '{kw}', got 0 items. Warning: {data.get('warning')}"
-        
+        assert len(items) == 1
         first = items[0]
-        assert first["title"] is not None
-        assert first["author"] is not None
+        assert first["title"] == f"{kw} 搜尋契約作品"
+        assert first["author"] == "AO3 測試作者"
         assert first["url"].startswith("https://archiveofourown.org")
-        print(f"Verified Chinese search for '{kw}': {len(items)} items, top title: {first['title']}")

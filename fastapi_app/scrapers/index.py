@@ -4,11 +4,15 @@ from models import ScrapedFanfic
 from scrapers.ao3_scraper import AO3Scraper
 from scrapers.doujin_scraper import DoujinScraper
 from scrapers.lofter_scraper import LofterScraper
+from scrapers.penana_scraper import PenanaScraper
+from scrapers.waterwriter_scraper import WaterWriterScraper
 
 SCRAPERS: dict[str, Callable[[], object]] = {
     "ao3": AO3Scraper,
     "lofter": LofterScraper,
     "doujin": DoujinScraper,
+    "waterwriter": WaterWriterScraper,
+    "penana": PenanaScraper,
 }
 
 

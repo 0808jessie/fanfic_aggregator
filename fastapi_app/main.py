@@ -77,6 +77,8 @@ def is_real_platform_url(url: str, platform: str | None = None) -> bool:
             "ao3": ("archiveofourown.org",),
             "lofter": ("lofter.com",),
             "同人誌中心": ("doujin.com.tw",),
+            "在水裡寫字": ("slashtw.space",),
+            "penana": ("penana.com",),
         }
         hosts = allowed_hosts.get(platform.lower())
         if hosts and not any(host in normalized_url for host in hosts):
@@ -149,6 +151,8 @@ def list_platforms() -> list[dict[str, str]]:
         {"id": "ao3", "label": "AO3", "status": "ready"},
         {"id": "lofter", "label": "Lofter", "status": "ready"},
         {"id": "doujin", "label": "同人誌中心", "status": "best-effort"},
+        {"id": "waterwriter", "label": "在水裡寫字", "status": "best-effort"},
+        {"id": "penana", "label": "Penana", "status": "best-effort"},
     ]
 
 
