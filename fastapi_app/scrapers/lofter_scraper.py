@@ -21,10 +21,10 @@ class LofterScraper(BaseScraper):
             }
             response = requests.get(tag_url, headers=headers, timeout=10)
             if response.status_code in (403, 429, 525, 404):
-                self.last_warning = f"[Lofter Adapter] Blocked or Offline (HTTP {response.status_code})"
+                self.last_warning = f"[Lofter] Request blocked (HTTP {response.status_code})"
+                print(self.last_warning)
                 return []
             
-            # 簡易解析
             from bs4 import BeautifulSoup
             soup = BeautifulSoup(response.text, "html.parser")
             posts = soup.select(".m-post, article, .imgc")
@@ -55,7 +55,7 @@ class LofterScraper(BaseScraper):
                 )
                 results.append(item)
         except Exception as e:
-            self.last_warning = f"[Lofter Adapter] Blocked or Offline: {e}"
-            print(f"[Lofter Adapter] Blocked or Offline: {e}")
+            self.last_warning = f"[Lofter] Request blocked or offline: {e}"
+            print(self.last_warning)
 
         return results

@@ -136,11 +136,6 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
         requested_page = query.page
         cache_key = f"{keyword}:{'-'.join(sorted(platforms))}:page={requested_page}"
 
-        # 0. 清除舊快取污染：若即時搜尋，先確保清除任何過時或 0 筆的記憶體快取鍵
-        keys_to_clear = [k for k in _MEMORY_CACHE.keys() if k.startswith(f"{keyword}:")]
-        for k in keys_to_clear:
-            del _MEMORY_CACHE[k]
-
         memory_entry = _MEMORY_CACHE.get(cache_key)
         if memory_entry:
             cached_time, cached_items, total_works, total_pages, loaded_through_page = memory_entry
