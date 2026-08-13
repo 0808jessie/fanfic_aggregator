@@ -6,9 +6,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import main
 from fastapi.testclient import TestClient
-from models import ScrapedFanfic
+from models import PlatformStatus, ScrapedFanfic
 from scrapers.index import SCRAPERS
 from scrapers.penana_scraper import PenanaScraper
+from scrapers.doujin_scraper import DoujinScraper
 from scrapers.waterwriter_scraper import WaterWriterScraper
 
 
@@ -88,6 +89,18 @@ def test_waterwriter_browser_rendered_search_results_are_standardized():
     assert payload["items"][0].url == "https://slashtw.space/forum.php?mod=viewthread&tid=24680"
 
 
+def test_taiwan_adapters_pass_chinese_cp_query_to_public_search_pages():
+    waterwriter = WaterWriterScraper()
+    with patch.object(waterwriter, "_render_public_search_html", return_value=WATERWRITER_RESULTS) as render_waterwriter:
+        waterwriter.scrape("義忍")
+    assert render_waterwriter.call_args.args == ("義忍 富岡義勇 胡蝶忍",)
+
+    doujin = DoujinScraper()
+    with patch.object(doujin, "_render_public_search_html", return_value="") as render_doujin:
+        doujin.scrape("義忍")
+    assert render_doujin.call_args.args == ("義忍 富岡義勇 胡蝶忍",)
+
+
 def test_waterwriter_keeps_each_rendered_discuz_row_title_and_summary_separate():
     items = WaterWriterScraper().parse_results(WATERWRITER_MULTI_RESULTS, "義忍")
 
@@ -149,6 +162,23 @@ def test_partial_platform_warnings_are_silent_when_a_verified_result_exists():
         "total_works": 1,
         "total_pages": 1,
         "warnings": ["[水裡寫字] Triggered Challenge, skipping cleanly"],
+        "platform_statuses": [
+            PlatformStatus(
+                platformId="ao3",
+                label="AO3",
+                status="success",
+                itemCount=1,
+                translatedQuery="fanfiction",
+            ),
+            PlatformStatus(
+                platformId="waterwriter",
+                label="在水裡寫字",
+                status="blocked",
+                itemCount=0,
+                warning="[水裡寫字] Triggered Challenge, skipping cleanly",
+                translatedQuery="fanfiction",
+            ),
+        ],
     }
     with patch("main.parallel_search_platforms", return_value=aggregate), patch("main.save_fanfic_to_db"):
         response = TestClient(main.app).post(
@@ -161,6 +191,10 @@ def test_partial_platform_warnings_are_silent_when_a_verified_result_exists():
     assert body["items"][0]["title"] == "Verified AO3 result"
     assert body.get("warning") is None
     assert body["items"][0].get("warning") is None
+    assert body["platformStatuses"] == [
+        {"platformId": "ao3", "label": "AO3", "status": "success", "itemCount": 1, "warning": None, "translatedQuery": "fanfiction"},
+        {"platformId": "waterwriter", "label": "在水裡寫字", "status": "blocked", "itemCount": 0, "warning": "[水裡寫字] Triggered Challenge, skipping cleanly", "translatedQuery": "fanfiction"},
+    ]
 
 
 def test_taiwan_platforms_are_registered_and_constrained_to_trusted_hosts():

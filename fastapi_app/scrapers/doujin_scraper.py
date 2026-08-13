@@ -12,6 +12,7 @@ from urllib.parse import urlencode, urljoin
 
 from bs4 import BeautifulSoup
 
+from constants.cp_tags import get_keyword_for_platform
 from models import ScrapedFanfic
 from scrapers.base_scraper import BaseScraper
 
@@ -52,8 +53,11 @@ class DoujinScraper(BaseScraper):
             return {"items": [], "total_works": 0, "total_pages": 1}
 
         try:
-            html = self._render_public_search_html(keyword)
-            items = self.parse_results(html, keyword)
+            local_query = get_keyword_for_platform(keyword, "local")
+            html = self._render_public_search_html(local_query)
+            items = self.parse_results(html, local_query)
+            for item in items:
+                item.keyword = keyword
             print(f"[同人誌中心] 成功抓取 {len(items)} 筆")
             if not items:
                 self.last_warning = f"[同人誌中心] No verified public result matched '{keyword}'"
@@ -112,7 +116,7 @@ class DoujinScraper(BaseScraper):
 
     def parse_results(self, html: str, keyword: str) -> list[ScrapedFanfic]:
         soup = BeautifulSoup(html, "html.parser")
-        normalized_keyword = keyword.strip().casefold()
+        query_terms = [term.casefold() for term in keyword.split() if term]
         results: list[ScrapedFanfic] = []
         seen_urls: set[str] = set()
 
@@ -131,7 +135,8 @@ class DoujinScraper(BaseScraper):
                 image = anchor.select_one("img[alt]") or card.select_one("img[alt]")
                 title = image.get("alt", "").strip() if image else ""
             card_text = card.get_text(" ", strip=True)
-            if not title or normalized_keyword not in f"{title} {card_text}".casefold():
+            searchable_text = f"{title} {card_text}".casefold()
+            if not title or (query_terms and not any(term in searchable_text for term in query_terms)):
                 continue
 
             image = anchor.select_one("img[src]") or card.select_one("img[src]")

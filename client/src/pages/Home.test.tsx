@@ -5,7 +5,13 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "./Home";
 
-const mockState = vi.hoisted(() => ({ nextHookId: 0, lastVariables: null as unknown, responseWarning: null as string | null }));
+const mockState = vi.hoisted(() => ({
+  nextHookId: 0,
+  lastVariables: null as unknown,
+  responseWarning: null as string | null,
+  responsePlatformStatuses: [] as unknown[],
+  retryPayload: null as Record<string, unknown> | null,
+}));
 
 vi.mock("sonner", () => ({
   toast: { error: vi.fn() },
@@ -24,7 +30,13 @@ vi.mock("@/lib/trpc", async () => {
               mockState.lastVariables = variables;
               setIsPending(true);
               window.setTimeout(() => {
-                const payload = hookId === 0
+                const retryingWaterwriter = hookId === 0
+                  && Array.isArray((variables as { data?: { platforms?: unknown } } | undefined)?.data?.platforms)
+                  && (variables as { data?: { platforms?: string[] } }).data?.platforms?.length === 1
+                  && (variables as { data?: { platforms?: string[] } }).data?.platforms?.[0] === "waterwriter";
+                const payload = retryingWaterwriter && mockState.retryPayload
+                  ? mockState.retryPayload
+                  : hookId === 0
                   ? {
                       items: [{ title: "PAGE ONE", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/9001", tags: "富岡義勇/胡蝶忍, Post-Canon", relationships: ["富岡義勇/胡蝶忍"], characters: ["富岡義勇", "胡蝶忍"], summary: "", scraped_at: "2026-01-01T00:00:00Z" }],
                       totalWorks: 60,
@@ -34,6 +46,7 @@ vi.mock("@/lib/trpc", async () => {
                       nextPage: 3,
                       hasMore: true,
                       warning: mockState.responseWarning,
+                      platformStatuses: mockState.responsePlatformStatuses,
                     }
                   : {
                       items: [
@@ -67,6 +80,8 @@ beforeEach(() => {
   mockState.nextHookId = 0;
   mockState.lastVariables = null;
   mockState.responseWarning = null;
+  mockState.responsePlatformStatuses = [];
+  mockState.retryPayload = null;
 });
 
 describe("Home pagination interactions", () => {
@@ -102,6 +117,59 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(screen.getByText("PAGE ONE")).toBeTruthy());
     expect(screen.queryByText("[NOTICE]")).toBeNull();
     expect(screen.queryByText(/Triggered Challenge/)).toBeNull();
+  });
+
+  it("keeps a CP alias intact for the backend and retries only a failed source", async () => {
+    mockState.responsePlatformStatuses = [
+      { platformId: "ao3", label: "AO3", status: "success", itemCount: 40, translatedQuery: '"Tomioka Giyuu/Kochou Shinobu" OR "義忍"' },
+      { platformId: "waterwriter", label: "在水裡寫字", status: "cooldown", itemCount: 0, warning: "20 秒冷卻", translatedQuery: "義忍 富岡義勇 胡蝶忍" },
+    ];
+    render(<Home />);
+
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "義忍" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+
+    await waitFor(() => expect(mockState.lastVariables).toEqual({
+      path: "/search",
+      method: "POST",
+      data: { keyword: "義忍", platforms: ["ao3", "lofter", "doujin", "waterwriter", "penana"], page: 1, forceRefresh: false },
+    }));
+    await waitFor(() => expect(screen.getByLabelText("平台連線狀態")).toBeTruthy());
+    expect(screen.getByText("冷卻中")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "重試 在水裡寫字" }));
+    expect(mockState.lastVariables).toEqual({
+      path: "/search",
+      method: "POST",
+      data: { keyword: "義忍", platforms: ["waterwriter"], page: 1, forceRefresh: true },
+    });
+  });
+
+  it("merges a successfully retried platform without discarding other platform results", async () => {
+    mockState.responsePlatformStatuses = [
+      { platformId: "ao3", label: "AO3", status: "success", itemCount: 60, translatedQuery: "義忍" },
+      { platformId: "waterwriter", label: "在水裡寫字", status: "blocked", itemCount: 0, warning: "HTTP 525", translatedQuery: "義忍 富岡義勇 胡蝶忍" },
+    ];
+    mockState.retryPayload = {
+      items: [{ title: "WATERWRITER UPDATE", author: "Author", platform: "在水裡寫字", url: "https://slashtw.space/forum.php?mod=viewthread&tid=9001", tags: "義忍", summary: "Verified result", scraped_at: "2026-01-02T00:00:00Z" }],
+      totalWorks: 25,
+      totalPages: 1,
+      page: 1,
+      loadedThroughPage: 1,
+      nextPage: null,
+      hasMore: false,
+      platformStatuses: [{ platformId: "waterwriter", label: "在水裡寫字", status: "success", itemCount: 25, translatedQuery: "義忍 富岡義勇 胡蝶忍" }],
+    };
+    render(<Home />);
+
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "義忍" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "重試 在水裡寫字" })).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "重試 在水裡寫字" }));
+    await waitFor(() => expect(screen.getByText("WATERWRITER UPDATE")).toBeTruthy());
+    expect(screen.getByText("PAGE ONE")).toBeTruthy();
+    expect(screen.getByText("已連線 · 25 筆")).toBeTruthy();
   });
 });
 

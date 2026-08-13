@@ -8,7 +8,7 @@ from typing import Any
 
 from scrapers.base_scraper import BaseScraper
 from models import ScrapedFanfic
-from constants.cp_tags import CP_TAG_MAP
+from constants.cp_tags import get_keyword_for_platform
 
 try:
     from playwright.sync_api import sync_playwright
@@ -41,6 +41,8 @@ def extract_ao3_tag_metadata(work_element) -> tuple[list[str], list[str], list[s
 
 class AO3Scraper(BaseScraper):
     """Best-effort AO3 public search adapter with canonical query semantics."""
+
+    navigation_timeout_ms = 20000
 
     def __init__(self):
         super().__init__()
@@ -92,6 +94,8 @@ class AO3Scraper(BaseScraper):
         if not trimmed_kw:
             return {"items": [], "total_works": 0, "total_pages": 1}
 
+        ao3_query = get_keyword_for_platform(trimmed_kw, "ao3")
+
         cache_key = f"{trimmed_kw}:page={page}"
         # 強制更新會跳過 Adapter cache；一般 CP 則由 API 的高可信度 TTL 管理。
         bypass_memory_cache = force_refresh
@@ -140,11 +144,11 @@ class AO3Scraper(BaseScraper):
                             print(f"[AO3Scraper Playwright] Waiting {sleep_secs:.2f}s before fetching page {target_page}...")
                             time.sleep(sleep_secs)
 
-                        search_url = self.build_search_url(trimmed_kw, target_page)
+                        search_url = self.build_search_url(ao3_query, target_page)
                         print(f"[AO3Scraper Playwright] Navigating to: {search_url}")
 
                         try:
-                            response = page_obj.goto(search_url, timeout=20000, wait_until="domcontentloaded")
+                            response = page_obj.goto(search_url, timeout=self.navigation_timeout_ms, wait_until="commit")
                             status_code = response.status if response else 200
                             if status_code in (403, 429, 525):
                                 err_msg = f"AO3 HTTP {status_code} on page {target_page}; results may be partial."
@@ -171,21 +175,6 @@ class AO3Scraper(BaseScraper):
 
                         works = soup.select("li.work.blurb")
                         print(f"[AO3Scraper Playwright] Page {target_page}: found {len(works)} work items.")
-
-                        if not works and target_page == 1 and trimmed_kw in CP_TAG_MAP:
-                            fallback_rel = CP_TAG_MAP[trimmed_kw].split("OR")[0].strip(' "')
-                            encoded_rel = urllib.parse.quote(fallback_rel, safe="")
-                            fallback_url = f"https://archiveofourown.org/works/search?work_search%5Brelationship_names%5D={encoded_rel}&commit=Search&page={target_page}"
-                            print(f"[AO3Scraper Playwright] Fallback to relationship search: {fallback_url}")
-                            try:
-                                resp_fb = page_obj.goto(fallback_url, timeout=20000, wait_until="domcontentloaded")
-                                if resp_fb and resp_fb.status == 200:
-                                    page_obj.wait_for_selector("li.work.blurb", timeout=10000)
-                                    soup = BeautifulSoup(page_obj.content(), "html.parser")
-                                    works = soup.select("li.work.blurb")
-                                    print(f"[AO3Scraper Playwright] Fallback found {len(works)} items.")
-                            except Exception as fb_err:
-                                print(f"[AO3Scraper Playwright] Fallback navigation failed: {fb_err}")
 
                         if target_page == page:
                             heading_match = self.extract_total_works_heading(soup)

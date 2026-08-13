@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from constants.cp_tags import CP_TAG_MAP
+from constants.cp_tags import CP_TAG_MAP, MULTI_PLATFORM_CP_MAP, get_keyword_for_platform
 from scrapers.ao3_scraper import AO3Scraper, extract_ao3_tag_metadata
 
 
@@ -13,6 +13,14 @@ def test_cp_tag_map_compound_query():
     assert "Tomioka Giyuu/Kochou Shinobu" in CP_TAG_MAP.get("義忍")
     assert "OR" in CP_TAG_MAP.get("義忍")
     assert "Gojo Satoru/Geto Suguru" in CP_TAG_MAP.get("五夏")
+
+
+def test_cp_query_translator_uses_ao3_and_local_values_without_mutating_free_text():
+    assert MULTI_PLATFORM_CP_MAP["義忍"].ao3_query == '"Tomioka Giyuu/Kochou Shinobu" OR "義忍"'
+    assert get_keyword_for_platform("義忍", "ao3") == '"Tomioka Giyuu/Kochou Shinobu" OR "義忍"'
+    assert get_keyword_for_platform("義忍", "local") == "義忍 富岡義勇 胡蝶忍"
+    assert get_keyword_for_platform("自訂關鍵字", "ao3") == "自訂關鍵字"
+    assert get_keyword_for_platform("自訂關鍵字", "local") == "自訂關鍵字"
 
 
 def test_ao3_scraper_methods_exist():

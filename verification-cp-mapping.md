@@ -23,3 +23,11 @@
 
 ## 2026-08-12 義忍與 Fallback 驗證紀錄
 預覽頁可正常輸入「義忍」並送出搜尋；搜尋送出後畫面進入 `SCANNING ARCHIVES...`。後端日誌與測試確認 AO3 URL 已採用 `work_search[relationship_names]=Tomioka Giyuu/Kochou Shinobu`；當首輪查詢未命中或遇防護時，會自動觸發 `_fallback_query_search`，確保系統穩定回應。
+
+## 2026-08-13 多平台轉譯與連線狀態驗證
+
+本次將 CP 轉譯改為平台感知模型。輸入「義忍」時，AO3 會收到 `"Tomioka Giyuu/Kochou Shinobu" OR "義忍"`，而在水裡寫字與同人誌中心會各自收到 `義忍 富岡義勇 胡蝶忍`。每個 Adapter 的回應都會含有 `platformId`、`status`、`itemCount` 與 `translatedQuery`，前端可僅對 `blocked`、`cooldown` 或 `error` 來源顯示「重試」操作。
+
+全套 Python 測試（38 項）、Vitest（31 項）與 TypeScript 型別檢查均已通過。實際以義忍對 AO3、同人誌中心及在水裡寫字發送公開搜尋時，服務正確回傳了每個平台的轉譯查詢字串與安全的 `error` 狀態；沒有建立任何佔位或未驗證作品資料。
+
+同日的獨立瀏覽器檢查顯示 AO3 的上游 Cloudflare 頁面回傳 HTTP 525「SSL handshake failed」，並明確標示瀏覽器與 Cloudflare 正常、來源主機錯誤。因此，當次實際 AO3 結果無法作為成功資料驗證；此為當下外部主機可用性限制，狀態列與單一來源重試正是用來呈現並處理此類情況。待 AO3 恢復可用後，需再以同一實際義忍請求確認 live 結果。

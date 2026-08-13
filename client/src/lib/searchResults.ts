@@ -18,6 +18,17 @@ export type SearchResult = {
   warning?: string;
 };
 
+export type PlatformStatusKind = "success" | "blocked" | "cooldown" | "empty" | "error";
+
+export type PlatformStatus = {
+  platformId: string;
+  label: string;
+  status: PlatformStatusKind;
+  itemCount: number;
+  warning?: string | null;
+  translatedQuery: string;
+};
+
 export type WordCountFilter = "all" | "short" | "medium" | "long";
 export type CompletionFilter = "all" | "complete" | "ongoing";
 export type ResultSortMode = "relevance" | "updated" | "words";
@@ -75,6 +86,40 @@ export function extractSearchWarning(payload: unknown): string | null {
   if (!payload || typeof payload !== "object" || !("warning" in payload)) return null;
   const warning = (payload as { warning?: unknown }).warning;
   return typeof warning === "string" && warning.trim() ? warning : null;
+}
+
+export function extractPlatformStatuses(payload: unknown): PlatformStatus[] {
+  if (!payload || typeof payload !== "object") return [];
+  const candidate = (payload as { platformStatuses?: unknown }).platformStatuses;
+  if (!Array.isArray(candidate)) return [];
+
+  const validStatuses = new Set<PlatformStatusKind>(["success", "blocked", "cooldown", "empty", "error"]);
+  return candidate.flatMap((value) => {
+    if (!value || typeof value !== "object") return [];
+    const status = value as Partial<PlatformStatus>;
+    if (
+      typeof status.platformId !== "string"
+      || typeof status.label !== "string"
+      || typeof status.status !== "string"
+      || !validStatuses.has(status.status as PlatformStatusKind)
+      || typeof status.translatedQuery !== "string"
+    ) {
+      return [];
+    }
+    const count = Number(status.itemCount);
+    return [{
+      platformId: status.platformId,
+      label: status.label,
+      status: status.status as PlatformStatusKind,
+      itemCount: Number.isFinite(count) ? Math.max(0, count) : 0,
+      warning: typeof status.warning === "string" ? status.warning : null,
+      translatedQuery: status.translatedQuery,
+    }];
+  });
+}
+
+export function isPlatformRetryable(status: PlatformStatus): boolean {
+  return status.status === "blocked" || status.status === "cooldown" || status.status === "error";
 }
 
 export type SearchPagination = {

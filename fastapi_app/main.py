@@ -178,6 +178,7 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
         if memory_entry:
             cached_time, cached_items, total_works, total_pages, loaded_through_page = memory_entry[:5]
             entry_ttl = memory_entry[5] if len(memory_entry) > 5 else NORMAL_CONFIDENCE_CACHE_TTL
+            cached_platform_statuses = memory_entry[6] if len(memory_entry) > 6 else []
             if datetime.utcnow() - cached_time < entry_ttl and cached_items:
                 print(f"[SearchAPI] Memory cache hit for '{cache_key}'")
                 for item in cached_items:
@@ -194,6 +195,7 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
                     loadedThroughPage=loaded_through_page,
                     nextPage=loaded_through_page + 1 if has_more else None,
                     hasMore=has_more,
+                    platformStatuses=cached_platform_statuses,
                 )
             if cache_key in _MEMORY_CACHE:
                 del _MEMORY_CACHE[cache_key]
@@ -210,6 +212,7 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
         ], keyword)
         total_works = int(aggregate.get("total_works", 0) or 0)
         total_pages = int(aggregate.get("total_pages", 0) or 0)
+        platform_statuses = aggregate.get("platform_statuses", [])
         any_success = bool(aggregate.get("any_success")) and bool(fresh_results)
         platform_warnings = [str(message) for message in aggregate.get("warnings", []) if message]
         # A best-effort platform being blocked must not interrupt results from an
@@ -243,6 +246,7 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
                 total_pages,
                 loaded_through_page,
                 cache_ttl_for(keyword, len(final_items)),
+                platform_statuses,
             )
             has_more = loaded_through_page < total_pages
             return SearchResponse(
@@ -255,6 +259,7 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
                 loadedThroughPage=loaded_through_page,
                 nextPage=loaded_through_page + 1 if has_more else None,
                 hasMore=has_more,
+                platformStatuses=platform_statuses,
             )
 
         # 4. 若即時抓取為 0 筆或失敗，絕對不寫入快取，且對 CP 映射關鍵字不使用 stale SQLite cache 避免污染
@@ -276,6 +281,7 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
                 if min(requested_page + (1 if requested_page == 1 else 0), stale_total_pages) < stale_total_pages
                 else None,
                 hasMore=min(requested_page + (1 if requested_page == 1 else 0), stale_total_pages) < stale_total_pages,
+                platformStatuses=platform_statuses,
             )
 
         # 5. 回傳結構化未命中/限流狀態
@@ -293,6 +299,7 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
             success=False,
             isRateLimited=is_rate_limited,
             page=requested_page,
+            platformStatuses=platform_statuses,
         )
 
     except Exception as error:

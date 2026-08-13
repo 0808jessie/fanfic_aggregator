@@ -1,9 +1,51 @@
+from dataclasses import dataclass
+from typing import Literal
+
+
+@dataclass(frozen=True)
+class CPTagConfig:
+    """Dedicated CP search strings for AO3 and Taiwan platform indexes."""
+
+    ao3_query: str
+    local_query: str
+
+
+MULTI_PLATFORM_CP_MAP: dict[str, CPTagConfig] = {
+    "義忍": CPTagConfig(
+        ao3_query='"Tomioka Giyuu/Kochou Shinobu" OR "義忍"',
+        local_query="義忍 富岡義勇 胡蝶忍",
+    ),
+    "五夏": CPTagConfig(
+        ao3_query='"Gojo Satoru/Geto Suguru" OR "五夏"',
+        local_query="五夏 五條悟 夏油傑",
+    ),
+    "夏五": CPTagConfig(
+        ao3_query='"Geto Suguru/Gojo Satoru" OR "夏五"',
+        local_query="夏五 夏油傑 五條悟",
+    ),
+    "勝出": CPTagConfig(
+        ao3_query='"Bakugou Katsuki/Midoriya Izuku" OR "勝出"',
+        local_query="勝出 爆豪勝己 綠谷出久",
+    ),
+    "轟出": CPTagConfig(
+        ao3_query='"Todoroki Shouto/Midoriya Izuku" OR "轟出"',
+        local_query="轟出 轟焦凍 綠谷出久",
+    ),
+}
+
+
+def get_keyword_for_platform(keyword: str, platform_type: Literal["ao3", "local"]) -> str:
+    """Translate a known CP alias or preserve a free-text search unchanged."""
+    normalized_keyword = keyword.strip()
+    config = MULTI_PLATFORM_CP_MAP.get(normalized_keyword)
+    if config is None:
+        return normalized_keyword
+    return config.ao3_query if platform_type == "ao3" else config.local_query
+
+
+# Existing cache and relevance paths intentionally retain a lightweight AO3 map.
 CP_TAG_MAP: dict[str, str] = {
-    "義忍": '"Tomioka Giyuu/Kochou Shinobu" OR "義忍" OR ("Tomioka Giyuu" AND "Kochou Shinobu")',
-    "五夏": '"Gojo Satoru/Geto Suguru" OR "五夏" OR ("Gojo Satoru" AND "Geto Suguru")',
-    "夏五": '"Geto Suguru/Gojo Satoru" OR "夏五" OR ("Geto Suguru" AND "Gojo Satoru")',
-    "勝出": '"Bakugou Katsuki/Midoriya Izuku" OR "勝出" OR ("Bakugou Katsuki" AND "Midoriya Izuku")',
-    "轟出": '"Todoroki Shouto/Midoriya Izuku" OR "轟出" OR ("Todoroki Shouto" AND "Midoriya Izuku")',
+    alias: config.ao3_query for alias, config in MULTI_PLATFORM_CP_MAP.items()
 }
 
 # 這些簡稱在 AO3 上容易受到繁簡字、舊 mapping 或暫時性上游防護影響。

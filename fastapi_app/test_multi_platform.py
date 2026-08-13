@@ -44,6 +44,18 @@ def test_parallel_registry_keeps_successful_platform_when_another_fails():
     assert aggregate["total_works"] == 100
     assert aggregate["total_pages"] == 5
     assert any("[Lofter] Request blocked" in warning for warning in aggregate["warnings"])
+    statuses = {status.platformId: status for status in aggregate["platform_statuses"]}
+    assert statuses["ao3"].status == "success"
+    assert statuses["ao3"].itemCount == 100
+    assert statuses["lofter"].status == "blocked"
+
+
+def test_platform_status_translates_cp_query_and_detects_cooldown():
+    assert adapter_index.translated_query_for_platform("ao3", "義忍") == '"Tomioka Giyuu/Kochou Shinobu" OR "義忍"'
+    assert adapter_index.translated_query_for_platform("waterwriter", "義忍") == "義忍 富岡義勇 胡蝶忍"
+    assert adapter_index.classify_platform_status(0, "[在水裡寫字] Blocked by Rate Limit, skipping cleanly") == "cooldown"
+    assert adapter_index.classify_platform_status(0, "[同人誌中心] Triggered verification page") == "blocked"
+    assert adapter_index.classify_platform_status(0, "[同人誌中心] No verified public result matched '義忍'") == "empty"
 
 
 class FakeLofterSuccess:

@@ -3,6 +3,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+
 class ScrapedFanfic(BaseModel):
     """Canonical metadata shape shared by every platform adapter, including source tracking."""
 
@@ -35,6 +36,17 @@ class SearchQuery(BaseModel):
     forceRefresh: bool = False
 
 
+class PlatformStatus(BaseModel):
+    """Verified per-platform outcome for one isolated search attempt."""
+
+    platformId: str
+    label: str
+    status: Literal["success", "blocked", "cooldown", "empty", "error"]
+    itemCount: int = Field(default=0, ge=0)
+    warning: Optional[str] = None
+    translatedQuery: str
+
+
 class SearchResponse(BaseModel):
     """Machine-readable search status plus only verified work records."""
 
@@ -49,3 +61,4 @@ class SearchResponse(BaseModel):
     loadedThroughPage: int = 0
     nextPage: Optional[int] = None
     hasMore: bool = False
+    platformStatuses: list[PlatformStatus] = Field(default_factory=list)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendUniqueResults, extractIsRateLimited, extractSearchPagination, extractSearchWarning, filterAndSortResults, getLoadMoreLabel, isDisplayableResult, normalizeResults, parseWordCount } from "./searchResults";
+import { appendUniqueResults, extractIsRateLimited, extractPlatformStatuses, extractSearchPagination, extractSearchWarning, filterAndSortResults, getLoadMoreLabel, isDisplayableResult, isPlatformRetryable, normalizeResults, parseWordCount } from "./searchResults";
 
 const verifiedAo3Result = {
   title: "Verified work",
@@ -35,6 +35,21 @@ describe("search result safety contract", () => {
     expect(normalizeResults(payload)).toEqual([]);
     expect(extractSearchWarning(payload)).toContain("伺服器稍微休息中");
     expect(extractIsRateLimited(payload)).toBe(true);
+  });
+
+  it("extracts verified platform statuses and limits retry to failed sources", () => {
+    const statuses = extractPlatformStatuses({
+      platformStatuses: [
+        { platformId: "ao3", label: "AO3", status: "success", itemCount: 40, translatedQuery: '"Tomioka Giyuu/Kochou Shinobu" OR "義忍"' },
+        { platformId: "waterwriter", label: "在水裡寫字", status: "cooldown", itemCount: 0, warning: "20 秒冷卻", translatedQuery: "義忍 富岡義勇 胡蝶忍" },
+        { platformId: "invalid", label: "Invalid", status: "unknown", itemCount: 0, translatedQuery: "x" },
+      ],
+    });
+
+    expect(statuses).toHaveLength(2);
+    expect(statuses[0].itemCount).toBe(40);
+    expect(isPlatformRetryable(statuses[0])).toBe(false);
+    expect(isPlatformRetryable(statuses[1])).toBe(true);
   });
 
   it("extracts pagination metadata for the initial two-page response", () => {

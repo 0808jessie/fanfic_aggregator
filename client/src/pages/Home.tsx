@@ -25,15 +25,18 @@ import { trpc } from "@/lib/trpc";
 import {
   appendUniqueResults,
   extractIsRateLimited,
+  extractPlatformStatuses,
   extractSearchPagination,
   extractSearchWarning,
   filterAndSortResults,
   getLoadMoreLabel,
+  isPlatformRetryable,
   normalizeResults,
   type CompletionFilter,
   type ResultSortMode,
   type SearchPagination,
   type SearchResult,
+  type PlatformStatus,
   type WordCountFilter,
 } from "@/lib/searchResults";
 import { Badge } from "@/components/ui/badge";
@@ -99,6 +102,7 @@ export default function Home() {
   const [activeQuery, setActiveQuery] = useState("");
   const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformId[]>(["ao3", "lofter", "doujin", "waterwriter", "penana"]);
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [platformStatuses, setPlatformStatuses] = useState<PlatformStatus[]>([]);
   const [activeView, setActiveView] = useState<"search" | "bookmarks">("search");
   const [bookmarks, setBookmarks] = useState<BookmarkRecord[]>([]);
   const [bookmarkTarget, setBookmarkTarget] = useState<SearchResult | null>(null);
@@ -115,6 +119,7 @@ export default function Home() {
   const [elapsedMs, setElapsedMs] = useState(0);
   const [completedElapsedMs, setCompletedElapsedMs] = useState<number | null>(null);
   const searchStartedAt = useRef<number | null>(null);
+  const retryingPlatformRef = useRef<PlatformId | null>(null);
   const [pagination, setPagination] = useState<SearchPagination>({
     totalWorks: 0,
     totalPages: 0,
@@ -129,9 +134,26 @@ export default function Home() {
       const isLimited = extractIsRateLimited(payload);
       const warningMsg = extractSearchWarning(payload);
       const incoming = normalizeResults(payload);
-      setResults(incoming);
-      setPagination(extractSearchPagination(payload));
-      setSearchWarning(incoming.length ? null : warningMsg);
+      const incomingStatuses = extractPlatformStatuses(payload);
+      const retryingPlatform = retryingPlatformRef.current;
+      setPlatformStatuses((current) => {
+        if (!retryingPlatform) return incomingStatuses;
+        const retriedStatus = incomingStatuses.find((status) => status.platformId === retryingPlatform);
+        return retriedStatus
+          ? current.map((status) => status.platformId === retryingPlatform ? retriedStatus : status)
+          : current;
+      });
+      retryingPlatformRef.current = null;
+      if (retryingPlatform) {
+        setResults((current) => appendUniqueResults(
+          current.filter((result) => platformMeta(result.platform).id !== retryingPlatform),
+          incoming,
+        ));
+      } else {
+        setResults(incoming);
+        setPagination(extractSearchPagination(payload));
+        setSearchWarning(incoming.length ? null : warningMsg);
+      }
       setHasSearched(true);
       if (searchStartedAt.current !== null) {
         setCompletedElapsedMs(performance.now() - searchStartedAt.current);
@@ -145,9 +167,18 @@ export default function Home() {
       }
     },
     onError: (error) => {
+      const retryingPlatform = retryingPlatformRef.current;
       setHasSearched(true);
-      setResults([]);
-      setPagination({ totalWorks: 0, totalPages: 0, page: 1, loadedThroughPage: 0, nextPage: null, hasMore: false });
+      if (retryingPlatform) {
+        setPlatformStatuses((current) => current.map((status) => status.platformId === retryingPlatform
+          ? { ...status, status: "error", itemCount: 0, warning: error.message || "搜尋服務暫時無法連線" }
+          : status));
+      } else {
+        setResults([]);
+        setPlatformStatuses([]);
+        setPagination({ totalWorks: 0, totalPages: 0, page: 1, loadedThroughPage: 0, nextPage: null, hasMore: false });
+      }
+      retryingPlatformRef.current = null;
       setSearchWarning(error.message || "搜尋服務暫時無法連線，請確認 FastAPI 服務已啟動。");
       if (searchStartedAt.current !== null) {
         setCompletedElapsedMs(performance.now() - searchStartedAt.current);
@@ -163,6 +194,7 @@ export default function Home() {
     onSuccess: (payload) => {
       const incoming = normalizeResults(payload);
       setResults((current) => appendUniqueResults(current, incoming));
+      setPlatformStatuses(extractPlatformStatuses(payload));
       setPagination(extractSearchPagination(payload));
       const warningMsg = extractSearchWarning(payload);
       if (warningMsg) setSearchWarning(warningMsg);
@@ -186,6 +218,7 @@ export default function Home() {
     }),
     [results, activeQuery, keyword, wordCountFilter, completionFilter, sortMode],
   );
+  const isRetryingSinglePlatform = searchMutation.isPending && Boolean(retryingPlatformRef.current);
 
   useEffect(() => {
     setBookmarks(loadBookmarks());
@@ -216,21 +249,21 @@ export default function Home() {
     });
   };
 
-  const runSearch = (forceRefresh: boolean, requestedKeyword?: string) => {
+  const runSearch = (forceRefresh: boolean, requestedKeyword?: string, platformOverride?: PlatformId[]) => {
     const trimmedKeyword = (requestedKeyword ?? keyword).trim();
     if (!trimmedKeyword) {
       toast.error("請先輸入搜尋關鍵字");
       return;
     }
-    const mappedTag = cpMappings.find((mapping) => mapping.alias === trimmedKeyword)?.tag;
-    const backendKeyword = mappedTag || trimmedKeyword;
-    if (mappedTag) showInfoToast(`已套用個人 CP 詞庫：${trimmedKeyword} → ${mappedTag}`);
-    setActiveQuery(backendKeyword);
+    const retryPlatform = platformOverride?.length === 1 ? platformOverride[0] : null;
+    retryingPlatformRef.current = retryPlatform;
+    setActiveQuery(trimmedKeyword);
     const nextHistory = recordSearch(searchHistory, trimmedKeyword);
     setSearchHistory(nextHistory);
     persistSearchHistory(nextHistory);
     setActiveView("search");
     setSearchWarning(null);
+    if (!retryPlatform) setPlatformStatuses([]);
     setElapsedMs(0);
     setCompletedElapsedMs(null);
     searchStartedAt.current = performance.now();
@@ -238,7 +271,7 @@ export default function Home() {
     searchMutation.mutate({
       path: "/search",
       method: "POST",
-      data: { keyword: backendKeyword, platforms: selectedPlatforms, page: 1, forceRefresh },
+      data: { keyword: trimmedKeyword, platforms: platformOverride ?? selectedPlatforms, page: 1, forceRefresh },
     });
   };
 
@@ -373,6 +406,54 @@ export default function Home() {
 
         <section className="mt-8 flex flex-col gap-3 border-b border-[#10151b]/15 pb-5 sm:flex-row sm:items-end sm:justify-between"><div><div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[#75838b]">{activeView === "bookmarks" ? "PERSONAL READING LIBRARY" : "SEARCH OUTPUT"}</div><h2 className="mt-2 text-3xl font-black tracking-[-0.07em] sm:text-4xl">{activeView === "bookmarks" ? `${bookmarks.length.toLocaleString()} SAVED STORIES` : searchMutation.isPending ? "SCANNING ARCHIVES..." : hasSearched ? pagination.totalWorks > 0 ? `${pagination.totalWorks.toLocaleString()} STORIES FOUND` : "NO VERIFIED STORIES FOUND" : "READY TO EXPLORE"}</h2>{activeView === "search" && hasSearched && pagination.totalWorks > 0 && <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#75838b]"><span>LOADED THROUGH PAGE {pagination.loadedThroughPage} / {pagination.totalPages}</span><span>顯示 {displayedResults.length} / {results.length} 筆</span>{completedElapsedMs !== null && <span className="text-[#197b75]">已於 {(completedElapsedMs / 1000).toFixed(1)} 秒內完成查詢</span>}</div>}</div><div className="flex items-center gap-4 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#6b7982]"><span>{activeView === "bookmarks" ? "LOCAL STORAGE / PRIVATE TO THIS DEVICE" : `ADAPTERS: ${selectedLabels}`}</span><span className="hidden h-4 w-px bg-[#10151b]/20 sm:block" />{activeView === "search" && <span className="text-[#45b9b2]">CACHE: CP 2H / NORMAL 30M / LOW 5M</span>}</div></section>
 
+        {activeView === "search" && hasSearched && platformStatuses.length > 0 && (
+          <section aria-label="平台連線狀態" className="mt-5 border border-[#10151b]/15 bg-white/60 p-4 sm:p-5">
+            <div className="mb-4 flex flex-col gap-1 border-b border-[#10151b]/10 pb-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="font-mono text-[10px] font-bold uppercase tracking-[0.17em] text-[#58666e]">ADAPTER CONNECTIONS / 本次搜尋來源</div>
+              <span className="font-mono text-[9px] font-bold tracking-[0.12em] text-[#8a969c]">僅重試受阻、冷卻或連線失敗的來源</span>
+            </div>
+            <div className="grid gap-2 lg:grid-cols-5">
+              {platformStatuses.map((status) => {
+                const isSuccess = status.status === "success";
+                const isCooldown = status.status === "cooldown";
+                const isBlocked = status.status === "blocked";
+                const tone = isSuccess
+                  ? "border-[#80cfc8] bg-[#e4f8f4] text-[#176d61]"
+                  : isCooldown
+                    ? "border-[#efd59a] bg-[#fff7df] text-[#8d6b20]"
+                    : isBlocked || status.status === "error"
+                      ? "border-[#efb4c4] bg-[#fff0f4] text-[#913a59]"
+                      : "border-[#cfd6d8] bg-[#f4f6f5] text-[#65737a]";
+                const stateLabel = isSuccess ? "已連線" : isCooldown ? "冷卻中" : isBlocked ? "受阻" : status.status === "error" ? "連線失敗" : "無結果";
+                return (
+                  <div key={status.platformId} className={`min-w-0 border p-3 ${tone}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-mono text-[10px] font-bold uppercase tracking-[0.14em]">{status.label}</div>
+                        <div className="mt-1 font-mono text-[9px] font-bold tracking-[0.1em]">{stateLabel}{isSuccess ? ` · ${status.itemCount} 筆` : ""}</div>
+                      </div>
+                      {isPlatformRetryable(status) && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={searchMutation.isPending}
+                          aria-label={`重試 ${status.label}`}
+                          onClick={() => runSearch(true, activeQuery || keyword, [status.platformId as PlatformId])}
+                          className="h-7 shrink-0 rounded-none border border-current px-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em] hover:bg-white/70"
+                        >
+                          <RotateCw className={`mr-1 h-3 w-3 ${searchMutation.isPending ? "animate-spin" : ""}`} />重試
+                        </Button>
+                      )}
+                    </div>
+                    <div className="mt-2 truncate font-mono text-[9px] opacity-70" title={status.translatedQuery}>QUERY / {status.translatedQuery}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
         <div className="mt-8">
           {activeView === "bookmarks" ? (
             <SavedBookmarksGrid
@@ -407,9 +488,9 @@ export default function Home() {
               </div>
             </div>
           )}
-          {searchMutation.isPending && <div className="grid gap-4 md:grid-cols-2">{[1, 2, 3, 4].map((item) => <div key={item} className="h-64 animate-pulse border border-[#10151b]/10 bg-white/55" />)}</div>}
-          {!searchMutation.isPending && results.length > 0 && displayedResults.length === 0 && <div className="border border-dashed border-[#10151b]/25 bg-white/45 px-6 py-12 text-center"><div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#e27d9d]">NO FILTER MATCH</div><p className="mt-3 text-sm text-[#66757d]">目前沒有作品符合這組前端篩選條件；可調整字數、完結狀態或排序方式。</p></div>}
-          {!searchMutation.isPending && results.length > 0 && (
+          {searchMutation.isPending && !isRetryingSinglePlatform && <div className="grid gap-4 md:grid-cols-2">{[1, 2, 3, 4].map((item) => <div key={item} className="h-64 animate-pulse border border-[#10151b]/10 bg-white/55" />)}</div>}
+          {(!searchMutation.isPending || isRetryingSinglePlatform) && results.length > 0 && displayedResults.length === 0 && <div className="border border-dashed border-[#10151b]/25 bg-white/45 px-6 py-12 text-center"><div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#e27d9d]">NO FILTER MATCH</div><p className="mt-3 text-sm text-[#66757d]">目前沒有作品符合這組前端篩選條件；可調整字數、完結狀態或排序方式。</p></div>}
+          {(!searchMutation.isPending || isRetryingSinglePlatform) && results.length > 0 && (
             <div className="space-y-6">
               {searchWarning && (
                 <div className="border border-[#e27d9d]/40 bg-[#fff5f7] p-4 font-mono text-xs text-[#8b3e59]">

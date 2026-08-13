@@ -13,6 +13,7 @@ from urllib.parse import urlencode, urljoin
 
 from bs4 import BeautifulSoup
 
+from constants.cp_tags import get_keyword_for_platform
 from models import ScrapedFanfic
 from scrapers.base_scraper import BaseScraper
 
@@ -54,8 +55,11 @@ class WaterWriterScraper(BaseScraper):
             return {"items": [], "total_works": 0, "total_pages": 1}
 
         try:
-            html = self._render_public_search_html(keyword)
-            items = self.parse_results(html, keyword)
+            local_query = get_keyword_for_platform(keyword, "local")
+            html = self._render_public_search_html(local_query)
+            items = self.parse_results(html, local_query)
+            for item in items:
+                item.keyword = keyword
             print(f"[在水裡寫字] 成功抓取 {len(items)} 筆")
             if not items:
                 self.last_warning = f"[在水裡寫字] No verified public result matched '{keyword}'"
@@ -144,7 +148,9 @@ class WaterWriterScraper(BaseScraper):
             card = anchor.find_parent("li") or anchor.find_parent(["dl", "article", "div"]) or anchor
             title = anchor.get_text(" ", strip=True)
             card_text = card.get_text(" ", strip=True)
-            if not title or keyword.casefold() not in f"{title} {card_text}".casefold():
+            searchable_text = f"{title} {card_text}".casefold()
+            query_terms = [term.casefold() for term in keyword.split() if term]
+            if not title or (query_terms and not any(term in searchable_text for term in query_terms)):
                 continue
 
             author_node = card.select_one(".xg1 a[href*='mod=space'], .author a, a[href*='mod=space']")
