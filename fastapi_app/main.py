@@ -5,11 +5,11 @@ from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from .config import settings
-from .database import Fanfic, SessionLocal
-from .models import ScrapedFanfic, SearchQuery, SearchResponse
-from .scrapers.cp_tags import CP_TAG_MAP
-from .scrapers.index import SCRAPERS, parallel_search_platforms
+from config import settings
+from database import Fanfic, SessionLocal
+from models import ScrapedFanfic, SearchQuery, SearchResponse
+from constants.cp_tags import CP_TAG_MAP
+from scrapers.index import SCRAPERS, parallel_search_platforms
 
 app = FastAPI(title="Fanfic Atlas Search API", version="0.1.4")
 CACHE_TTL = timedelta(seconds=settings.cache_ttl_seconds)

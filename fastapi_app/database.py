@@ -4,7 +4,7 @@ from pathlib import Path
 from sqlalchemy import Column, DateTime, Integer, String, create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-from .config import settings
+from config import settings
 
 DATABASE_PATH = settings.database_path
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
