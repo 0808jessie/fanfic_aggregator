@@ -7,6 +7,7 @@ into a result card.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from urllib.parse import urlencode, urljoin
 
@@ -56,12 +57,13 @@ class DoujinScraper(BaseScraper):
             local_query = get_keyword_for_platform(keyword, "local")
             html = self._render_public_search_html(local_query)
             items = self.parse_results(html, local_query)
+            total_works = self.extract_total_works(html) or len(items)
             for item in items:
                 item.keyword = keyword
             print(f"[同人誌中心] 成功抓取 {len(items)} 筆")
             if not items:
                 self.last_warning = f"[同人誌中心] No verified public result matched '{keyword}'"
-            return {"items": items, "total_works": len(items), "total_pages": 1}
+            return {"items": items, "total_works": total_works, "total_pages": 1}
         except _PublicListingUnavailable as error:
             self.last_warning = f"[同人誌中心] {error}"
             print(self.last_warning)
@@ -162,3 +164,23 @@ class DoujinScraper(BaseScraper):
             )
             seen_urls.add(url)
         return results
+
+    @staticmethod
+    def extract_total_works(html: str) -> int | None:
+        """Prefer a verified search-header or paginator total over rendered cards."""
+        soup = BeautifulSoup(html, "html.parser")
+        result_nodes = soup.select(
+            ".search_result_info, .search-results-info, .search-result-info, "
+            ".pagination, .pager, [class*='search'][class*='info']"
+        )
+        candidate_text = " ".join(node.get_text(" ", strip=True) for node in result_nodes)
+        patterns = (
+            r"(?:共|總計)\s*([\d,]+)\s*(?:本|筆|件|項|部|作品|結果)",
+            r"找到\s*([\d,]+)\s*(?:本|筆|件|項|部|作品|結果)",
+            r"搜尋結果\s*(?:共)?\s*([\d,]+)\s*(?:本|筆|件|項|部|作品|結果)",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, candidate_text, re.IGNORECASE)
+            if match:
+                return int(match.group(1).replace(",", ""))
+        return None

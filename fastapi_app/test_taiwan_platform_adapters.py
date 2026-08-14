@@ -78,6 +78,7 @@ def test_waterwriter_challenge_markers_are_isolated_without_creating_results():
     assert WaterWriterScraper._is_search_cooldown_page("Search is too frequent")
     assert not WaterWriterScraper._is_search_cooldown_page(WATERWRITER_RESULTS)
     assert "srchtxt=%E7%BE%A9%E5%BF%8D" in WaterWriterScraper.build_search_url("義忍")
+    assert "srchfid=all" in WaterWriterScraper.build_search_url("義忍")
 
 
 def test_waterwriter_browser_rendered_search_results_are_standardized():
@@ -87,6 +88,21 @@ def test_waterwriter_browser_rendered_search_results_are_standardized():
 
     assert payload["total_works"] == 1
     assert payload["items"][0].url == "https://slashtw.space/forum.php?mod=viewthread&tid=24680"
+
+
+def test_taiwan_adapters_prefer_explicit_page_totals_over_rendered_card_counts():
+    waterwriter_html = WATERWRITER_RESULTS + '<div id="ct">共檢索到 1,234 篇主題</div>'
+    scraper = WaterWriterScraper()
+    with patch.object(scraper, "_render_public_search_html", return_value=waterwriter_html):
+        payload = scraper.scrape("義忍")
+
+    assert payload["total_works"] == 1234
+    assert WaterWriterScraper.extract_total_works(waterwriter_html) == 1234
+    assert WaterWriterScraper.extract_total_works('結果: 找到 「義忍 富岡義勇 胡蝶忍」 相關內容 1 個') == 1
+
+    doujin_html = '<div class="search_result_info">搜尋結果共 456 本作品</div>'
+    assert DoujinScraper.extract_total_works(doujin_html) == 456
+    assert "q=%E7%BE%A9%E5%BF%8D" in DoujinScraper.build_search_url("義忍")
 
 
 def test_taiwan_adapters_pass_chinese_cp_query_to_public_search_pages():

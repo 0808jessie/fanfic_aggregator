@@ -43,6 +43,12 @@ class AO3Scraper(BaseScraper):
     """Best-effort AO3 public search adapter with canonical query semantics."""
 
     navigation_timeout_ms = 20000
+    adult_content_cookie = {
+        "name": "view_adult",
+        "value": "true",
+        "domain": "archiveofourown.org",
+        "path": "/",
+    }
 
     def __init__(self):
         super().__init__()
@@ -58,7 +64,11 @@ class AO3Scraper(BaseScraper):
         ``commit=Search&work_search[query]=…``. Pagination is the sole optional
         extension and is added only after the user asks for a later page.
         """
-        parameters = [("commit", "Search"), ("work_search[query]", keyword)]
+        parameters = [
+            ("commit", "Search"),
+            ("work_search[query]", keyword),
+            ("with_real_author_name", "1"),
+        ]
         if page > 1:
             parameters.append(("page", str(page)))
         return f"https://archiveofourown.org/works/search?{urllib.parse.urlencode(parameters)}"
@@ -135,6 +145,9 @@ class AO3Scraper(BaseScraper):
                     locale="zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
                     viewport={"width": 1280, "height": 800},
                 )
+                # AO3's public preference cookie includes mature works in a
+                # search result instead of silently hiding them from totals.
+                context.add_cookies([self.adult_content_cookie])
                 page_obj = context.new_page()
 
                 try:

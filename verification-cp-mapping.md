@@ -35,3 +35,17 @@
 ### 2026-08-13 AO3 恢復後的實際成功驗證
 
 AO3 公開搜尋頁恢復後，瀏覽器可顯示 `47 Found`。隨即以 FastAPI 對 `keyword="義忍"`、`platforms=["ao3"]`、`forceRefresh=true` 執行實測，回傳 `source="live"`、`success=true`、`totalWorks=47`、`platformStatuses[0].status="success"`、`itemCount=47`，且 `translatedQuery` 為 `"Tomioka Giyuu/Kochou Shinobu" OR "義忍"`。回應包含可驗證的 AO3 作品 URL，例如 `https://archiveofourown.org/works/69215346`；因此可確認外部主機恢復後，原始 CP 別名、AO3 OR 查詢、官方總筆數與平台狀態回傳的整條流程均正常。
+
+### 2026-08-13 AO3 成人內容視圖與總數比對
+
+最新 Adapter 會加入 `view_adult=true` Cookie 與 `with_real_author_name=1`，但不加入語言或完結限制。對同一義忍 OR 查詢，AO3 官方頁面 heading 顯示 `47 Found`；FastAPI 強制更新後也回傳 `totalWorks=47`，因此首頁來源 Badge 與 STORIES FOUND 會使用官網明示的總數，而不是僅以本次已渲染的前兩頁卡片數量計算。
+
+### 2026-08-13 在水裡寫字全站總數比對
+
+以 `srchtxt=義忍 富岡義勇 胡蝶忍`、`searchsubmit=yes` 與 `srchfid=all` 開啟公開 Discuz 搜尋頁時，網站將請求導向結果頁並顯示「找到『義忍 富岡義勇 胡蝶忍』相關內容 1 個」。Adapter 已同時支援此實際格式與「共檢索到 X 篇主題」格式，並優先回傳頁面明示總數，而非將目前畫面解析到的卡片數量誤當作全站總數。
+
+FastAPI 強制更新同一在水裡寫字搜尋後回傳 `source="live"`、`totalWorks=1` 與 `platformStatuses[0].itemCount=1`，並包含可驗證的公開討論串 `tid=85140`，與 Discuz 公開頁的明示總數一致。同人誌中心當次公開頁顯示 CAPTCHA 保護且內容為未篩選書目，Adapter 因此維持安全空結果與可重試狀態，不將不相關卡片或猜測總數寫入回應。
+
+同人誌中心於後續同一查詢的公開頁檢查仍未提供可解析內容，因此尚無法取得可信的搜尋頁總數。總數擷取器僅會在公開頁明示 `.search_result_info`、同類搜尋標頭或分頁總數時使用其值；在 CAPTCHA 或無結果內容情境下，系統維持 `blocked/error` 狀態與零筆可驗證資料，避免以站內未篩選書目填充搜尋結果。
+
+最新版 FastAPI 的同人誌中心單一來源強制更新同樣在頁面導覽逾時時回傳 `items=[]`、`totalWorks=0` 與 `platformStatuses[0].status="error"`，並保留中文 `translatedQuery`。這確認網站保護／逾時時不會把未篩選公開書目當成匹配結果，且前端可對該來源顯示單獨重試操作。

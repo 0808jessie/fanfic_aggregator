@@ -60,7 +60,9 @@ def test_compound_query_url_construction_logic():
     
     assert "work_search%5Bquery%5D=" in search_url
     assert "commit=Search" in search_url
+    assert "with_real_author_name=1" in search_url
     assert "language_id" not in search_url
+    assert "complete" not in search_url
     assert "Tomioka" in search_url
     assert "OR" in search_url
 
@@ -73,6 +75,19 @@ def test_native_ao3_query_url_uses_official_first_page_shape_and_explicit_pagina
     assert "%E9%AC%BC%E6%BB%85" in first_page
     assert "page=" not in first_page
     assert later_page.endswith("&page=3")
+
+
+def test_ao3_adult_content_cookie_and_open_search_parameters_are_explicit():
+    assert AO3Scraper.adult_content_cookie == {
+        "name": "view_adult",
+        "value": "true",
+        "domain": "archiveofourown.org",
+        "path": "/",
+    }
+    url = AO3Scraper.build_search_url("義忍")
+    assert "with_real_author_name=1" in url
+    assert "language_id" not in url
+    assert "complete" not in url
 
 
 def test_ao3_total_works_reads_only_explicit_result_heading():

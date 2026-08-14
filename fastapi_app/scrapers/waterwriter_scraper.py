@@ -47,7 +47,7 @@ class WaterWriterScraper(BaseScraper):
     @classmethod
     def build_search_url(cls, keyword: str) -> str:
         """Build the public Discuz quick-search URL without hidden form state."""
-        return f"{cls.search_url}?{urlencode({'srchtxt': keyword, 'searchsubmit': 'yes'})}"
+        return f"{cls.search_url}?{urlencode({'srchtxt': keyword, 'searchsubmit': 'yes', 'srchfid': 'all'})}"
 
     def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False) -> dict[str, object]:
         self.last_warning = None
@@ -58,12 +58,13 @@ class WaterWriterScraper(BaseScraper):
             local_query = get_keyword_for_platform(keyword, "local")
             html = self._render_public_search_html(local_query)
             items = self.parse_results(html, local_query)
+            total_works = self.extract_total_works(html) or len(items)
             for item in items:
                 item.keyword = keyword
             print(f"[在水裡寫字] 成功抓取 {len(items)} 筆")
             if not items:
                 self.last_warning = f"[在水裡寫字] No verified public result matched '{keyword}'"
-            return {"items": items, "total_works": len(items), "total_pages": 1}
+            return {"items": items, "total_works": total_works, "total_pages": 1}
         except _PublicPageUnavailable as error:
             self.last_warning = f"[在水裡寫字] {error}"
             print(self.last_warning)
@@ -180,3 +181,19 @@ class WaterWriterScraper(BaseScraper):
             )
             seen_urls.add(url)
         return results
+
+    @staticmethod
+    def extract_total_works(html: str) -> int | None:
+        """Read Discuz's explicit all-site topic count without guessing from cards."""
+        soup = BeautifulSoup(html, "html.parser")
+        result_nodes = soup.select("#ct, .ct2, .search_result, .search-results, .pg, .pgb")
+        candidate_text = " ".join(node.get_text(" ", strip=True) for node in result_nodes) or soup.get_text(" ", strip=True)
+        patterns = (
+            r"共\s*檢索到\s*([\d,]+)\s*篇\s*主題",
+            r"(?:結果\s*:\s*)?找到\s*.+?\s*相關內容\s*([\d,]+)\s*(?:個|篇|項)",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, candidate_text)
+            if match:
+                return int(match.group(1).replace(",", ""))
+        return None
