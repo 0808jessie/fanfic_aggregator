@@ -195,7 +195,14 @@ export default function Home() {
           : status));
       } else {
         setResults([]);
-        setPlatformStatuses([]);
+        setPlatformStatuses(selectedPlatforms.map((platformId) => ({
+          platformId,
+          label: PLATFORMS.find((platform) => platform.id === platformId)?.label || platformId,
+          status: "error",
+          itemCount: 0,
+          warning: error.message || "搜尋服務暫時無法連線",
+          translatedQuery: activeQuery || keyword.trim(),
+        })));
         setPagination({ totalWorks: 0, totalPages: 0, page: 1, loadedThroughPage: 0, nextPage: null, hasMore: false });
       }
       retryingPlatformRef.current = null;
@@ -501,7 +508,15 @@ export default function Home() {
                     : isBlocked || status.status === "error"
                       ? "border-[#efb4c4] bg-[#fff0f4] text-[#913a59]"
                       : "border-[#cfd6d8] bg-[#f4f6f5] text-[#65737a]";
-                const stateLabel = isSuccess ? "已連線" : isCooldown ? "冷卻中" : isBlocked ? "受阻" : status.status === "error" ? "連線失敗" : "無結果";
+                const stateLabel = isSuccess
+                  ? "已連線"
+                  : isCooldown
+                    ? "冷卻限制中"
+                    : isBlocked
+                      ? "觸發人機保護"
+                      : status.status === "error"
+                        ? "連線逾時"
+                        : "無公開結果";
                 const isFiltered = resultPlatformFilter === platformId;
                 return (
                   <div key={status.platformId} className={`min-w-0 border p-3 transition-colors ${tone} ${isFiltered ? "ring-2 ring-[#10151b] ring-offset-2" : ""}`}>
@@ -582,12 +597,10 @@ export default function Home() {
                 <div className="mb-6 inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#fff5f7] text-[#e27d9d]">
                   <X className="h-6 w-6" />
                 </div>
-                <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-[#e27d9d]">DISCOVERY HALTED</div>
-                <h3 className="mt-4 text-xl font-black tracking-tight">目前無法取得外部作品索引。</h3>
+                <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-[#e27d9d]">NO VERIFIED STORIES</div>
+                <h3 className="mt-4 text-xl font-black tracking-tight">本次尚未取得可驗證作品。</h3>
                 <p className="mt-4 text-sm leading-relaxed text-[#66757d]">
-                  這可能是因為 AO3 / Lofter 伺服器目前有連線限制或防火牆阻擋，導致無法即時抓取。
-                  <br /><br />
-                  <span className="font-mono text-[10px] font-bold uppercase text-[#10151b]/40">Diagnostic / {searchWarning || "外部平台連線逾時或受阻，沒有可驗證作品。"}</span>
+                  請查看上方 ADAPTER CONNECTIONS 的各來源狀態；受阻、冷卻或逾時的來源可個別重試，不會影響其他來源的結果。
                 </p>
                 <Button 
                   type="button"
@@ -604,11 +617,6 @@ export default function Home() {
           {(!searchMutation.isPending || isRetryingSinglePlatform) && results.length > 0 && displayedResults.length === 0 && <div className="border border-dashed border-[#10151b]/25 bg-white/45 px-6 py-12 text-center"><div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#e27d9d]">NO FILTER MATCH</div><p className="mt-3 text-sm text-[#66757d]">目前沒有作品符合這組前端篩選條件；可調整字數、完結狀態或排序方式。</p></div>}
           {(!searchMutation.isPending || isRetryingSinglePlatform) && results.length > 0 && (
             <div className="space-y-6">
-              {searchWarning && (
-                <div className="border border-[#e27d9d]/40 bg-[#fff5f7] p-4 font-mono text-xs text-[#8b3e59]">
-                  <span className="font-bold uppercase tracking-wider">[NOTICE]</span> {searchWarning}
-                </div>
-              )}
               <div className="grid gap-4 md:grid-cols-2">
                 {displayedResults.map((result, index) => {
                   const meta = platformMeta(result.platform);

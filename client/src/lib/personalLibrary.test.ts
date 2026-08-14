@@ -95,10 +95,12 @@ describe("personal library local storage helpers", () => {
       ...upsertBookmark([], { url: secondResult.url, result: secondResult, rating: 5, notes: "神作推薦", tags: ["神作"] }).map((bookmark) => ({ ...bookmark, savedAt: "2026-02-01T00:00:00.000Z", updatedAt: "2026-02-01T00:00:00.000Z" })),
     ];
 
-    expect(filterAndSortBookmarks(bookmarks, { query: "雨夜", tag: null, rating: null, sort: "saved_desc" })).toMatchObject([{ url: result.url }]);
+    expect(filterAndSortBookmarks(bookmarks, { query: "義忍短篇", tag: null, rating: null, sort: "saved_desc" })).toMatchObject([{ url: result.url }]);
     expect(filterAndSortBookmarks(bookmarks, { query: "另一位", tag: null, rating: null, sort: "saved_desc" })).toMatchObject([{ url: secondResult.url }]);
+    expect(filterAndSortBookmarks(bookmarks, { query: "雨夜", tag: null, rating: null, sort: "saved_desc" })).toMatchObject([{ url: result.url }]);
     expect(filterAndSortBookmarks(bookmarks, { query: "神作", tag: null, rating: null, sort: "saved_desc" })).toMatchObject([{ url: secondResult.url }]);
     expect(filterAndSortBookmarks(bookmarks, { query: "", tag: null, rating: null, sort: "rating_desc" }).map((bookmark) => bookmark.rating)).toEqual([5, 2]);
+    expect(filterAndSortBookmarks(bookmarks, { query: "", tag: null, rating: null, sort: "rating_asc" }).map((bookmark) => bookmark.rating)).toEqual([2, 5]);
     expect(filterAndSortBookmarks(bookmarks, { query: "", tag: null, rating: null, sort: "saved_asc" }).map((bookmark) => bookmark.url)).toEqual([result.url, secondResult.url]);
   });
 

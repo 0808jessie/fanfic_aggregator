@@ -43,7 +43,7 @@ class CxCScraper(BaseScraper):
         "User-Agent": user_agent,
     }
     work_link_selector = 'a[href*="/@"][href*="/work"], a[href*="/works/"]'
-    rendered_work_selector = ".cxc-store-card, .book-card, a[href*='/works/'], a[href*='/@'][href*='/work']"
+    rendered_work_selector = ".cxc-work-item, .cxc-store-card, .store-card, .book-card, a[href*='/works/'], a[href*='/@'][href*='/work']"
 
     @classmethod
     def build_search_url(cls, keyword: str) -> str:
@@ -100,9 +100,19 @@ class CxCScraper(BaseScraper):
                     # cards, never for private state or verification completion.
                     page_obj.wait_for_selector(self.rendered_work_selector, timeout=7000)
                 except Exception:
-                    # A genuine no-result page is permitted; the bounded loading
-                    # check below distinguishes it from an unresolved spinner.
-                    page_obj.wait_for_timeout(500)
+                    # Some public CxC deployments render cards only after a
+                    # search response. Wait briefly for that public response,
+                    # then give the known card selectors one final bounded pass.
+                    try:
+                        page_obj.wait_for_response(
+                            lambda candidate: "/search" in candidate.url and candidate.status == 200,
+                            timeout=3000,
+                        )
+                        page_obj.wait_for_selector(self.rendered_work_selector, timeout=4000)
+                    except Exception:
+                        # A genuine no-result page is permitted; the loading
+                        # check below distinguishes it from an unresolved spinner.
+                        page_obj.wait_for_timeout(500)
                 html = page_obj.content()
                 soup = BeautifulSoup(html, "html.parser")
                 if not soup.select(self.work_link_selector) and soup.select_one(".hourglass_loading.show, .q-spinner, [class*='loading']"):

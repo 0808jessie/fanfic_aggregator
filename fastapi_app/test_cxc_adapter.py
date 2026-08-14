@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import main
 from scrapers.cxc_scraper import CxCScraper, _PublicSearchUnavailable
-from scrapers.index import SCRAPERS, translated_query_for_platform
+from scrapers.index import SCRAPERS, classify_platform_status, translated_query_for_platform
 
 
 RENDERED_CXC_RESULTS = """
@@ -60,6 +60,13 @@ def test_cxc_adapter_isolates_unfinished_public_search_without_inventing_results
     assert payload["items"] == []
     assert payload["total_works"] == 0
     assert "did not finish rendering" in (scraper.last_warning or "")
+    assert classify_platform_status(0, scraper.last_warning) == "error"
+
+
+def test_cxc_public_wait_targets_known_rendered_work_cards():
+    assert ".cxc-work-item" in CxCScraper.rendered_work_selector
+    assert ".store-card" in CxCScraper.rendered_work_selector
+    assert "a[href*='/works/']" in CxCScraper.rendered_work_selector
 
 
 def test_cxc_platform_is_registered_and_constrained_to_trusted_work_urls():

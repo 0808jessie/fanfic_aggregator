@@ -121,6 +121,26 @@ describe("Home pagination interactions", () => {
     expect(screen.queryByText(/Triggered Challenge/)).toBeNull();
   });
 
+  it("keeps an empty search actionable through per-platform statuses without a global error banner", async () => {
+    mockState.responseItems = [];
+    mockState.responsePlatformStatuses = [
+      { platformId: "cxc", label: "CxC 創利市集", status: "error", itemCount: 0, warning: "Public search did not finish rendering", translatedQuery: "義忍" },
+      { platformId: "doujin", label: "同人誌中心", status: "blocked", itemCount: 0, warning: "CAPTCHA", translatedQuery: "義忍" },
+    ];
+    render(<Home />);
+
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "義忍" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+
+    await waitFor(() => expect(screen.getByLabelText("平台連線狀態")).toBeTruthy());
+    expect(screen.getByText("連線逾時")).toBeTruthy();
+    expect(screen.getByText("觸發人機保護")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "重試 CxC 創利市集" })).toBeTruthy();
+    expect(screen.getByText("NO VERIFIED STORIES")).toBeTruthy();
+    expect(screen.queryByText("DISCOVERY HALTED")).toBeNull();
+    expect(screen.queryByText("目前無法取得外部作品索引。")).toBeNull();
+  });
+
   it("keeps a CP alias intact for the backend and retries only a failed source", async () => {
     mockState.responsePlatformStatuses = [
       { platformId: "ao3", label: "AO3", status: "success", itemCount: 40, translatedQuery: '"Tomioka Giyuu/Kochou Shinobu" OR "義忍"' },
@@ -137,7 +157,7 @@ describe("Home pagination interactions", () => {
       data: { keyword: "義忍", platforms: ["ao3", "cxc", "lofter", "doujin", "waterwriter", "penana"], page: 1, forceRefresh: false },
     }));
     await waitFor(() => expect(screen.getByLabelText("平台連線狀態")).toBeTruthy());
-    expect(screen.getByText("冷卻中")).toBeTruthy();
+    expect(screen.getByText("冷卻限制中")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "重試 在水裡寫字" }));
     expect(mockState.lastVariables).toEqual({

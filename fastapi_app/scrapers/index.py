@@ -85,6 +85,8 @@ def classify_platform_status(item_count: int, warning: str | None) -> str:
         return "cooldown"
     if any(marker in diagnostic for marker in blocked_markers):
         return "blocked"
+    if "public search did not finish rendering" in diagnostic or "browser render failed safely" in diagnostic:
+        return "error"
     if "no verified public result" in diagnostic or "no tag results" in diagnostic:
         return "empty"
     return "error"
