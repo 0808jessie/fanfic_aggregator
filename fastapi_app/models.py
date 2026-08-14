@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -34,7 +34,11 @@ class SearchQuery(BaseModel):
     platforms: Optional[list[str]] = None
     page: int = Field(default=1, ge=1)
     forceRefresh: bool = False
-    customCpMappings: list["CustomCpMapping"] = Field(default_factory=list)
+    # Browser-local mapping payloads are intentionally permissive at the HTTP
+    # boundary. The controller validates entries individually so one malformed
+    # localStorage value can never reject an otherwise valid search.
+    customCpMappings: Any = Field(default_factory=list)
+    customCpMap: Any = None
 
 
 class CustomCpMapping(BaseModel):

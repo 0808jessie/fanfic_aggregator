@@ -37,7 +37,7 @@ describe("fastapi.proxy", () => {
         method: "POST",
         url: "http://localhost:8000/search",
         data: { keyword: "星光", platforms: ["ao3"] },
-        timeout: 120_000,
+        timeout: 10_000,
         headers: { "Content-Type": "application/json" },
       }),
     );
@@ -76,5 +76,22 @@ describe("fastapi.proxy", () => {
     });
 
     await expect(caller.fastapi.proxy({ path: "/fastapi-status" })).rejects.toThrow("HTTP 503");
+  });
+
+  it("returns source-level retry states when the search service is unreachable", async () => {
+    vi.mocked(axios.request).mockRejectedValue(new Error("connect ECONNREFUSED 127.0.0.1:8000"));
+    const caller = appRouter.createCaller({ user: undefined, req: {} as never, res: {} as never });
+
+    const result = await caller.fastapi.proxy({
+      path: "/search",
+      method: "POST",
+      data: { keyword: "義忍", platforms: ["ao3", "waterwriter"] },
+    }) as { source: string; success: boolean; items: unknown[]; platformStatuses: Array<{ platformId: string; status: string; warning: string }> };
+
+    expect(result).toMatchObject({ source: "none", success: false, items: [] });
+    expect(result.platformStatuses).toEqual([
+      expect.objectContaining({ platformId: "ao3", status: "error", warning: expect.stringContaining("搜尋服務暫時無法連線") }),
+      expect.objectContaining({ platformId: "waterwriter", status: "error", warning: expect.stringContaining("搜尋服務暫時無法連線") }),
+    ]);
   });
 });

@@ -1,4 +1,5 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import Future, ThreadPoolExecutor, wait
+from time import perf_counter
 from typing import Any, Callable
 
 try:
@@ -44,6 +45,7 @@ PLATFORM_LABELS = {
     "penana": "Penana",
 }
 LOCAL_CP_PLATFORM_IDS = frozenset(("doujin", "waterwriter"))
+ADAPTER_TIMEOUT_SECONDS = 8.0
 
 
 def translated_query_for_platform(
@@ -109,6 +111,7 @@ def search_single_platform(
     custom_cp_map: dict[str, Any] | None = None,
 ) -> tuple[str, list[ScrapedFanfic], int, int, PlatformStatus]:
     """Execute one adapter safely and return a UI-ready status for that source."""
+    started_at = perf_counter()
     adapter_cls = SCRAPERS.get(platform_key)
     if not adapter_cls:
         warning = f"Platform '{platform_key}' is not supported."
@@ -143,12 +146,15 @@ def search_single_platform(
             item.keyword = keyword
         warning = getattr(adapter, "last_warning", None)
         status_count = total_works if total_works > 0 else len(items)
+        duration_ms = round((perf_counter() - started_at) * 1000)
+        print(f"[{PLATFORM_LABELS.get(platform_key, platform_key)} Done in ms] {duration_ms}")
         return platform_key, items, total_works, total_pages, make_platform_status(
             platform_key, keyword, status_count, warning, custom_cp_map
         )
     except Exception as error:
         warning = f"Platform '{platform_key}' scrape failed: {error}"
-        print(f"[AdapterIndex] {warning}")
+        duration_ms = round((perf_counter() - started_at) * 1000)
+        print(f"[AdapterIndex] {warning} ({duration_ms}ms)")
         return platform_key, [], 0, 0, make_platform_status(platform_key, keyword, 0, warning, custom_cp_map)
 
 
@@ -158,8 +164,9 @@ def parallel_search_platforms(
     page: int = 1,
     force_refresh: bool = False,
     custom_cp_map: dict[str, Any] | None = None,
+    timeout_seconds: float = ADAPTER_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
-    """Search selected platforms concurrently without letting any failure block another."""
+    """Search sources concurrently with a bounded deadline per aggregate request."""
     results_map: dict[str, list[ScrapedFanfic]] = {}
     statuses_map: dict[str, PlatformStatus] = {}
     combined_total_works = 0
@@ -167,24 +174,44 @@ def parallel_search_platforms(
     warnings: list[str] = []
     any_success = False
 
-    with ThreadPoolExecutor(max_workers=len(platforms) or 1) as executor:
-        future_to_platform = {
-            executor.submit(search_single_platform, platform, keyword, page, force_refresh, custom_cp_map): platform
-            for platform in platforms
-        }
-        for future in as_completed(future_to_platform):
-            platform_key, items, total_works, total_pages, status = future.result()
+    executor = ThreadPoolExecutor(max_workers=len(platforms) or 1)
+    future_to_platform: dict[Future[tuple[str, list[ScrapedFanfic], int, int, PlatformStatus]], str] = {
+        executor.submit(search_single_platform, platform, keyword, page, force_refresh, custom_cp_map): platform
+        for platform in platforms
+    }
+    done, pending = wait(future_to_platform, timeout=max(0.1, timeout_seconds))
+
+    try:
+        for future in done:
+            platform_key = future_to_platform[future]
+            try:
+                platform_key, items, total_works, total_pages, status = future.result()
+            except Exception as error:
+                warning = f"[{PLATFORM_LABELS.get(platform_key, platform_key)}] scrape failed: {error}"
+                items, total_works, total_pages = [], 0, 1
+                status = make_platform_status(platform_key, keyword, 0, warning, custom_cp_map)
             statuses_map[platform_key] = status
             if status.warning:
                 warnings.append(status.warning)
             if status.status in ("success", "empty"):
                 any_success = True
-            # Aggregate each source's explicit public total independently from
-            # the cards that can be safely parsed on the current result page.
             combined_total_works += total_works
             max_total_pages = max(max_total_pages, total_pages)
             if items:
                 results_map[platform_key] = items
+
+        for future in pending:
+            platform_key = future_to_platform[future]
+            future.cancel()
+            warning = f"[{PLATFORM_LABELS.get(platform_key, platform_key)}] 連線逾時（超過 {timeout_seconds:g} 秒）"
+            print(f"[AdapterIndex] {warning}")
+            statuses_map[platform_key] = make_platform_status(platform_key, keyword, 0, warning, custom_cp_map)
+            warnings.append(warning)
+    finally:
+        # Do not wait for a slow third-party browser/network operation during
+        # response finalization. Cancellation prevents queued work; running
+        # adapters eventually clean up through their own try/finally blocks.
+        executor.shutdown(wait=False, cancel_futures=True)
 
     all_items: list[ScrapedFanfic] = []
     for platform in platforms:

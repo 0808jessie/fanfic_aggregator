@@ -1,3 +1,4 @@
+import time
 from unittest.mock import patch
 
 from fastapi_app.constants.cp_tags import build_custom_cp_map
@@ -115,3 +116,26 @@ def test_custom_cp_mapping_overrides_ao3_and_local_query_per_request():
     assert adapter_index.translated_query_for_platform("ao3", "黑邪", custom_map) == "Heiyan/Wu Xie"
     assert adapter_index.translated_query_for_platform("doujin", "黑邪", custom_map) == "黑邪 吳邪"
     assert adapter_index.translated_query_for_platform("cxc", "黑邪", custom_map) == "黑邪"
+
+
+def test_parallel_search_returns_partial_results_when_one_adapter_exceeds_deadline():
+    class SlowAdapter:
+        def __init__(self):
+            self.last_warning = None
+
+        def scrape(self, keyword: str, page: int = 1):
+            time.sleep(0.2)
+            return []
+
+    with patch.object(adapter_index, "SCRAPERS", {"ao3": FakeAO3, "waterwriter": SlowAdapter}):
+        aggregate = adapter_index.parallel_search_platforms(
+            ["ao3", "waterwriter"],
+            "花",
+            timeout_seconds=0.02,
+        )
+
+    statuses = {status.platformId: status for status in aggregate["platform_statuses"]}
+    assert [item.platform for item in aggregate["items"]] == ["AO3"]
+    assert statuses["ao3"].status == "success"
+    assert statuses["waterwriter"].status == "error"
+    assert "連線逾時" in (statuses["waterwriter"].warning or "")

@@ -42,7 +42,7 @@ def extract_ao3_tag_metadata(work_element) -> tuple[list[str], list[str], list[s
 class AO3Scraper(BaseScraper):
     """Best-effort AO3 public search adapter with canonical query semantics."""
 
-    navigation_timeout_ms = 20000
+    navigation_timeout_ms = 7000
     adult_content_cookie = {
         "name": "view_adult",
         "value": "true",
@@ -184,7 +184,7 @@ class AO3Scraper(BaseScraper):
                             continue
 
                         try:
-                            page_obj.wait_for_selector("li.work.blurb", timeout=15000)
+                            page_obj.wait_for_selector("li.work.blurb", timeout=2000)
                         except Exception:
                             print(f"[AO3Scraper Playwright] Timeout waiting for works on page {target_page}.")
 

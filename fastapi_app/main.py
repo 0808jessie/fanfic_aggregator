@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 import hashlib
 import json
+from time import perf_counter
 from typing import Any, Callable
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -9,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from config import settings
 from database import Fanfic, SessionLocal
-from models import ScrapedFanfic, SearchQuery, SearchResponse
+from models import CustomCpMapping, ScrapedFanfic, SearchQuery, SearchResponse
 from constants.cp_tags import CP_CACHE_ALIASES, CP_TAG_MAP, build_custom_cp_map
 from relevance import rank_results
 from scrapers.index import SCRAPERS, parallel_search_platforms
@@ -41,6 +42,26 @@ def canonical_platforms(platforms: list[str] | None) -> list[str]:
         if key in SCRAPERS and key not in normalized:
             normalized.append(key)
     return normalized
+
+
+def normalize_custom_cp_mappings(raw_payload: Any) -> list[CustomCpMapping]:
+    """Parse browser-local CP mappings without allowing malformed JSON to fail search."""
+    try:
+        candidate = json.loads(raw_payload) if isinstance(raw_payload, str) else raw_payload
+        if isinstance(candidate, dict):
+            candidate = candidate.get("mappings", list(candidate.values()))
+        if not isinstance(candidate, list):
+            return []
+        mappings = []
+        for item in candidate:
+            try:
+                mappings.append(CustomCpMapping.model_validate(item))
+            except Exception:
+                continue
+        return mappings
+    except Exception as error:
+        print(f"[SearchAPI] Ignoring invalid custom CP payload: {error}")
+        return []
 
 
 def custom_cp_mapping_fingerprint(mappings: list[object]) -> str:
@@ -182,12 +203,18 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
     if not platforms:
         raise HTTPException(status_code=400, detail="No supported platform was selected")
 
+    request_started_at = perf_counter()
+    print(f"[Search Start] keyword={keyword!r} requestedPlatforms={query.platforms!r}")
     try:
         requested_page = query.page
-        custom_cp_map = build_custom_cp_map(query.customCpMappings)
+        raw_custom_cp_payload = query.customCpMappings
+        if not raw_custom_cp_payload and query.customCpMap is not None:
+            raw_custom_cp_payload = query.customCpMap
+        custom_cp_mappings = normalize_custom_cp_mappings(raw_custom_cp_payload)
+        custom_cp_map = build_custom_cp_map(custom_cp_mappings)
         base_cache_key = f"{keyword}:{'-'.join(sorted(platforms))}:page={requested_page}"
         cache_key = (
-            f"{keyword}:{'-'.join(sorted(platforms))}:cp={custom_cp_mapping_fingerprint(query.customCpMappings)}:page={requested_page}"
+            f"{keyword}:{'-'.join(sorted(platforms))}:cp={custom_cp_mapping_fingerprint(custom_cp_mappings)}:page={requested_page}"
             if custom_cp_map
             else base_cache_key
         )
@@ -235,6 +262,10 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
                 if query.forceRefresh
                 else parallel_search_platforms(platforms, keyword, requested_page)
             )
+        print(
+            f"[Search Aggregate Done in ms] {round((perf_counter() - request_started_at) * 1000)} "
+            f"platforms={platforms!r} verifiedItems={len(aggregate.get('items', []))}"
+        )
         fresh_results = rank_results([
             result for result in aggregate["items"]
             if is_real_platform_url(result.url, result.platform)

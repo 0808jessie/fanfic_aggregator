@@ -305,6 +305,17 @@ def test_custom_cp_mapping_is_forwarded_as_a_request_scoped_adapter_override():
     assert custom_map["黑邪"].local_query == "黑邪 吳邪"
 
 
+def test_malformed_custom_cp_payload_falls_back_to_default_vocabulary():
+    parsed = main.normalize_custom_cp_mappings('{not valid JSON')
+    assert parsed == []
+
+    response = TestClient(main.app).post(
+        "/search",
+        json={"keyword": "花", "platforms": ["unsupported"], "customCpMappings": "{bad"},
+    )
+    assert response.status_code == 400
+
+
 def test_taiwan_platforms_are_registered_and_constrained_to_trusted_hosts():
     assert "waterwriter" in SCRAPERS
     assert "penana" in SCRAPERS

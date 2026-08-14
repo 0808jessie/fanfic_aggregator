@@ -190,4 +190,10 @@
 - [x] 完善 Blueprint CP 詞庫管理 Modal，支援新增、刪除、重設與 localStorage 自訂對照合併
 - [x] 讓 ADAPTER CONNECTIONS 平台卡提供可見的單一來源快捷篩選、再次點擊還原全部與 active 狀態
 - [x] 補上停用 Lofter、官方總數、CP 詞庫與平台快捷篩選的回歸測試及公開頁／UI 驗證；Python 54/54、Vitest 35/35、TypeScript 通過
-- [ ] 儲存本輪 Adapter 總數校正與前端管理／篩選功能 checkpoint
+- [x] 儲存本輪 Adapter 總數校正與前端管理／篩選功能 checkpoint，版本 1fa8b374；Python 54/54、Vitest 35/35、TypeScript 通過
+- [x] 排查所有平台同時連線逾時的搜尋入口、tRPC 代理與 FastAPI Adapter 執行鏈，保存具體阻塞證據：FastAPI 8000 程序未啟動，重置環境亦缺 SQLAlchemy 與 Playwright Chromium
+- [x] 為每個 Adapter 加入 8 秒硬性逾時與來源級 error 空結果，確保單一來源不阻塞整體搜尋
+- [x] 為自訂 CP 詞庫 payload 加入完整容錯解析與安全預設，避免不合法資料中斷搜尋
+- [x] 縮短官方總數解析等待並加入搜尋入口／各來源耗時日誌，避免重複導覽與無界等待
+- [x] 補上逾時、CP payload 容錯、部分成功結果與耗時日誌回歸測試，完成實測驗證；Python 56/56、Vitest 36/36、TypeScript 通過
+- [ ] 儲存本輪搜尋逾時緊急修復 checkpoint

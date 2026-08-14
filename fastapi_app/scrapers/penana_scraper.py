@@ -64,23 +64,24 @@ class PenanaScraper(BaseScraper):
                     )
                     page_obj = context.new_page()
                     try:
-                        response = page_obj.goto(search_url, timeout=20000, wait_until="domcontentloaded")
+                        response = page_obj.goto(search_url, timeout=7000, wait_until="domcontentloaded")
                         status_code = response.status if response else 200
                         if status_code in (403, 429, 503, 520, 521, 522, 525):
                             self.last_warning = f"[Penana] Request blocked (HTTP {status_code})"
                             return {"items": [], "total_works": 0, "total_pages": 1}
                         try:
-                            page_obj.wait_for_selector(".newXbox.p0.storydata", timeout=15000)
+                            page_obj.wait_for_selector(".newXbox.p0.storydata", timeout=2000)
                         except Exception:
                             # A zero-result search is valid. The parser below will avoid fabricating cards.
                             pass
                         html = page_obj.content()
                         items = self.parse_results(html, trimmed_keyword)
                         official_total = self.extract_total_works(html)
-                        detail_outcomes = [
-                            self._enrich_from_public_detail(page_obj, item)
-                            for item in items[: self.detail_enrichment_limit]
-                        ]
+                        # Cards and the official total are deliberately parsed
+                        # from this same Finder document. Detail-page visits add
+                        # unpredictable navigation latency and are not required
+                        # to return verified search results.
+                        detail_outcomes = []
                     finally:
                         context.close()
                         browser.close()
