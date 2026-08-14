@@ -202,4 +202,10 @@
 - [x] 重構搜尋首頁、平台健康狀態與作品結果卡，建立更聚焦、易掃讀的探索工作區
 - [x] 重設閱讀清單與 CP 詞庫管理的視覺層級、空狀態與操作回饋，保留 LocalStorage 行為
 - [x] 補足介面重設計的元件測試、桌面／手機視覺驗證與既有搜尋回歸；Python 56/56、Vitest 37/37、TypeScript 通過
-- [ ] 儲存本輪 Fanfic Atlas 介面重設計 checkpoint
+- [x] 儲存本輪 Fanfic Atlas 介面重設計 checkpoint，版本 2b09c259；Python 56/56、Vitest 37/37、TypeScript 通過
+- [x] 稽核作品卡作者資料、現有搜尋模式與 CP 跨平台轉譯契約，確認不碰 Adapter 逾時與官方總數邏輯
+- [x] 建立題材／世界觀詞庫與 AO3、本地、CxC 平台查詢轉譯，支援 ABO、哨嚮、Paro、原著向與常見題材別名
+- [x] 在作品卡加入安全的作者導航互動，標示 Author Mode 並以作者名稱觸發跨平台搜尋
+- [x] 擴充 CP 詞庫管理 Modal，加入可瀏覽的預設題材／世界觀對照區，維持自訂 CP LocalStorage 行為
+- [x] 補上題材轉譯、作者無效值防護、作者模式搜尋與既有逾時／總數行為的回歸測試與 UI 驗證；Python 57/57、Vitest 39/39、TypeScript 通過
+- [ ] 儲存本輪作者導航與題材詞庫 checkpoint

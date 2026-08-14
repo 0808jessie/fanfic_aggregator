@@ -23,6 +23,16 @@ def test_cp_query_translator_uses_ao3_and_local_values_without_mutating_free_tex
     assert get_keyword_for_platform("自訂關鍵字", "local") == "自訂關鍵字"
 
 
+def test_trope_query_translator_uses_platform_specific_worldbuilding_terms():
+    assert get_keyword_for_platform("歐米茄", "ao3") == '"Alpha/Beta/Omega Dynamics"'
+    assert get_keyword_for_platform("ABO", "local") == "ABO"
+    assert get_keyword_for_platform("哨兵嚮導", "ao3") == '"Sentinel/Guide Dynamics"'
+    assert get_keyword_for_platform("哨嚮", "local") == "哨嚮 哨兵嚮導"
+    assert get_keyword_for_platform("現背", "ao3") == '"Alternate Universe - Modern Setting"'
+    assert get_keyword_for_platform("校園", "cxc") == "學園Paro"
+    assert get_keyword_for_platform("雙向暗戀", "local") == "雙向暗戀"
+
+
 def test_ao3_scraper_methods_exist():
     scraper = AO3Scraper()
     assert hasattr(scraper, "scrape")

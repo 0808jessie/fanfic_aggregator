@@ -11,6 +11,17 @@ class CPTagConfig:
     cxc_query: str
 
 
+@dataclass(frozen=True)
+class TropeTagConfig:
+    """Canonical worldbuilding/trope queries for the supported public indexes."""
+
+    label: str
+    aliases: tuple[str, ...]
+    ao3_query: str
+    local_query: str
+    cxc_query: str
+
+
 MULTI_PLATFORM_CP_MAP: dict[str, CPTagConfig] = {
     "義忍": CPTagConfig(
         ao3_query='"Tomioka Giyuu/Kochou Shinobu" OR "義忍"',
@@ -45,6 +56,25 @@ MULTI_PLATFORM_CP_MAP: dict[str, CPTagConfig] = {
 }
 
 
+# These are query translations, not new scraper paths. Existing source-level
+# timeouts, official total-count parsing and error isolation remain unchanged.
+MULTI_PLATFORM_TROPE_MAP: dict[str, TropeTagConfig] = {
+    "ABO": TropeTagConfig("ABO / 歐米茄", ("ABO", "歐米茄"), '"Alpha/Beta/Omega Dynamics"', "ABO", "ABO"),
+    "哨嚮": TropeTagConfig("哨嚮 / 哨兵嚮導", ("哨嚮", "哨兵嚮導"), '"Sentinel/Guide Dynamics"', "哨嚮 哨兵嚮導", "哨嚮"),
+    "現代Paro": TropeTagConfig("現代 Paro / 現背", ("現代Paro", "現背"), '"Alternate Universe - Modern Setting"', "現代Paro 現背", "現代Paro"),
+    "學園Paro": TropeTagConfig("學園 Paro / 校園", ("學園Paro", "校園"), '"Alternate Universe - High School"', "學園Paro 校園", "學園Paro"),
+    "原著向": TropeTagConfig("原著向", ("原著向",), '"Canon Compliant"', "原著向", "原著向"),
+    "破鏡重圓": TropeTagConfig("破鏡重圓", ("破鏡重圓",), '"Reconciliation"', "破鏡重圓", "破鏡重圓"),
+    "雙向暗戀": TropeTagConfig("雙向暗戀", ("雙向暗戀",), '"Mutual Pining"', "雙向暗戀", "雙向暗戀"),
+}
+
+TROPE_ALIAS_MAP: dict[str, TropeTagConfig] = {
+    alias: config
+    for config in MULTI_PLATFORM_TROPE_MAP.values()
+    for alias in config.aliases
+}
+
+
 def build_custom_cp_map(mappings: Iterable[object] | None) -> dict[str, CPTagConfig]:
     """Normalize request-scoped UI mappings without mutating system defaults."""
     custom_map: dict[str, CPTagConfig] = {}
@@ -73,7 +103,14 @@ def get_keyword_for_platform(
     normalized_keyword = keyword.strip()
     config = (custom_map or {}).get(normalized_keyword) or MULTI_PLATFORM_CP_MAP.get(normalized_keyword)
     if config is None:
-        return normalized_keyword
+        trope = TROPE_ALIAS_MAP.get(normalized_keyword)
+        if trope is None:
+            return normalized_keyword
+        if platform_type == "ao3":
+            return trope.ao3_query
+        if platform_type == "cxc":
+            return trope.cxc_query
+        return trope.local_query
     if platform_type == "ao3":
         return config.ao3_query
     if platform_type == "cxc":

@@ -281,3 +281,29 @@ describe("Home pagination interactions", () => {
     expect(ao3Card.getAttribute("aria-pressed")).toBe("false");
     expect(screen.getByText("WATER ONLY")).toBeTruthy();
   });
+
+  it("navigates from a verified author to an author-mode cross-platform search", async () => {
+    mockState.primaryPayload = {
+      items: [{ title: "AUTHOR ROUTE", author: "Atlas Creator", platform: "AO3", url: "https://archiveofourown.org/works/2026", tags: "", summary: "", scraped_at: "2026-01-01T00:00:00Z" }],
+      totalWorks: 1,
+      totalPages: 1,
+      page: 1,
+      loadedThroughPage: 1,
+      nextPage: null,
+      hasMore: false,
+      platformStatuses: [],
+    };
+    render(<Home />);
+
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "作品名" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "搜尋作者 Atlas Creator" })).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "搜尋作者 Atlas Creator" }));
+    await waitFor(() => expect(mockState.lastVariables).toEqual({
+      path: "/search",
+      method: "POST",
+      data: { keyword: "Atlas Creator", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc"], page: 1, forceRefresh: false, customCpMappings: [] },
+    }));
+    expect(screen.getByText(/AUTHOR MODE \/ 搜尋作者：Atlas Creator/)).toBeTruthy();
+  });

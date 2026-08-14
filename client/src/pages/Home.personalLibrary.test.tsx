@@ -82,5 +82,8 @@ describe("Home personal reading tools", () => {
     expect(screen.getByText("Heiyan/Wu Xie")).toBeTruthy();
     expect(screen.getByText("黑邪 吳邪")).toBeTruthy();
     expect(window.localStorage.getItem("sui-read-custom-cp-map")).toContain("黑邪");
+    expect(screen.getByText("TROPE / WORLD INDEX")).toBeTruthy();
+    expect(screen.getByText("ABO / 歐米茄")).toBeTruthy();
+    expect(screen.getByText("Alpha/Beta/Omega Dynamics")).toBeTruthy();
   });
 });
