@@ -2,10 +2,15 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  collectBookmarkTags,
+  createBookmarkBackup,
   DEFAULT_CP_MAPPINGS,
+  filterBookmarks,
   loadCpMappings,
   loadFilterPreset,
   loadSearchHistory,
+  mergeImportedBookmarks,
+  parseBookmarkBackup,
   persistCpMappings,
   persistFilterPreset,
   recordSearch,
@@ -53,5 +58,29 @@ describe("personal library local storage helpers", () => {
   it("validates and restores saved filter preferences", () => {
     persistFilterPreset({ wordCount: "long", completion: "complete", sort: "updated" });
     expect(loadFilterPreset()).toEqual({ wordCount: "long", completion: "complete", sort: "updated" });
+  });
+
+  it("filters reading cards by user tag and exact star rating", () => {
+    const ao3 = upsertBookmark([], { url: result.url, result, rating: 5, notes: "神作", tags: ["神作", "重讀"] });
+    const penanaResult = { ...result, platform: "Penana", url: "https://www.penana.com/story/2", title: "另一篇" } as SearchResult;
+    const bookmarks = upsertBookmark(ao3, { url: penanaResult.url, result: penanaResult, rating: 3, notes: "", tags: ["待讀"] });
+
+    expect(collectBookmarkTags(bookmarks)).toEqual(["待讀", "重讀", "神作"]);
+    expect(filterBookmarks(bookmarks, "神作", null)).toHaveLength(1);
+    expect(filterBookmarks(bookmarks, null, 3)).toMatchObject([{ url: penanaResult.url }]);
+    expect(filterBookmarks(bookmarks, "待讀", 5)).toEqual([]);
+  });
+
+  it("round-trips validated JSON backups and merges newer reading cards by URL", () => {
+    const current = upsertBookmark([], { url: result.url, result, rating: 2, notes: "舊筆記", tags: ["待讀"] });
+    const imported = [{ ...current[0]!, rating: 5, notes: "新筆記", updatedAt: "2030-01-01T00:00:00.000Z" }];
+    const backup = createBookmarkBackup(imported);
+    const parsed = parseBookmarkBackup(JSON.stringify(backup));
+    const merged = mergeImportedBookmarks(current, parsed);
+
+    expect(backup.version).toBe(1);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({ rating: 5, notes: "新筆記" });
+    expect(() => parseBookmarkBackup('{"bookmarks":[{"url":"https://example.com"}]}')).toThrow("備份檔沒有可匯入");
   });
 });

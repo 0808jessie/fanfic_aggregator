@@ -75,6 +75,7 @@ def is_real_platform_url(url: str, platform: str | None = None) -> bool:
     if platform:
         allowed_hosts = {
             "ao3": ("archiveofourown.org",),
+            "cxc 創利市集": ("cxc.today",),
             "lofter": ("lofter.com",),
             "同人誌中心": ("doujin.com.tw",),
             "在水裡寫字": ("slashtw.space",),

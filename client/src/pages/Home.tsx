@@ -8,6 +8,7 @@ import {
   BookMarked,
   ChevronDown,
   Database,
+  Download,
   Filter,
   History,
   Loader2,
@@ -16,8 +17,10 @@ import {
   Save,
   SlidersHorizontal,
   Sparkles,
+  Star,
   Tags,
   Terminal,
+  Upload,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -50,6 +53,11 @@ import {
   loadCpMappings,
   loadFilterPreset,
   loadSearchHistory,
+  collectBookmarkTags,
+  createBookmarkBackup,
+  filterBookmarks,
+  mergeImportedBookmarks,
+  parseBookmarkBackup,
   persistBookmarks,
   persistCpMappings,
   persistFilterPreset,
@@ -62,6 +70,7 @@ import {
 
 const PLATFORMS = [
   { id: "ao3", label: "AO3", detail: "ARCHIVE OF OUR OWN", tone: "cyan" },
+  { id: "cxc", label: "CXC 創利市集", detail: "CXC.TODAY", tone: "violet" },
   { id: "lofter", label: "LOFTER", detail: "LOFTER.COM", tone: "pink" },
   { id: "doujin", label: "同人誌中心", detail: "DOUJIN.COM.TW", tone: "violet" },
   { id: "waterwriter", label: "在水裡寫字", detail: "SLASHTW.SPACE", tone: "amber" },
@@ -100,11 +109,14 @@ function formatDate(value: string) {
 export default function Home() {
   const [keyword, setKeyword] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
-  const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformId[]>(["ao3", "lofter", "doujin", "waterwriter", "penana"]);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformId[]>(["ao3", "cxc", "lofter", "doujin", "waterwriter", "penana"]);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [platformStatuses, setPlatformStatuses] = useState<PlatformStatus[]>([]);
+  const [resultPlatformFilter, setResultPlatformFilter] = useState<PlatformId | null>(null);
   const [activeView, setActiveView] = useState<"search" | "bookmarks">("search");
   const [bookmarks, setBookmarks] = useState<BookmarkRecord[]>([]);
+  const [bookmarkTagFilter, setBookmarkTagFilter] = useState<string | null>(null);
+  const [bookmarkRatingFilter, setBookmarkRatingFilter] = useState<number | null>(null);
   const [bookmarkTarget, setBookmarkTarget] = useState<SearchResult | null>(null);
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
   const [cpMappings, setCpMappings] = useState<CpMapping[]>([]);
@@ -119,6 +131,7 @@ export default function Home() {
   const [elapsedMs, setElapsedMs] = useState(0);
   const [completedElapsedMs, setCompletedElapsedMs] = useState<number | null>(null);
   const searchStartedAt = useRef<number | null>(null);
+  const bookmarkImportRef = useRef<HTMLInputElement | null>(null);
   const retryingPlatformRef = useRef<PlatformId | null>(null);
   const [pagination, setPagination] = useState<SearchPagination>({
     totalWorks: 0,
@@ -215,8 +228,13 @@ export default function Home() {
       wordCount: wordCountFilter,
       completion: completionFilter,
       sort: sortMode,
-    }),
-    [results, activeQuery, keyword, wordCountFilter, completionFilter, sortMode],
+    }).filter((result) => !resultPlatformFilter || platformMeta(result.platform).id === resultPlatformFilter),
+    [results, activeQuery, keyword, wordCountFilter, completionFilter, sortMode, resultPlatformFilter],
+  );
+  const bookmarkTags = useMemo(() => collectBookmarkTags(bookmarks), [bookmarks]);
+  const displayedBookmarks = useMemo(
+    () => filterBookmarks(bookmarks, bookmarkTagFilter, bookmarkRatingFilter),
+    [bookmarks, bookmarkTagFilter, bookmarkRatingFilter],
   );
   const isRetryingSinglePlatform = searchMutation.isPending && Boolean(retryingPlatformRef.current);
 
@@ -263,7 +281,10 @@ export default function Home() {
     persistSearchHistory(nextHistory);
     setActiveView("search");
     setSearchWarning(null);
-    if (!retryPlatform) setPlatformStatuses([]);
+    if (!retryPlatform) {
+      setPlatformStatuses([]);
+      setResultPlatformFilter(null);
+    }
     setElapsedMs(0);
     setCompletedElapsedMs(null);
     searchStartedAt.current = performance.now();
@@ -312,6 +333,33 @@ export default function Home() {
   const saveCurrentFilters = () => {
     persistFilterPreset({ wordCount: wordCountFilter, completion: completionFilter, sort: sortMode });
     toast.success("已設為預設篩選", { description: "下次開啟網站時會自動帶入這組設定。" });
+  };
+
+  const exportBookmarks = () => {
+    const backup = createBookmarkBackup(bookmarks);
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `fanfic-atlas-reading-library-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    toast.success("已匯出閱讀清單備份", { description: `${bookmarks.length} 張閱讀卡已寫入 JSON 檔。` });
+  };
+
+  const importBookmarks = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const imported = parseBookmarkBackup(await file.text());
+      const next = mergeImportedBookmarks(bookmarks, imported);
+      setBookmarks(next);
+      persistBookmarks(next);
+      toast.success("已匯入閱讀清單備份", { description: `已安全合併 ${imported.length} 張閱讀卡。` });
+    } catch (error) {
+      toast.error("無法匯入備份", { description: error instanceof Error ? error.message : "請選擇有效的 JSON 備份檔。" });
+    }
   };
 
   return (
@@ -412,8 +460,9 @@ export default function Home() {
               <div className="font-mono text-[10px] font-bold uppercase tracking-[0.17em] text-[#58666e]">ADAPTER CONNECTIONS / 本次搜尋來源</div>
               <span className="font-mono text-[9px] font-bold tracking-[0.12em] text-[#8a969c]">僅重試受阻、冷卻或連線失敗的來源</span>
             </div>
-            <div className="grid gap-2 lg:grid-cols-5">
+            <div className="grid gap-2 lg:grid-cols-6">
               {platformStatuses.map((status) => {
+                const platformId = status.platformId as PlatformId;
                 const isSuccess = status.status === "success";
                 const isCooldown = status.status === "cooldown";
                 const isBlocked = status.status === "blocked";
@@ -425,13 +474,15 @@ export default function Home() {
                       ? "border-[#efb4c4] bg-[#fff0f4] text-[#913a59]"
                       : "border-[#cfd6d8] bg-[#f4f6f5] text-[#65737a]";
                 const stateLabel = isSuccess ? "已連線" : isCooldown ? "冷卻中" : isBlocked ? "受阻" : status.status === "error" ? "連線失敗" : "無結果";
+                const isFiltered = resultPlatformFilter === platformId;
                 return (
-                  <div key={status.platformId} className={`min-w-0 border p-3 ${tone}`}>
+                  <div key={status.platformId} className={`min-w-0 border p-3 transition-colors ${tone} ${isFiltered ? "ring-2 ring-[#10151b] ring-offset-2" : ""}`}>
                     <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
+                      <button type="button" onClick={() => setResultPlatformFilter((current) => current === platformId ? null : platformId)} aria-pressed={isFiltered} aria-label={`${isFiltered ? "顯示全部結果" : `只顯示 ${status.label} 結果`}`} className="min-w-0 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#10151b]">
                         <div className="font-mono text-[10px] font-bold uppercase tracking-[0.14em]">{status.label}</div>
                         <div className="mt-1 font-mono text-[9px] font-bold tracking-[0.1em]">{stateLabel}{isSuccess ? ` · ${status.itemCount} 筆` : ""}</div>
-                      </div>
+                        <div className="mt-2 truncate font-mono text-[9px] opacity-70" title={status.translatedQuery}>QUERY / {status.translatedQuery}</div>
+                      </button>
                       {isPlatformRetryable(status) && (
                         <Button
                           type="button"
@@ -439,14 +490,14 @@ export default function Home() {
                           size="sm"
                           disabled={searchMutation.isPending}
                           aria-label={`重試 ${status.label}`}
-                          onClick={() => runSearch(true, activeQuery || keyword, [status.platformId as PlatformId])}
+                          onClick={() => runSearch(true, activeQuery || keyword, [platformId])}
                           className="h-7 shrink-0 rounded-none border border-current px-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em] hover:bg-white/70"
                         >
                           <RotateCw className={`mr-1 h-3 w-3 ${searchMutation.isPending ? "animate-spin" : ""}`} />重試
                         </Button>
                       )}
                     </div>
-                    <div className="mt-2 truncate font-mono text-[9px] opacity-70" title={status.translatedQuery}>QUERY / {status.translatedQuery}</div>
+                    {isFiltered && <div className="mt-3 border-t border-current/20 pt-2 font-mono text-[8px] font-bold uppercase tracking-[0.12em]">結果已篩選 / 再次點擊回復全部</div>}
                   </div>
                 );
               })}
@@ -456,13 +507,38 @@ export default function Home() {
 
         <div className="mt-8">
           {activeView === "bookmarks" ? (
-            <SavedBookmarksGrid
-              bookmarks={bookmarks}
-              onEdit={(bookmark) => { setBookmarkTarget(bookmark.result); setBookmarkDialogOpen(true); }}
-              onRemove={removeBookmark}
-            />
+            <>
+              <section aria-label="閱讀清單篩選與備份" className="mb-6 border border-[#10151b]/15 bg-white/60 p-4 sm:p-5">
+                <div className="flex flex-col gap-4 border-b border-[#10151b]/10 pb-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#58666e]">READING CARD FILTERS / 本機篩選與備份</div>
+                    <div className="mt-1 font-mono text-[9px] font-bold tracking-[0.11em] text-[#849097]">顯示 {displayedBookmarks.length} / {bookmarks.length} 張閱讀卡</div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" onClick={exportBookmarks} className="h-9 rounded-none border-[#10151b]/15 bg-white/70 font-mono text-[9px] font-bold uppercase tracking-[0.12em] hover:border-[#45b9b2] hover:bg-[#d9f8f5]"><Download className="mr-1.5 h-3.5 w-3.5" />匯出備份 JSON</Button>
+                    <input ref={bookmarkImportRef} type="file" accept="application/json,.json" className="sr-only" aria-label="匯入閱讀清單備份" onChange={(event) => { void importBookmarks(event.target.files?.[0]); event.currentTarget.value = ""; }} />
+                    <Button type="button" variant="outline" onClick={() => bookmarkImportRef.current?.click()} className="h-9 rounded-none border-[#10151b]/15 bg-white/70 font-mono text-[9px] font-bold uppercase tracking-[0.12em] hover:border-[#e27d9d] hover:bg-[#fff0f4]"><Upload className="mr-1.5 h-3.5 w-3.5" />匯入備份</Button>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
+                  <div>
+                    <div className="mb-2 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#75838b]">標籤</div>
+                    <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setBookmarkTagFilter(null)} className={`border px-2.5 py-1.5 font-mono text-[9px] font-bold tracking-[0.1em] ${bookmarkTagFilter === null ? "border-[#10151b] bg-[#10151b] text-white" : "border-[#10151b]/15 bg-white/70 text-[#66757d] hover:border-[#45b9b2]"}`}>全部</button>{bookmarkTags.map((tag) => <button key={tag} type="button" onClick={() => setBookmarkTagFilter((current) => current === tag ? null : tag)} className={`border px-2.5 py-1.5 font-mono text-[9px] font-bold tracking-[0.1em] ${bookmarkTagFilter === tag ? "border-[#c9bcf2] bg-[#f0ecff] text-[#5c4e87]" : "border-[#10151b]/15 bg-white/70 text-[#66757d] hover:border-[#c9bcf2]"}`}>#{tag}</button>)}</div>
+                  </div>
+                  <div>
+                    <div className="mb-2 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#75838b]">星級</div>
+                    <div className="flex flex-wrap gap-1"><button type="button" onClick={() => setBookmarkRatingFilter(null)} className={`border px-2 py-1.5 font-mono text-[9px] font-bold ${bookmarkRatingFilter === null ? "border-[#10151b] bg-[#10151b] text-white" : "border-[#10151b]/15 bg-white/70 text-[#66757d]"}`}>全部</button>{[1, 2, 3, 4, 5].map((rating) => <button key={rating} type="button" onClick={() => setBookmarkRatingFilter((current) => current === rating ? null : rating)} aria-label={`篩選 ${rating} 星`} className={`inline-flex items-center gap-0.5 border px-2 py-1.5 font-mono text-[9px] font-bold ${bookmarkRatingFilter === rating ? "border-[#e8a7bf] bg-[#ffe8f0] text-[#8b3e59]" : "border-[#10151b]/15 bg-white/70 text-[#66757d]"}`}><Star className="h-3 w-3" fill="currentColor" />{rating}</button>)}</div>
+                  </div>
+                </div>
+              </section>
+              <SavedBookmarksGrid
+                bookmarks={displayedBookmarks}
+                onEdit={(bookmark) => { setBookmarkTarget(bookmark.result); setBookmarkDialogOpen(true); }}
+                onRemove={removeBookmark}
+              />
+            </>
           ) : <>
-          {!hasSearched && !searchMutation.isPending && <div className="relative overflow-hidden border border-[#10151b]/15 bg-white/60 p-8 sm:p-12"><div className="absolute right-0 top-0 h-24 w-24 border-b border-l border-[#f2a4bc]" /><div className="absolute bottom-0 left-0 h-16 w-16 border-r border-t border-[#72d2cc]" /><div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-center"><div><div className="mb-5 flex h-12 w-12 items-center justify-center border border-[#72d2cc] bg-[#d9f8f5] text-[#197b75]"><Sparkles className="h-5 w-5" /></div><h3 className="text-2xl font-black tracking-[-0.06em]">輸入一組關鍵字，開始建立你的閱讀座標。</h3><p className="mt-3 max-w-xl text-sm leading-6 text-[#64727a]">系統會透過獨立的平台 Adapter 同時查詢 AO3、Lofter、同人誌中心、在水裡寫字與 Penana，並將可驗證作品整理成統一索引。</p></div><div className="grid grid-cols-2 gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#66757d]"><div className="border border-[#10151b]/10 bg-white/70 p-4"><Database className="mb-3 h-4 w-4 text-[#e27d9d]" />SQLITE CACHE</div><div className="border border-[#10151b]/10 bg-white/70 p-4"><BookOpen className="mb-3 h-4 w-4 text-[#45b9b2]" />UNIFIED META</div></div></div></div>}
+          {!hasSearched && !searchMutation.isPending && <div className="relative overflow-hidden border border-[#10151b]/15 bg-white/60 p-8 sm:p-12"><div className="absolute right-0 top-0 h-24 w-24 border-b border-l border-[#f2a4bc]" /><div className="absolute bottom-0 left-0 h-16 w-16 border-r border-t border-[#72d2cc]" /><div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-center"><div><div className="mb-5 flex h-12 w-12 items-center justify-center border border-[#72d2cc] bg-[#d9f8f5] text-[#197b75]"><Sparkles className="h-5 w-5" /></div><h3 className="text-2xl font-black tracking-[-0.06em]">輸入一組關鍵字，開始建立你的閱讀座標。</h3><p className="mt-3 max-w-xl text-sm leading-6 text-[#64727a]">系統會透過獨立的平台 Adapter 同時查詢 AO3、CxC 創利市集、Lofter、同人誌中心、在水裡寫字與 Penana，並將可驗證作品整理成統一索引。</p></div><div className="grid grid-cols-2 gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#66757d]"><div className="border border-[#10151b]/10 bg-white/70 p-4"><Database className="mb-3 h-4 w-4 text-[#e27d9d]" />SQLITE CACHE</div><div className="border border-[#10151b]/10 bg-white/70 p-4"><BookOpen className="mb-3 h-4 w-4 text-[#45b9b2]" />UNIFIED META</div></div></div></div>}
           {hasSearched && results.length === 0 && !searchMutation.isPending && (
             <div className="relative overflow-hidden border border-dashed border-[#10151b]/25 bg-white/45 px-6 py-16 text-center">
               <div className="absolute right-0 top-0 h-16 w-16 border-b border-l border-[#e27d9d]/20" />

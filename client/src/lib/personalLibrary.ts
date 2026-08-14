@@ -15,6 +15,12 @@ export type BookmarkRecord = {
   updatedAt: string;
 };
 
+export type BookmarkBackup = {
+  version: 1;
+  exportedAt: string;
+  bookmarks: BookmarkRecord[];
+};
+
 export type CpMapping = { alias: string; tag: string };
 
 export const DEFAULT_CP_MAPPINGS: CpMapping[] = [
@@ -53,6 +59,67 @@ export function loadBookmarks(): BookmarkRecord[] {
 
 export function persistBookmarks(bookmarks: BookmarkRecord[]): void {
   writeJson(BOOKMARKS_STORAGE_KEY, bookmarks);
+}
+
+export function collectBookmarkTags(bookmarks: BookmarkRecord[]): string[] {
+  return Array.from(new Set(bookmarks.flatMap((bookmark) => bookmark.tags.map((tag) => tag.trim()).filter(Boolean)))).sort((a, b) => a.localeCompare(b, "zh-TW"));
+}
+
+export function filterBookmarks(bookmarks: BookmarkRecord[], tag: string | null, rating: number | null): BookmarkRecord[] {
+  return bookmarks.filter((bookmark) => {
+    const hasTag = !tag || bookmark.tags.some((bookmarkTag) => bookmarkTag === tag);
+    const hasRating = rating === null || bookmark.rating === rating;
+    return hasTag && hasRating;
+  });
+}
+
+export function createBookmarkBackup(bookmarks: BookmarkRecord[]): BookmarkBackup {
+  return { version: 1, exportedAt: new Date().toISOString(), bookmarks };
+}
+
+function isSearchResult(value: unknown): value is SearchResult {
+  return Boolean(value) && typeof value === "object" && typeof (value as SearchResult).url === "string" && typeof (value as SearchResult).title === "string";
+}
+
+function normalizeImportedBookmark(value: unknown): BookmarkRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Partial<BookmarkRecord>;
+  if (typeof candidate.url !== "string" || !candidate.url.startsWith(("http")) || !isSearchResult(candidate.result)) return null;
+  const rating = typeof candidate.rating === "number" && Number.isFinite(candidate.rating) ? Math.max(0, Math.min(5, Math.round(candidate.rating))) : 0;
+  const tags = Array.isArray(candidate.tags) ? candidate.tags.filter((tag): tag is string => typeof tag === "string" && Boolean(tag.trim())).map((tag) => tag.trim()) : [];
+  const now = new Date().toISOString();
+  return {
+    url: candidate.url,
+    result: candidate.result,
+    rating,
+    notes: typeof candidate.notes === "string" ? candidate.notes : "",
+    tags: Array.from(new Set(tags)),
+    savedAt: typeof candidate.savedAt === "string" ? candidate.savedAt : now,
+    updatedAt: typeof candidate.updatedAt === "string" ? candidate.updatedAt : now,
+  };
+}
+
+export function parseBookmarkBackup(json: string): BookmarkRecord[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    throw new Error("備份檔不是有效的 JSON 格式。");
+  }
+  const records = Array.isArray(parsed) ? parsed : (parsed as Partial<BookmarkBackup>)?.bookmarks;
+  if (!Array.isArray(records)) throw new Error("備份檔缺少 bookmarks 清單。");
+  const normalized = records.map(normalizeImportedBookmark).filter((record): record is BookmarkRecord => record !== null);
+  if (!normalized.length && records.length) throw new Error("備份檔沒有可匯入的閱讀卡資料。");
+  return normalized;
+}
+
+export function mergeImportedBookmarks(current: BookmarkRecord[], imported: BookmarkRecord[]): BookmarkRecord[] {
+  const byUrl = new Map(current.map((bookmark) => [bookmark.url, bookmark]));
+  for (const bookmark of imported) {
+    const existing = byUrl.get(bookmark.url);
+    if (!existing || new Date(bookmark.updatedAt).getTime() >= new Date(existing.updatedAt).getTime()) byUrl.set(bookmark.url, bookmark);
+  }
+  return Array.from(byUrl.values()).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 export function upsertBookmark(bookmarks: BookmarkRecord[], next: Omit<BookmarkRecord, "savedAt" | "updatedAt">): BookmarkRecord[] {

@@ -49,3 +49,9 @@ FastAPI 強制更新同一在水裡寫字搜尋後回傳 `source="live"`、`tota
 同人誌中心於後續同一查詢的公開頁檢查仍未提供可解析內容，因此尚無法取得可信的搜尋頁總數。總數擷取器僅會在公開頁明示 `.search_result_info`、同類搜尋標頭或分頁總數時使用其值；在 CAPTCHA 或無結果內容情境下，系統維持 `blocked/error` 狀態與零筆可驗證資料，避免以站內未篩選書目填充搜尋結果。
 
 最新版 FastAPI 的同人誌中心單一來源強制更新同樣在頁面導覽逾時時回傳 `items=[]`、`totalWorks=0` 與 `platformStatuses[0].status="error"`，並保留中文 `translatedQuery`。這確認網站保護／逾時時不會把未篩選公開書目當成匹配結果，且前端可對該來源顯示單獨重試操作。
+
+### 2026-08-14 CxC 公開搜尋頁初步稽核
+
+以公開 URL `https://cxc.today/zh/search?keyword=義忍` 進行兩次瀏覽器載入檢查後，頁面仍僅顯示載入動畫，未提供可驗證的作品卡片、創作者、封面、類型標籤或作品連結。CxC Adapter 因此須遵循既有來源隔離契約：僅解析實際公開頁取得的資料，若渲染逾時或無可驗證作品卡片，回傳空結果與可單獨重試的來源狀態，絕不建立 placeholder 作品。
+
+同日以 FastAPI 對 `keyword="義忍"`、`platforms=["cxc"]`、`forceRefresh=true` 執行實測，回傳 HTTP 200 的安全搜尋 envelope：`items=[]`、`totalWorks=0`、`platformStatuses[0].status="error"`，並保留 `translatedQuery="義忍 富岡義勇 胡蝶忍"` 與明確警示 `Public search did not finish rendering; skipping cleanly`。因此 CxC 在公開頁尚未提供可驗證作品時，可由前端顯示單獨重試，不會產生未驗證內容。

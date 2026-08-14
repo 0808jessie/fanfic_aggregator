@@ -51,8 +51,17 @@ vi.mock("@/lib/trpc", async () => {
 });
 
 describe("Home personal reading tools", () => {
-  beforeEach(() => window.localStorage.clear());
-  afterEach(() => cleanup());
+  const createObjectURL = vi.fn(() => "blob:reading-library");
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    createObjectURL.mockClear();
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL: vi.fn() });
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
 
   it("saves a reading card, shows it in the private shelf, and manages a CP mapping", async () => {
     render(<Home />);
@@ -70,8 +79,15 @@ describe("Home personal reading tools", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /我的閱讀清單/ }));
     expect(await screen.findByText("想在夏天重讀。")).toBeTruthy();
-    expect(screen.getByText("#神作")).toBeTruthy();
-    expect(screen.getByText("#重讀")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "#神作" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "#重讀" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "#神作" }));
+    expect(screen.getByText("義忍閱讀測試")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "篩選 5 星" }));
+    expect(screen.getByText("想在夏天重讀。")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "匯出備份 JSON" }));
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getAllByRole("button", { name: /CP 詞庫管理/ })[0]);
     fireEvent.change(screen.getByLabelText("中文縮寫"), { target: { value: "黑邪" } });

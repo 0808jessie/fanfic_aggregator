@@ -5,6 +5,7 @@ try:
     from constants.cp_tags import get_keyword_for_platform
     from models import PlatformStatus, ScrapedFanfic
     from scrapers.ao3_scraper import AO3Scraper
+    from scrapers.cxc_scraper import CxCScraper
     from scrapers.doujin_scraper import DoujinScraper
     from scrapers.lofter_scraper import LofterScraper
     from scrapers.penana_scraper import PenanaScraper
@@ -20,6 +21,7 @@ except ModuleNotFoundError:  # Supports ``fastapi_app.*`` package-style imports 
     from constants.cp_tags import get_keyword_for_platform
     from models import PlatformStatus, ScrapedFanfic
     from scrapers.ao3_scraper import AO3Scraper
+    from scrapers.cxc_scraper import CxCScraper
     from scrapers.doujin_scraper import DoujinScraper
     from scrapers.lofter_scraper import LofterScraper
     from scrapers.penana_scraper import PenanaScraper
@@ -28,6 +30,7 @@ except ModuleNotFoundError:  # Supports ``fastapi_app.*`` package-style imports 
 
 SCRAPERS: dict[str, Callable[[], object]] = {
     "ao3": AO3Scraper,
+    "cxc": CxCScraper,
     "lofter": LofterScraper,
     "doujin": DoujinScraper,
     "waterwriter": WaterWriterScraper,
@@ -36,12 +39,13 @@ SCRAPERS: dict[str, Callable[[], object]] = {
 
 PLATFORM_LABELS = {
     "ao3": "AO3",
+    "cxc": "CxC 創利市集",
     "lofter": "Lofter",
     "doujin": "同人誌中心",
     "waterwriter": "在水裡寫字",
     "penana": "Penana",
 }
-LOCAL_CP_PLATFORM_IDS = frozenset(("doujin", "waterwriter"))
+LOCAL_CP_PLATFORM_IDS = frozenset(("cxc", "doujin", "waterwriter"))
 
 
 def translated_query_for_platform(platform_key: str, keyword: str) -> str:

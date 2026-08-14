@@ -85,7 +85,7 @@ describe("Home Page Traditional Chinese '義忍' Search", () => {
     expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "義忍", platforms: ["ao3", "lofter", "doujin", "waterwriter", "penana"], page: 1, forceRefresh: false },
+      data: { keyword: "義忍", platforms: ["ao3", "cxc", "lofter", "doujin", "waterwriter", "penana"], page: 1, forceRefresh: false },
     });
 
     fireEvent.click(screen.getByRole("button", { name: /FILTERS/ }));
@@ -97,7 +97,7 @@ describe("Home Page Traditional Chinese '義忍' Search", () => {
     await waitFor(() => expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "義忍", platforms: ["ao3", "lofter", "doujin", "waterwriter", "penana"], page: 1, forceRefresh: true },
+      data: { keyword: "義忍", platforms: ["ao3", "cxc", "lofter", "doujin", "waterwriter", "penana"], page: 1, forceRefresh: true },
     }));
   });
 });
