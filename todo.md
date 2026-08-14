@@ -184,4 +184,4 @@
 - [x] 以瀏覽器驗證 CxC 的佐櫻與正常零結果查詢，確認狀態卡分別呈現 success／empty 而非 error
 - [x] 以瀏覽器實際用僅 CxC 單一來源搜尋義忍，確認 ADAPTER CONNECTIONS 顯示 CxC 已連線而非 error，並保存驗證紀錄
 - [x] 修正 CxC 正常零結果仍顯示 DISCOVERY HALTED 的前端空狀態判斷，改為僅顯示來源專屬「無公開結果」
-- [ ] 儲存本輪 CxC CP 查詢轉譯、空結果與多欄位比對 checkpoint，記錄新 version ID 與對應驗證結果
+- [x] 儲存本輪 CxC CP 查詢轉譯、空結果與多欄位比對 checkpoint，版本 f07bd83c；Python 52/52、Vitest 34/34、TypeScript 通過
