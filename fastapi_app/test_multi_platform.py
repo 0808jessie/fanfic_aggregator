@@ -62,6 +62,15 @@ def test_platform_status_translates_cp_query_and_detects_cooldown():
     assert adapter_index.classify_platform_status(0, "[同人誌中心] No verified public result matched '義忍'") == "empty"
 
 
+def test_unknown_cp_aliases_fall_back_to_the_original_keyword_for_every_platform():
+    for keyword in ("蛇戀", "炭善", "五悠"):
+        assert adapter_index.translated_query_for_platform("ao3", keyword) == keyword
+        assert adapter_index.translated_query_for_platform("waterwriter", keyword) == keyword
+        assert adapter_index.translated_query_for_platform("doujin", keyword) == keyword
+        assert adapter_index.translated_query_for_platform("penana", keyword) == keyword
+        assert adapter_index.translated_query_for_platform("cxc", keyword) == keyword
+
+
 class FakeCxCSuccess:
     def __init__(self):
         self.last_warning = None

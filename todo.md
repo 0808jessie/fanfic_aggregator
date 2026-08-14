@@ -237,4 +237,10 @@
 - [x] 限制 CxC／同人誌中心 browser fallback 的總預算，並在公開 HTTP 已逾時或受保護時不再啟動二次導覽
 - [x] 將在水裡寫字與同人誌中心的 CP 本地搜尋改為單一主關鍵字，保留使用者原詞與官方總數契約
 - [x] 驗證五平台的獨立重試、部分成功隔離與完整回歸；Python 70/70、Vitest 42/42、TypeScript 通過
-- [ ] 儲存本輪五平台 timeout 校準與來源隔離 checkpoint
+- [x] 儲存本輪五平台 timeout 校準與來源隔離 checkpoint（cb33d8b2）
+- [x] 稽核同步 Adapter 與 ThreadPool 聚合的阻塞路徑、外部請求依賴及未知關鍵字回退契約
+- [x] 建立每來源獨立的非同步 HTTP Session、5 秒連線／10 秒讀取與來源級結果封裝
+- [x] 將 AO3、在水裡寫字、同人誌中心、Penana、CxC 接上非同步公開請求路徑，保留安全防護降級與可信 URL 邊界
+- [x] 補強未知 CP／一般字詞的原詞跨平台搜尋與單一來源重試回歸
+- [x] 驗證不同關鍵字的部分成功回應與完整回歸；Python 71/71、Vitest 42/42、TypeScript 通過
+- [ ] 儲存本輪非同步來源隔離與未知關鍵字重構 checkpoint

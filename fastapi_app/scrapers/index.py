@@ -1,4 +1,5 @@
-from concurrent.futures import Future, ThreadPoolExecutor, wait
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from threading import Lock
 from time import monotonic, perf_counter
@@ -218,7 +219,7 @@ def search_single_platform(
         return platform_key, [], 0, 0, make_platform_status(platform_key, keyword, 0, warning, custom_cp_map)
 
 
-def parallel_search_platforms(
+async def parallel_search_platforms_async(
     platforms: list[str],
     keyword: str,
     page: int = 1,
@@ -226,7 +227,13 @@ def parallel_search_platforms(
     custom_cp_map: dict[str, Any] | None = None,
     timeout_seconds: float = ADAPTER_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
-    """Search sources concurrently with a bounded deadline per aggregate request."""
+    """Run each source in an independently timed asyncio task.
+
+    The current public adapters retain synchronous parsers and browser fallbacks,
+    so each adapter runs in its own request-scoped worker. ``asyncio.wait_for``
+    applies the deadline to *each* source task from creation time, rather than
+    waiting for a shared batch and marking every unfinished worker together.
+    """
     results_map: dict[str, list[ScrapedFanfic]] = {}
     statuses_map: dict[str, PlatformStatus] = {}
     combined_total_works = 0
@@ -234,26 +241,36 @@ def parallel_search_platforms(
     warnings: list[str] = []
     any_success = False
 
-    # Give each aggregate request its own worker set. A previous request may
-    # still be unwinding a third-party socket after its source state has been
-    # returned; reusing its blocked global workers would make a fresh retry wait
-    # in queue and look like a simultaneous all-platform timeout.
+    # Each request owns its worker set. Every adapter already uses a one-shot
+    # HTTP request (not a shared requests.Session), so no platform can exhaust
+    # another platform's connection pool or queue a later single-source retry.
     executor = ThreadPoolExecutor(max_workers=max(1, len(platforms)), thread_name_prefix="fanfic-source")
-    future_to_platform: dict[Future[tuple[str, list[ScrapedFanfic], int, int, PlatformStatus]], str] = {
-        executor.submit(search_single_platform, platform, keyword, page, force_refresh, custom_cp_map): platform
-        for platform in platforms
-    }
-    done, pending = wait(future_to_platform, timeout=max(0.1, timeout_seconds))
+
+    async def run_platform(platform_key: str) -> tuple[str, list[ScrapedFanfic], int, int, PlatformStatus]:
+        loop = asyncio.get_running_loop()
+        task = loop.run_in_executor(
+            executor,
+            search_single_platform,
+            platform_key,
+            keyword,
+            page,
+            force_refresh,
+            custom_cp_map,
+        )
+        try:
+            return await asyncio.wait_for(task, timeout=max(0.1, timeout_seconds))
+        except asyncio.TimeoutError:
+            warning = f"[{PLATFORM_LABELS.get(platform_key, platform_key)}] 連線逾時（超過 {timeout_seconds:g} 秒）"
+            print(f"[AdapterIndex] {warning}")
+            return platform_key, [], 0, 1, make_platform_status(platform_key, keyword, 0, warning, custom_cp_map)
+        except Exception as error:
+            warning = f"[{PLATFORM_LABELS.get(platform_key, platform_key)}] scrape failed: {error}"
+            print(f"[AdapterIndex] {warning}")
+            return platform_key, [], 0, 1, make_platform_status(platform_key, keyword, 0, warning, custom_cp_map)
 
     try:
-        for future in done:
-            platform_key = future_to_platform[future]
-            try:
-                platform_key, items, total_works, total_pages, status = future.result()
-            except Exception as error:
-                warning = f"[{PLATFORM_LABELS.get(platform_key, platform_key)}] scrape failed: {error}"
-                items, total_works, total_pages = [], 0, 1
-                status = make_platform_status(platform_key, keyword, 0, warning, custom_cp_map)
+        source_payloads = await asyncio.gather(*(run_platform(platform) for platform in platforms))
+        for platform_key, items, total_works, total_pages, status in source_payloads:
             statuses_map[platform_key] = status
             if status.warning:
                 warnings.append(status.warning)
@@ -264,19 +281,10 @@ def parallel_search_platforms(
             if items:
                 results_map[platform_key] = items
 
-        for future in pending:
-            platform_key = future_to_platform[future]
-            future.cancel()
-            warning = f"[{PLATFORM_LABELS.get(platform_key, platform_key)}] 連線逾時（超過 {timeout_seconds:g} 秒）"
-            print(f"[AdapterIndex] {warning}")
-            statuses_map[platform_key] = make_platform_status(platform_key, keyword, 0, warning, custom_cp_map)
-            warnings.append(warning)
     finally:
-        # Do not wait for slow third-party work. Pending jobs cannot be force-
-        # killed safely, but request-scoped workers ensure they never block the
-        # next aggregate retry from starting immediately.
-        for future in pending:
-            future.cancel()
+        # Worker threads currently unwinding a third-party socket cannot be
+        # force-killed safely. Request-scoped executors ensure they cannot delay
+        # any later platform retry once this source state has been returned.
         executor.shutdown(wait=False, cancel_futures=True)
 
     all_items: list[ScrapedFanfic] = []
@@ -292,3 +300,24 @@ def parallel_search_platforms(
         "warnings": warnings,
         "platform_statuses": [statuses_map[platform] for platform in platforms if platform in statuses_map],
     }
+
+
+def parallel_search_platforms(
+    platforms: list[str],
+    keyword: str,
+    page: int = 1,
+    force_refresh: bool = False,
+    custom_cp_map: dict[str, Any] | None = None,
+    timeout_seconds: float = ADAPTER_TIMEOUT_SECONDS,
+) -> dict[str, Any]:
+    """Synchronous compatibility wrapper for the FastAPI and test contracts."""
+    return asyncio.run(
+        parallel_search_platforms_async(
+            platforms,
+            keyword,
+            page,
+            force_refresh,
+            custom_cp_map,
+            timeout_seconds,
+        )
+    )
