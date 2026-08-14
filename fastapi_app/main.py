@@ -199,7 +199,8 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
     if not keyword:
         raise HTTPException(status_code=422, detail="keyword cannot be empty")
 
-    platforms = canonical_platforms(query.platforms)
+    requested_platforms = query.platforms or ([query.platform] if query.platform else None)
+    platforms = canonical_platforms(requested_platforms)
     if not platforms:
         raise HTTPException(status_code=400, detail="No supported platform was selected")
 
@@ -245,6 +246,7 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
                     nextPage=loaded_through_page + 1 if has_more else None,
                     hasMore=has_more,
                     platformStatuses=cached_platform_statuses,
+                    fromCache=True,
                 )
             if cache_key in _MEMORY_CACHE:
                 del _MEMORY_CACHE[cache_key]
@@ -320,6 +322,7 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
                 nextPage=loaded_through_page + 1 if has_more else None,
                 hasMore=has_more,
                 platformStatuses=platform_statuses,
+                fromCache=bool(platform_statuses) and all(status.fromCache for status in platform_statuses),
             )
 
         # A source that completed normally but found no public work is not a

@@ -42,3 +42,24 @@ def test_fastapi_preserves_ao3_heading_total_in_total_works_response():
     assert payload["totalWorks"] == 15420
     assert payload["totalPages"] == 771
     assert payload["items"][0]["title"] == "Verified AO3 card"
+
+
+def test_fastapi_accepts_single_platform_parameter_for_isolated_retry():
+    aggregate = {
+        "items": [],
+        "any_success": True,
+        "total_works": 0,
+        "total_pages": 1,
+        "warnings": [],
+        "platform_statuses": [],
+    }
+
+    with patch("main.parallel_search_platforms", return_value=aggregate) as search:
+        response = TestClient(main.app).post(
+            "/search",
+            json={"keyword": "義忍", "platform": "cxc", "forceRefresh": True},
+        )
+
+    assert response.status_code == 200
+    assert search.call_args.args[0] == ["cxc"]
+    assert response.json()["fromCache"] is False

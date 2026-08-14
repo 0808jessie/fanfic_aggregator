@@ -208,4 +208,10 @@
 - [x] 在作品卡加入安全的作者導航互動，標示 Author Mode 並以作者名稱觸發跨平台搜尋
 - [x] 擴充 CP 詞庫管理 Modal，加入可瀏覽的預設題材／世界觀對照區，維持自訂 CP LocalStorage 行為
 - [x] 補上題材轉譯、作者無效值防護、作者模式搜尋與既有逾時／總數行為的回歸測試與 UI 驗證；Python 57/57、Vitest 39/39、TypeScript 通過
-- [ ] 儲存本輪作者導航與題材詞庫 checkpoint
+- [x] 儲存本輪作者導航與題材詞庫 checkpoint，版本 7a27ca4e；Python 57/57、Vitest 39/39、TypeScript 通過
+- [x] 稽核 Playwright 瀏覽器啟動、頁面關閉、搜尋快取與單一來源重試路徑，確認不影響現有 deadline 與官方總數
+- [x] 建立共用 Playwright browser provider 與資源攔截設定，僅阻擋非必要資源並確保頁面在 finally 中關閉
+- [x] 建立來源級短期記憶體快取與 forceRefresh 略過策略，保留既有回應與快取 TTL 契約
+- [x] 驗證並補強單一平台重試只呼叫指定來源、合併對應結果與更新對應狀態卡的行為
+- [x] 補上資源攔截、browser provider、來源快取與單一來源重試的回歸／效能驗證；Python 61/61、Vitest 39/39、TypeScript 通過；CxC cache hit 10 ms
+- [ ] 儲存本輪爬蟲穩定度與速度優化 checkpoint

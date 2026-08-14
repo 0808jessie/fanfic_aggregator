@@ -16,11 +16,7 @@ from bs4 import BeautifulSoup
 from constants.cp_tags import CPTagConfig, get_keyword_for_platform
 from models import ScrapedFanfic
 from scrapers.base_scraper import BaseScraper
-
-try:
-    from playwright.sync_api import sync_playwright
-except ImportError:  # pragma: no cover - deployment dependency guard
-    sync_playwright = None
+from scrapers.browser_runtime import PLAYWRIGHT_AVAILABLE, configure_fast_page, sync_playwright
 
 
 class _PublicPageUnavailable(RuntimeError):
@@ -85,7 +81,7 @@ class WaterWriterScraper(BaseScraper):
         return {"items": [], "total_works": 0, "total_pages": 1}
 
     def _render_public_search_html(self, keyword: str) -> str:
-        if sync_playwright is None:
+        if not PLAYWRIGHT_AVAILABLE:
             raise _PublicPageUnavailable("Playwright is unavailable; skipping cleanly")
 
         with sync_playwright() as playwright:
@@ -101,6 +97,7 @@ class WaterWriterScraper(BaseScraper):
                     extra_http_headers={"Accept-Language": self.headers["Accept-Language"], "Referer": self.headers["Referer"]},
                 )
                 page = context.new_page()
+                configure_fast_page(page)
                 response = page.goto(self.build_search_url(keyword), timeout=18000, wait_until="domcontentloaded")
                 if response and response.status in (403, 429, 503, 520, 521, 522, 525):
                     raise _PublicPageUnavailable(f"Request blocked (HTTP {response.status}), skipping cleanly")
@@ -122,6 +119,10 @@ class WaterWriterScraper(BaseScraper):
 
                 return page.content()
             finally:
+                try:
+                    page.close()
+                except Exception:
+                    pass
                 try:
                     context.close()
                 finally:

@@ -7,13 +7,9 @@ import urllib.parse
 from typing import Any
 
 from scrapers.base_scraper import BaseScraper
+from scrapers.browser_runtime import PLAYWRIGHT_AVAILABLE, configure_fast_page, sync_playwright
 from models import ScrapedFanfic
 from constants.cp_tags import CPTagConfig, get_keyword_for_platform
-
-try:
-    from playwright.sync_api import sync_playwright
-except ImportError:
-    sync_playwright = None
 
 
 def extract_ao3_tag_metadata(work_element) -> tuple[list[str], list[str], list[str]]:
@@ -130,7 +126,7 @@ class AO3Scraper(BaseScraper):
         total_pages = 1
         last_error_warning = None
 
-        if sync_playwright is None:
+        if not PLAYWRIGHT_AVAILABLE:
             self.last_warning = "Playwright is not installed in sandbox environment."
             return {"items": [], "total_works": 0, "total_pages": 1}
 
@@ -155,6 +151,7 @@ class AO3Scraper(BaseScraper):
                 # search result instead of silently hiding them from totals.
                 context.add_cookies([self.adult_content_cookie])
                 page_obj = context.new_page()
+                configure_fast_page(page_obj)
 
                 try:
                     for idx, target_page in enumerate(target_pages):
@@ -259,6 +256,10 @@ class AO3Scraper(BaseScraper):
                             all_items.append(fanfic)
 
                 finally:
+                    try:
+                        page_obj.close()
+                    except Exception:
+                        pass
                     context.close()
                     browser.close()
 

@@ -18,11 +18,7 @@ import requests
 from constants.cp_tags import CPTagConfig, get_keyword_for_platform
 from models import ScrapedFanfic
 from scrapers.base_scraper import BaseScraper
-
-try:
-    from playwright.sync_api import sync_playwright
-except ImportError:  # pragma: no cover - environment safeguard
-    sync_playwright = None
+from scrapers.browser_runtime import PLAYWRIGHT_AVAILABLE, configure_fast_page, sync_playwright
 
 
 class _PublicSearchUnavailable(RuntimeError):
@@ -290,7 +286,7 @@ class CxCScraper(BaseScraper):
             return 0
 
     def _render_public_search_html(self, keyword: str) -> str:
-        if sync_playwright is None:
+        if not PLAYWRIGHT_AVAILABLE:
             raise _PublicSearchUnavailable("連線逾時或等待渲染逾時（Playwright 不可用）")
 
         with sync_playwright() as playwright:
@@ -310,6 +306,7 @@ class CxCScraper(BaseScraper):
                     },
                 )
                 page_obj = context.new_page()
+                configure_fast_page(page_obj)
                 api_response_seen = False
 
                 def record_public_api_response(response) -> None:
@@ -365,6 +362,10 @@ class CxCScraper(BaseScraper):
                     raise _PublicSearchUnavailable("連線逾時或等待渲染逾時（未產生可信作品卡）")
                 return html
             finally:
+                try:
+                    page_obj.close()
+                except Exception:
+                    pass
                 if context is not None:
                     context.close()
                 browser.close()

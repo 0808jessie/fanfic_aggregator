@@ -139,3 +139,61 @@ def test_parallel_search_returns_partial_results_when_one_adapter_exceeds_deadli
     assert statuses["ao3"].status == "success"
     assert statuses["waterwriter"].status == "error"
     assert "連線逾時" in (statuses["waterwriter"].warning or "")
+
+
+def test_source_cache_marks_fast_follow_up_and_force_refresh_bypasses_it():
+    calls = 0
+
+    class CacheableAdapter:
+        def __init__(self):
+            self.last_warning = None
+
+        def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False):
+            nonlocal calls
+            calls += 1
+            return {
+                "items": [ScrapedFanfic(
+                    title="cached source",
+                    author="author",
+                    platform="AO3",
+                    url="https://archiveofourown.org/works/3001",
+                    keyword=keyword,
+                )],
+                "total_works": 1,
+                "total_pages": 1,
+            }
+
+    adapter_index._SOURCE_CACHE.clear()
+    with patch.object(adapter_index, "SCRAPERS", {"ao3": CacheableAdapter}):
+        _, _, _, _, first_status = adapter_index.search_single_platform("ao3", "cache probe")
+        _, _, _, _, second_status = adapter_index.search_single_platform("ao3", "cache probe")
+        _, _, _, _, refreshed_status = adapter_index.search_single_platform("ao3", "cache probe", force_refresh=True)
+
+    assert calls == 2
+    assert first_status.fromCache is False
+    assert second_status.fromCache is True
+    assert refreshed_status.fromCache is False
+
+
+def test_single_platform_retry_only_executes_the_requested_adapter():
+    calls: list[str] = []
+
+    class AO3Probe:
+        def __init__(self):
+            self.last_warning = None
+
+        def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False):
+            calls.append("ao3")
+            return {"items": [], "total_works": 0, "total_pages": 1}
+
+    class CxCProbe(AO3Probe):
+        def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False):
+            calls.append("cxc")
+            return {"items": [], "total_works": 0, "total_pages": 1}
+
+    adapter_index._SOURCE_CACHE.clear()
+    with patch.object(adapter_index, "SCRAPERS", {"ao3": AO3Probe, "cxc": CxCProbe}):
+        aggregate = adapter_index.parallel_search_platforms(["cxc"], "單一重試", force_refresh=True)
+
+    assert calls == ["cxc"]
+    assert [status.platformId for status in aggregate["platform_statuses"]] == ["cxc"]

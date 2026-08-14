@@ -1,5 +1,7 @@
 from concurrent.futures import Future, ThreadPoolExecutor, wait
-from time import perf_counter
+from copy import deepcopy
+from threading import Lock
+from time import monotonic, perf_counter
 from typing import Any, Callable
 
 try:
@@ -46,6 +48,13 @@ PLATFORM_LABELS = {
 }
 LOCAL_CP_PLATFORM_IDS = frozenset(("doujin", "waterwriter"))
 ADAPTER_TIMEOUT_SECONDS = 8.0
+SOURCE_CACHE_TTL_SECONDS = 600.0
+_SOURCE_CACHE: dict[tuple[str, str, int], tuple[float, list[ScrapedFanfic], int, int, str | None]] = {}
+_SOURCE_CACHE_LOCK = Lock()
+# A fixed worker pool lets each sync-Playwright worker keep its thread-local
+# browser alive between searches. The public response remains bounded by the
+# per-request wait below; long upstream jobs never block response finalization.
+_ADAPTER_EXECUTOR = ThreadPoolExecutor(max_workers=max(1, len(SCRAPERS)))
 
 
 def translated_query_for_platform(
@@ -103,6 +112,37 @@ def make_platform_status(
     )
 
 
+def _source_cache_key(platform_key: str, keyword: str, page: int, custom_cp_map: dict[str, Any] | None) -> tuple[str, str, int]:
+    """Key cache entries by the source's effective platform-specific query."""
+    return platform_key, translated_query_for_platform(platform_key, keyword, custom_cp_map), page
+
+
+def _read_source_cache(cache_key: tuple[str, str, int]) -> tuple[list[ScrapedFanfic], int, int, str | None] | None:
+    with _SOURCE_CACHE_LOCK:
+        entry = _SOURCE_CACHE.get(cache_key)
+        if entry is None:
+            return None
+        cached_at, items, total_works, total_pages, warning = entry
+        if monotonic() - cached_at >= SOURCE_CACHE_TTL_SECONDS:
+            _SOURCE_CACHE.pop(cache_key, None)
+            return None
+        return deepcopy(items), total_works, total_pages, warning
+
+
+def _write_source_cache(
+    cache_key: tuple[str, str, int],
+    items: list[ScrapedFanfic],
+    total_works: int,
+    total_pages: int,
+    warning: str | None,
+) -> None:
+    # Cache verified items only; transient empty/error pages stay retryable.
+    if not items:
+        return
+    with _SOURCE_CACHE_LOCK:
+        _SOURCE_CACHE[cache_key] = (monotonic(), deepcopy(items), total_works, total_pages, warning)
+
+
 def search_single_platform(
     platform_key: str,
     keyword: str,
@@ -116,6 +156,21 @@ def search_single_platform(
     if not adapter_cls:
         warning = f"Platform '{platform_key}' is not supported."
         return platform_key, [], 0, 0, make_platform_status(platform_key, keyword, 0, warning, custom_cp_map)
+
+    cache_key = _source_cache_key(platform_key, keyword, page, custom_cp_map)
+    if force_refresh:
+        with _SOURCE_CACHE_LOCK:
+            _SOURCE_CACHE.pop(cache_key, None)
+    else:
+        cached_payload = _read_source_cache(cache_key)
+        if cached_payload is not None:
+            items, total_works, total_pages, warning = cached_payload
+            status_count = total_works if total_works > 0 else len(items)
+            status = make_platform_status(platform_key, keyword, status_count, warning, custom_cp_map)
+            status.fromCache = True
+            duration_ms = round((perf_counter() - started_at) * 1000)
+            print(f"[{PLATFORM_LABELS.get(platform_key, platform_key)} Cache Hit in ms] {duration_ms}")
+            return platform_key, items, total_works, total_pages, status
 
     adapter = adapter_cls()
     try:
@@ -146,6 +201,7 @@ def search_single_platform(
             item.keyword = keyword
         warning = getattr(adapter, "last_warning", None)
         status_count = total_works if total_works > 0 else len(items)
+        _write_source_cache(cache_key, items, total_works, total_pages, warning)
         duration_ms = round((perf_counter() - started_at) * 1000)
         print(f"[{PLATFORM_LABELS.get(platform_key, platform_key)} Done in ms] {duration_ms}")
         return platform_key, items, total_works, total_pages, make_platform_status(
@@ -174,9 +230,8 @@ def parallel_search_platforms(
     warnings: list[str] = []
     any_success = False
 
-    executor = ThreadPoolExecutor(max_workers=len(platforms) or 1)
     future_to_platform: dict[Future[tuple[str, list[ScrapedFanfic], int, int, PlatformStatus]], str] = {
-        executor.submit(search_single_platform, platform, keyword, page, force_refresh, custom_cp_map): platform
+        _ADAPTER_EXECUTOR.submit(search_single_platform, platform, keyword, page, force_refresh, custom_cp_map): platform
         for platform in platforms
     }
     done, pending = wait(future_to_platform, timeout=max(0.1, timeout_seconds))
@@ -208,10 +263,11 @@ def parallel_search_platforms(
             statuses_map[platform_key] = make_platform_status(platform_key, keyword, 0, warning, custom_cp_map)
             warnings.append(warning)
     finally:
-        # Do not wait for a slow third-party browser/network operation during
-        # response finalization. Cancellation prevents queued work; running
-        # adapters eventually clean up through their own try/finally blocks.
-        executor.shutdown(wait=False, cancel_futures=True)
+        # Do not wait for slow third-party network/browser work. Cancellation
+        # stops queued jobs; active jobs eventually close their fresh page and
+        # context while preserving the worker's reusable browser instance.
+        for future in pending:
+            future.cancel()
 
     all_items: list[ScrapedFanfic] = []
     for platform in platforms:

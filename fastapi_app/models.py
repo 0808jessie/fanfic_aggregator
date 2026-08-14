@@ -32,6 +32,7 @@ class ScrapedFanfic(BaseModel):
 class SearchQuery(BaseModel):
     keyword: str = Field(min_length=1, max_length=120)
     platforms: Optional[list[str]] = None
+    platform: Optional[str] = Field(default=None, min_length=1, max_length=40)
     page: int = Field(default=1, ge=1)
     forceRefresh: bool = False
     # Browser-local mapping payloads are intentionally permissive at the HTTP
@@ -58,6 +59,7 @@ class PlatformStatus(BaseModel):
     itemCount: int = Field(default=0, ge=0)
     warning: Optional[str] = None
     translatedQuery: str
+    fromCache: bool = False
 
 
 class SearchResponse(BaseModel):
@@ -75,3 +77,4 @@ class SearchResponse(BaseModel):
     nextPage: Optional[int] = None
     hasMore: bool = False
     platformStatuses: list[PlatformStatus] = Field(default_factory=list)
+    fromCache: bool = False

@@ -12,11 +12,7 @@ import requests
 
 from models import ScrapedFanfic
 from scrapers.base_scraper import BaseScraper
-
-try:
-    from playwright.sync_api import sync_playwright
-except ImportError:
-    sync_playwright = None
+from scrapers.browser_runtime import PLAYWRIGHT_AVAILABLE, configure_fast_page, sync_playwright
 
 
 class PenanaScraper(BaseScraper):
@@ -48,7 +44,7 @@ class PenanaScraper(BaseScraper):
 
             # Penana Finder renders many public cards client-side. Use the rendered page
             # only when the ordinary public request has no verified story cards.
-            if not items and sync_playwright is None:
+            if not items and not PLAYWRIGHT_AVAILABLE:
                 self.last_warning = "[Penana] Public Finder could not return verified result cards"
                 return {"items": [], "total_works": 0, "total_pages": 1}
             if not items:
@@ -63,6 +59,7 @@ class PenanaScraper(BaseScraper):
                         viewport={"width": 1280, "height": 900},
                     )
                     page_obj = context.new_page()
+                    configure_fast_page(page_obj)
                     try:
                         response = page_obj.goto(search_url, timeout=7000, wait_until="domcontentloaded")
                         status_code = response.status if response else 200
@@ -83,6 +80,10 @@ class PenanaScraper(BaseScraper):
                         # to return verified search results.
                         detail_outcomes = []
                     finally:
+                        try:
+                            page_obj.close()
+                        except Exception:
+                            pass
                         context.close()
                         browser.close()
 
