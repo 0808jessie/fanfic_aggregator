@@ -102,7 +102,45 @@ def test_taiwan_adapters_prefer_explicit_page_totals_over_rendered_card_counts()
 
     doujin_html = '<div class="search_result_info">搜尋結果共 456 本作品</div>'
     assert DoujinScraper.extract_total_works(doujin_html) == 456
-    assert "q=%E7%BE%A9%E5%BF%8D" in DoujinScraper.build_search_url("義忍")
+    assert "keyword=%E7%BE%A9%E5%BF%8D" in DoujinScraper.build_search_url("義忍")
+    assert "/books/search/q?" in DoujinScraper.build_search_url("義忍")
+
+
+def test_doujin_native_keyword_route_and_public_total_are_parsed():
+    scraper = DoujinScraper()
+    html = """
+    <main>
+      <div class="listing-header">義忍同人誌、二創同人本 共 24 本</div>
+      <div class="books_sim_info">
+        <a class="imgborder" href="/books/info/52634"><span>可線上購買</span><img alt="《義忍》平行線的奇蹟" /></a>
+        <div class="bks_sim_info_list">
+          <strong><a href="/books/info/52634">《義忍》平行線的奇蹟</a></strong>
+          <div class="painter_name">作者：<a>子路</a></div>
+          <div class="books_view"><span class="info_txt">公開作品摘要</span></div>
+        </div>
+      </div>
+      <section class="books_related_results">
+        <a href="/books/info/99999">不應納入的延伸推薦</a>
+      </div>
+      <nav class="pagination">第一頁上 10 頁 <span aria-label="總共 2 頁">共 2 頁</span> 下 10 頁</nav>
+    </main>
+    """
+
+    assert scraper.build_search_url("義忍") == "https://www.doujin.com.tw/books/search/q?keyword=%E7%BE%A9%E5%BF%8D"
+    assert scraper.build_search_url("義忍", page=2).endswith("keyword=%E7%BE%A9%E5%BF%8D&page=2")
+    assert scraper.extract_total_works(html) == 24
+    assert scraper.extract_total_pages(html) == 2
+    items = scraper.parse_results(html, "義忍")
+    assert len(items) == 1
+    assert items[0].title == "《義忍》平行線的奇蹟"
+    assert items[0].author == "子路"
+    assert items[0].url == "https://www.doujin.com.tw/books/info/52634"
+
+
+def test_doujin_single_page_result_safely_defaults_to_one_page():
+    single_page_html = '<main><div class="listing-header">共 4 本</div></main>'
+    assert DoujinScraper.extract_total_works(single_page_html) == 4
+    assert DoujinScraper.extract_total_pages(single_page_html) is None
 
 
 def test_taiwan_adapters_pass_chinese_cp_query_to_public_search_pages():
@@ -114,7 +152,7 @@ def test_taiwan_adapters_pass_chinese_cp_query_to_public_search_pages():
     doujin = DoujinScraper()
     with patch.object(doujin, "_render_public_search_html", return_value="") as render_doujin:
         doujin.scrape("義忍")
-    assert render_doujin.call_args.args == ("義忍 富岡義勇 胡蝶忍",)
+    assert render_doujin.call_args.args == ("義忍 富岡義勇 胡蝶忍", 1)
 
 
 def test_waterwriter_keeps_each_rendered_discuz_row_title_and_summary_separate():

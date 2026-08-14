@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from urllib.parse import urlencode, urljoin
+from urllib.parse import quote_plus, urljoin
 
 from bs4 import BeautifulSoup
 
@@ -31,7 +31,7 @@ class DoujinScraper(BaseScraper):
     """Parse verified public `/books/info/` cards from rendered search listings."""
 
     base_url = "https://www.doujin.com.tw"
-    search_url = f"{base_url}/books/search"
+    search_url = f"{base_url}/books/search/q"
     user_agent = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
@@ -45,8 +45,14 @@ class DoujinScraper(BaseScraper):
     result_selectors = (".work_item", ".book_item", ".work-list-item", "div[class*='book']")
 
     @classmethod
-    def build_search_url(cls, keyword: str) -> str:
-        return f"{cls.search_url}?{urlencode({'q': keyword})}"
+    def build_search_url(cls, keyword: str, page: int = 1) -> str:
+        # The site's own works-search form routes to /books/search/q with a
+        # `keyword` parameter. The legacy /books/search?q= route redirects to
+        # the unfiltered catalogue and cannot provide a trustworthy total.
+        query = f"keyword={quote_plus(keyword)}"
+        if page > 1:
+            query = f"{query}&page={page}"
+        return f"{cls.search_url}?{query}"
 
     def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False) -> dict[str, object]:
         self.last_warning = None
@@ -55,15 +61,16 @@ class DoujinScraper(BaseScraper):
 
         try:
             local_query = get_keyword_for_platform(keyword, "local")
-            html = self._render_public_search_html(local_query)
+            html = self._render_public_search_html(local_query, page)
             items = self.parse_results(html, local_query)
             total_works = self.extract_total_works(html) or len(items)
+            total_pages = self.extract_total_pages(html) or 1
             for item in items:
                 item.keyword = keyword
             print(f"[同人誌中心] 成功抓取 {len(items)} 筆")
             if not items:
                 self.last_warning = f"[同人誌中心] No verified public result matched '{keyword}'"
-            return {"items": items, "total_works": total_works, "total_pages": 1}
+            return {"items": items, "total_works": total_works, "total_pages": total_pages}
         except _PublicListingUnavailable as error:
             self.last_warning = f"[同人誌中心] {error}"
             print(self.last_warning)
@@ -72,7 +79,7 @@ class DoujinScraper(BaseScraper):
             print(self.last_warning)
         return {"items": [], "total_works": 0, "total_pages": 1}
 
-    def _render_public_search_html(self, keyword: str) -> str:
+    def _render_public_search_html(self, keyword: str, page_number: int = 1) -> str:
         if sync_playwright is None:
             raise _PublicListingUnavailable("Playwright is unavailable; skipping cleanly")
 
@@ -89,7 +96,7 @@ class DoujinScraper(BaseScraper):
                     extra_http_headers={"Accept-Language": self.headers["Accept-Language"], "Referer": self.headers["Referer"]},
                 )
                 page = context.new_page()
-                response = page.goto(self.build_search_url(keyword), timeout=18000, wait_until="domcontentloaded")
+                response = page.goto(self.build_search_url(keyword, page_number), timeout=18000, wait_until="domcontentloaded")
                 if response and response.status in (403, 429, 503, 520, 521, 522, 525):
                     raise _PublicListingUnavailable(f"Request blocked (HTTP {response.status}), skipping cleanly")
 
@@ -98,7 +105,7 @@ class DoujinScraper(BaseScraper):
                 if self._is_protected_page(body_text):
                     raise _PublicListingUnavailable("Triggered verification page, skipping cleanly")
 
-                for selector in self.result_selectors:
+                for selector in ('a[href*="/books/info/"]', *self.result_selectors):
                     try:
                         page.wait_for_selector(selector, timeout=2000)
                         break
@@ -122,7 +129,21 @@ class DoujinScraper(BaseScraper):
         results: list[ScrapedFanfic] = []
         seen_urls: set[str] = set()
 
-        for anchor in soup.select('a[href*="/books/info/"]'):
+        # The site appends a separate "你可能會感興趣" recommendations block
+        # after the official matches. Only cards directly inside books_list_con
+        # belong to the declared `共 N 本` search total.
+        primary_cards = soup.select(".books_list_con > .books_sim_info")
+        anchors = [
+            anchor
+            for card in primary_cards
+            for anchor in card.select('a[href*="/books/info/"]')
+        ]
+        if not anchors:
+            # Retain tolerant parsing for small verified fixtures and pages
+            # that use an older public card structure.
+            anchors = soup.select('a[href*="/books/info/"]')
+
+        for anchor in anchors:
             href = anchor.get("href")
             if not href:
                 continue
@@ -130,8 +151,15 @@ class DoujinScraper(BaseScraper):
             if url in seen_urls or not url.startswith(f"{self.base_url}/books/info/"):
                 continue
 
-            card = anchor.find_parent(["article", "li", "section", "div"]) or anchor
-            title_node = card.select_one(".title, .book_name, h3, h4")
+            card = anchor.find_parent("div", class_="books_sim_info") or anchor.find_parent(
+                ["article", "li", "section", "div"]
+            ) or anchor
+            # On the production page, the image link contains sale-state text
+            # such as "完售". The authoritative title is the matching strong
+            # link inside the result card, not the image anchor's text.
+            title_node = card.select_one("strong > a[href*='/books/info/']") or card.select_one(
+                ".title, .book_name, h3, h4"
+            )
             title = (title_node or anchor).get_text(" ", strip=True)
             if not title:
                 image = anchor.select_one("img[alt]") or card.select_one("img[alt]")
@@ -143,9 +171,9 @@ class DoujinScraper(BaseScraper):
 
             image = anchor.select_one("img[src]") or card.select_one("img[src]")
             cover_url = urljoin(self.base_url, image.get("src")) if image and image.get("src") else None
-            author_node = card.select_one(".author, .author_name, .artist, [data-author]")
+            author_node = card.select_one(".painter_name a, .author, .author_name, .artist, [data-author]")
             author = author_node.get_text(" ", strip=True) if author_node else "未知創作者"
-            summary_node = card.select_one(".summary, .description, .intro, p")
+            summary_node = card.select_one(".books_view .info_txt, .summary, .description, .intro, p")
             summary = (summary_node.get_text(" ", strip=True) if summary_node else card_text)[:800]
 
             results.append(
@@ -174,6 +202,10 @@ class DoujinScraper(BaseScraper):
             ".pagination, .pager, [class*='search'][class*='info']"
         )
         candidate_text = " ".join(node.get_text(" ", strip=True) for node in result_nodes)
+        # The production results page places `共 N 本` directly in its listing
+        # header without a stable class. It is safe to inspect page text because
+        # the exact book-count marker is distinct from pagination's `共 N 頁`.
+        page_text = soup.get_text(" ", strip=True)
         patterns = (
             r"(?:共|總計)\s*([\d,]+)\s*(?:本|筆|件|項|部|作品|結果)",
             r"找到\s*([\d,]+)\s*(?:本|筆|件|項|部|作品|結果)",
@@ -183,4 +215,18 @@ class DoujinScraper(BaseScraper):
             match = re.search(pattern, candidate_text, re.IGNORECASE)
             if match:
                 return int(match.group(1).replace(",", ""))
+        page_match = re.search(r"共\s*([\d,]+)\s*本", page_text)
+        if page_match:
+            return int(page_match.group(1).replace(",", ""))
         return None
+
+    @staticmethod
+    def extract_total_pages(html: str) -> int | None:
+        """Read the official page count from the result navigator when present."""
+        soup = BeautifulSoup(html, "html.parser")
+        pagination_text = " ".join(
+            node.get_text(" ", strip=True)
+            for node in soup.select("nav.pagination, .pagination, .pager, .pages")
+        )
+        match = re.search(r"(?:總共|共)\s*([\d,]+)\s*頁", pagination_text)
+        return int(match.group(1).replace(",", "")) if match else None
