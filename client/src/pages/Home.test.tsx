@@ -87,6 +87,16 @@ beforeEach(() => {
 });
 
 describe("Home pagination interactions", () => {
+  it("renders the story cartography search workspace before a query", () => {
+    render(<Home />);
+
+    expect(screen.getByText("QUERY TRAJECTORY")).toBeTruthy();
+    expect(screen.getByText("READY FOR A QUERY")).toBeTruthy();
+    expect(screen.getByText("FIRST COORDINATE")).toBeTruthy();
+    expect(screen.getByText("VERIFIED LINKS")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "RUN SEARCH" })).toBeTruthy();
+  });
+
   it("shows totalWorks and appends a page while displaying the loading label", async () => {
     render(<Home />);
 

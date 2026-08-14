@@ -348,51 +348,50 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen overflow-hidden bg-[#f8faf9] text-[#10151b]">
-      <div className="blueprint-grid pointer-events-none fixed inset-0 opacity-70" />
-      <div className="blueprint-cross cross-one pointer-events-none fixed" />
-      <div className="blueprint-cross cross-two pointer-events-none fixed" />
-      <div className="blueprint-orbit orbit-one pointer-events-none fixed" />
-      <div className="blueprint-orbit orbit-two pointer-events-none fixed" />
+    <div className="min-h-screen overflow-hidden bg-[#f5f1e8] text-[#111826]">
+      <div className="blueprint-grid pointer-events-none fixed inset-0 opacity-80" />
+      <div className="blueprint-orbit orbit-one pointer-events-none fixed opacity-50" />
+      <div className="blueprint-cross cross-two pointer-events-none fixed opacity-60" />
 
-      <header className="relative z-10 border-b border-[#12171c]/10 bg-[#f8faf9]/85 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-[1440px] items-center justify-between px-5 py-5 sm:px-8 lg:px-12">
+      <header className="relative z-10 border-b border-[#111826]/12 bg-[#f5f1e8]/90 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-[1320px] items-center justify-between px-5 py-4 sm:px-8 lg:px-10">
           <div className="flex items-center gap-3">
-            <div className="brand-mark flex h-10 w-10 items-center justify-center border-2 border-[#10151b] bg-[#c9f4f1]">
+            <div className="brand-mark flex h-10 w-10 items-center justify-center border-2 border-[#111826] bg-[#bfe9e1]">
               <span className="font-mono text-lg font-bold">∑</span>
             </div>
             <div>
-              <div className="font-mono text-[10px] font-bold uppercase tracking-[0.28em] text-[#4e5b65]">INDEX / 001</div>
-              <div className="text-lg font-black tracking-[-0.06em]">FANFIC // ATLAS</div>
+              <div className="atlas-mono text-[9px] font-medium uppercase tracking-[0.24em] text-[#6e7480]">STORY CARTOGRAPHY / 01</div>
+              <div className="text-lg font-black tracking-[-0.07em]">FANFIC // ATLAS</div>
             </div>
           </div>
-          <div className="hidden items-center gap-6 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-[#61707a] md:flex">
-            <span>FASTAPI CORE</span><span className="h-1 w-1 rounded-full bg-[#f29db7]" />
-            <span>ADAPTER NETWORK</span><span className="h-1 w-1 rounded-full bg-[#6bcfca]" />
-            <span>LOCAL CACHE READY</span>
+          <div className="atlas-mono hidden items-center gap-5 text-[9px] font-medium uppercase tracking-[0.18em] text-[#6e7480] md:flex">
+            <span>SEARCH INDEX</span><span className="h-1 w-1 rounded-full bg-[#e76f51]" />
+            <span>5 LIVE ROUTES</span><span className="h-1 w-1 rounded-full bg-[#6fc7b6]" />
+            <span>PRIVATE SHELF</span>
           </div>
-          <div className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#10151b]">
-            <Button type="button" variant="ghost" onClick={() => setCpManagerOpen(true)} className="hidden h-9 rounded-none px-3 font-mono text-[10px] font-bold uppercase tracking-[0.13em] hover:bg-[#d9f8f5] lg:inline-flex"><Tags className="mr-2 h-3.5 w-3.5" />CP 詞庫管理</Button>
-            <span className="h-2 w-2 rounded-full bg-[#41bdb5] shadow-[0_0_0_4px_#c9f4f1]" /> ONLINE
+          <div className="atlas-mono flex items-center gap-2 text-[9px] font-medium uppercase tracking-[0.14em] text-[#111826]">
+            <Button type="button" variant="ghost" onClick={() => setCpManagerOpen(true)} className="hidden h-9 rounded-none border border-[#111826]/12 px-3 font-mono text-[10px] font-bold uppercase tracking-[0.13em] hover:border-[#2d70d6] hover:bg-[#e6efff] lg:inline-flex"><Tags className="mr-2 h-3.5 w-3.5" />CP 詞庫</Button>
+            <span className="h-2 w-2 rounded-full bg-[#6fc7b6] shadow-[0_0_0_4px_#d7f1eb]" /> LIVE
           </div>
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto max-w-[1440px] px-5 pb-20 pt-10 sm:px-8 lg:px-12 lg:pt-16">
-        <section className="grid items-end gap-10 lg:grid-cols-[1.15fr_0.85fr]">
+      <main className="relative z-10 mx-auto max-w-[1320px] px-5 pb-20 pt-9 sm:px-8 lg:px-10 lg:pt-12">
+        <section className="grid items-end gap-8 lg:grid-cols-[1.2fr_0.8fr]">
           <div>
-            <div className="mb-5 flex items-center gap-3 font-mono text-[11px] font-bold uppercase tracking-[0.24em] text-[#e27d9d]"><span className="h-px w-10 bg-[#e27d9d]" /> CROSS-PLATFORM DISCOVERY ENGINE</div>
-            <h1 className="max-w-4xl text-[clamp(3.5rem,8vw,8.5rem)] font-black leading-[0.83] tracking-[-0.095em]">FIND THE<br /><span className="relative inline-block text-[#10151b]">NEXT STORY<span className="absolute -bottom-2 left-1/4 h-3 w-[62%] -rotate-2 bg-[#f7b2c6] opacity-80" /></span><span className="text-[#6bcfca]">.</span></h1>
-            <p className="mt-8 max-w-xl text-base leading-7 text-[#52616b] sm:text-lg">一個入口，掃描多個同人創作平台。搜尋、聚合、去重，讓每段值得被看見的文字都能被找到。</p>
+            <div className="atlas-mono mb-4 flex items-center gap-3 text-[10px] font-medium uppercase tracking-[0.22em] text-[#e76f51]"><span className="h-px w-9 bg-[#e76f51]" /> CROSS-PLATFORM STORY INDEX</div>
+            <h1 className="max-w-4xl text-[clamp(3.4rem,7vw,7.3rem)] font-black leading-[0.86] tracking-[-0.09em]">FIND THE<br /><span className="relative inline-block">RIGHT <span className="text-[#2d70d6]">THREAD</span><span className="absolute -bottom-1 left-1 h-2 w-[92%] bg-[#e76f51]/35" /></span></h1>
+            <p className="mt-6 max-w-2xl text-base leading-7 text-[#58616e] sm:text-lg">用一個角色、配對或作品名，沿著公開來源的軌跡找到下一段想讀的故事。</p>
           </div>
-          <div className="relative hidden min-h-[230px] lg:block">
-            <div className="absolute bottom-2 right-8 h-40 w-40 rounded-full border border-[#75d6d0]" /><div className="absolute bottom-8 right-16 h-24 w-24 rounded-full border border-dashed border-[#f0a4bd]" />
-            <div className="absolute right-3 top-10 font-mono text-[10px] leading-5 text-[#60727d]"><div>QUERY SPACE / 41.40338° N</div><div>INDEX VECTOR / 02.17403° E</div><div className="mt-3 text-[#e27d9d]">x² + y² = r²</div><div className="text-[#45b9b2]">∫ stories / ∂ time</div></div>
-            <div className="absolute bottom-4 right-[9.3rem] h-2 w-2 bg-[#f29db7]" /><div className="absolute right-0 top-[4.45rem] h-px w-24 bg-[#10151b]/30" />
+          <div className="atlas-panel relative hidden min-h-[214px] overflow-hidden p-6 lg:block">
+            <div className="atlas-mono text-[9px] font-medium uppercase tracking-[0.18em] text-[#6e7480]">QUERY TRAJECTORY</div>
+            <div className="atlas-route mt-8 h-px" />
+            <div className="mt-6 grid grid-cols-3 gap-3"><div><div className="atlas-mono text-[9px] uppercase tracking-[0.13em] text-[#6e7480]">INPUT</div><div className="mt-1 text-sm font-bold">關鍵字</div></div><div><div className="atlas-mono text-[9px] uppercase tracking-[0.13em] text-[#6e7480]">ROUTES</div><div className="mt-1 text-sm font-bold">5 來源</div></div><div><div className="atlas-mono text-[9px] uppercase tracking-[0.13em] text-[#6e7480]">SHELF</div><div className="mt-1 text-sm font-bold">私藏筆記</div></div></div>
+            <div className="absolute bottom-5 right-6 flex items-center gap-2 atlas-mono text-[9px] uppercase tracking-[0.12em] text-[#2d70d6]"><span className="h-2 w-2 bg-[#2d70d6]" /> READY FOR A QUERY</div>
           </div>
         </section>
 
-        <section className="mt-12 flex flex-col gap-3 border-y border-[#10151b]/15 py-3 sm:mt-16 sm:flex-row sm:items-center sm:justify-between">
+        <section className="mt-9 flex flex-col gap-3 border-y border-[#111826]/12 py-3 sm:mt-12 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <Button type="button" variant="ghost" onClick={() => setActiveView("search")} className={`h-10 rounded-none border-b-2 px-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] ${activeView === "search" ? "border-[#10151b] bg-white/65 text-[#10151b]" : "border-transparent text-[#75838b] hover:bg-white/60"}`}><Search className="mr-2 h-3.5 w-3.5" />搜尋索引</Button>
             <Button type="button" variant="ghost" onClick={() => setActiveView("bookmarks")} className={`h-10 rounded-none border-b-2 px-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] ${activeView === "bookmarks" ? "border-[#10151b] bg-white/65 text-[#10151b]" : "border-transparent text-[#75838b] hover:bg-white/60"}`}><BookMarked className="mr-2 h-3.5 w-3.5" />我的閱讀清單 <span className="ml-2 text-[#e27d9d]">{bookmarks.length}</span></Button>
@@ -400,13 +399,13 @@ export default function Home() {
           <Button type="button" variant="outline" onClick={() => setCpManagerOpen(true)} className="h-9 rounded-none border-[#10151b]/15 bg-white/55 font-mono text-[10px] font-bold uppercase tracking-[0.13em] hover:border-[#45b9b2] lg:hidden"><Tags className="mr-2 h-3.5 w-3.5" />CP 詞庫管理</Button>
         </section>
 
-        <section className="border-b-2 border-[#10151b] py-4">
+        <section className="atlas-panel relative mt-5 border-b-2 border-b-[#111826] px-4 py-4 sm:px-6">
           <form onSubmit={submitSearch} className="flex flex-col gap-4 lg:flex-row lg:items-center">
-            <div className="flex flex-1 items-center gap-3"><Search className="h-5 w-5 shrink-0 text-[#e27d9d]" /><Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜尋角色、配對、作品名或關鍵字..." className="h-14 border-0 bg-transparent px-0 text-lg font-medium shadow-none placeholder:text-[#98a4aa] focus-visible:ring-0 sm:text-xl" aria-label="搜尋同人作品" /></div>
+            <div className="flex flex-1 items-center gap-3"><div className="flex h-10 w-10 items-center justify-center bg-[#e6efff] text-[#2d70d6]"><Search className="h-5 w-5 shrink-0" /></div><Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="輸入角色、配對、作品名或關鍵字" className="h-14 border-0 bg-transparent px-0 text-lg font-semibold shadow-none placeholder:text-[#8b929c] focus-visible:ring-0 sm:text-xl" aria-label="搜尋同人作品" /></div>
             <div className="flex flex-wrap items-center gap-3">
-              <Button type="button" variant="outline" onClick={() => setShowFilters((current) => !current)} className="h-11 border-[#10151b]/20 bg-white/60 font-mono text-[10px] font-bold uppercase tracking-[0.14em]"><SlidersHorizontal className="mr-2 h-4 w-4" /> FILTERS <ChevronDown className={`ml-2 h-4 w-4 transition-transform ${showFilters ? "rotate-180" : ""}`} /></Button>
-              <Button type="button" variant="outline" onClick={() => runSearch(true)} disabled={searchMutation.isPending || !keyword.trim()} aria-label="強制重新抓取" className="h-11 border-[#10151b]/20 bg-white/60 font-mono text-[10px] font-bold uppercase tracking-[0.14em] hover:border-[#45b9b2] hover:text-[#197b75]"><RotateCw className={`h-4 w-4 ${searchMutation.isPending ? "animate-spin" : ""}`} /><span className="sr-only">強制重新抓取</span></Button>
-              <Button type="submit" disabled={searchMutation.isPending} className="h-11 min-w-36 bg-[#10151b] px-6 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white hover:bg-[#24313a]">{searchMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Terminal className="mr-2 h-4 w-4" />}{searchMutation.isPending ? "SCANNING" : "RUN SEARCH"}</Button>
+              <Button type="button" variant="outline" onClick={() => setShowFilters((current) => !current)} className="h-11 border-[#111826]/20 bg-white/80 font-mono text-[10px] font-bold uppercase tracking-[0.14em] hover:border-[#2d70d6] hover:bg-[#e6efff]"><SlidersHorizontal className="mr-2 h-4 w-4" /> FILTERS <ChevronDown className={`ml-2 h-4 w-4 transition-transform ${showFilters ? "rotate-180" : ""}`} /></Button>
+              <Button type="button" variant="outline" onClick={() => runSearch(true)} disabled={searchMutation.isPending || !keyword.trim()} aria-label="強制重新抓取" className="h-11 border-[#111826]/20 bg-white/80 font-mono text-[10px] font-bold uppercase tracking-[0.14em] hover:border-[#2d70d6] hover:text-[#2d70d6]"><RotateCw className={`h-4 w-4 ${searchMutation.isPending ? "animate-spin" : ""}`} /><span className="sr-only">強制重新抓取</span></Button>
+              <Button type="submit" disabled={searchMutation.isPending} className="h-11 min-w-36 bg-[#111826] px-6 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white hover:bg-[#2d70d6]">{searchMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Terminal className="mr-2 h-4 w-4" />}{searchMutation.isPending ? "SCANNING" : "RUN SEARCH"}</Button>
             </div>
           </form>
           {searchHistory.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#10151b]/10 pt-3"><span className="mr-1 inline-flex items-center gap-1 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#75838b]"><History className="h-3 w-3" />最近搜尋</span>{searchHistory.map((entry) => <button key={entry} type="button" onClick={() => { setKeyword(entry); runSearch(false, entry); }} className="border border-[#10151b]/12 bg-white/65 px-2.5 py-1.5 font-mono text-[10px] font-bold text-[#52616b] transition-colors hover:border-[#45b9b2] hover:bg-[#d9f8f5] hover:text-[#197b75]">{entry}</button>)}</div>}
@@ -440,23 +439,23 @@ export default function Home() {
         <section className="mt-8 flex flex-col gap-3 border-b border-[#10151b]/15 pb-5 sm:flex-row sm:items-end sm:justify-between"><div><div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[#75838b]">{activeView === "bookmarks" ? "PERSONAL READING LIBRARY" : "SEARCH OUTPUT"}</div><h2 className="mt-2 text-3xl font-black tracking-[-0.07em] sm:text-4xl">{activeView === "bookmarks" ? `${bookmarks.length.toLocaleString()} SAVED STORIES` : searchMutation.isPending ? "SCANNING ARCHIVES..." : hasSearched ? pagination.totalWorks > 0 ? `${pagination.totalWorks.toLocaleString()} STORIES FOUND` : "NO VERIFIED STORIES FOUND" : "READY TO EXPLORE"}</h2>{activeView === "search" && hasSearched && pagination.totalWorks > 0 && <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#75838b]"><span>LOADED THROUGH PAGE {pagination.loadedThroughPage} / {pagination.totalPages}</span><span>顯示 {displayedResults.length} / {results.length} 筆</span>{completedElapsedMs !== null && <span className="text-[#197b75]">已於 {(completedElapsedMs / 1000).toFixed(1)} 秒內完成查詢</span>}</div>}</div><div className="flex items-center gap-4 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#6b7982]"><span>{activeView === "bookmarks" ? "LOCAL STORAGE / PRIVATE TO THIS DEVICE" : `ADAPTERS: ${selectedLabels}`}</span><span className="hidden h-4 w-px bg-[#10151b]/20 sm:block" />{activeView === "search" && <span className="text-[#45b9b2]">CACHE: CP 2H / NORMAL 30M / LOW 5M</span>}</div></section>
 
         {activeView === "search" && hasSearched && platformStatuses.length > 0 && (
-          <section aria-label="平台連線狀態" className="mt-5 border border-[#10151b]/15 bg-white/60 p-4 sm:p-5">
-            <div className="mb-4 flex flex-col gap-2 border-b border-[#10151b]/10 pb-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="font-mono text-[10px] font-bold uppercase tracking-[0.17em] text-[#58666e]">ADAPTER CONNECTIONS / 本次搜尋來源</div>
-              <div className="flex items-center gap-3"><span className="font-mono text-[9px] font-bold tracking-[0.12em] text-[#8a969c]">點選卡片快速篩選；僅重試受阻來源</span><Button type="button" variant="ghost" size="sm" aria-pressed={!activePlatformFilter} onClick={() => setActivePlatformFilter(null)} className={`h-7 rounded-none border px-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] ${activePlatformFilter ? "border-[#10151b]/15 bg-white/60 text-[#66757d] hover:bg-[#d9f8f5]" : "border-[#45b9b2] bg-[#d9f8f5] text-[#197b75]"}`}>ALL / 全部</Button></div>
+          <section aria-label="平台連線狀態" className="atlas-panel relative mt-5 overflow-hidden p-4 sm:p-5">
+            <div className="mb-4 flex flex-col gap-3 border-b border-[#111826]/10 pb-3 sm:flex-row sm:items-center sm:justify-between">
+              <div><div className="atlas-mono text-[9px] font-medium uppercase tracking-[0.18em] text-[#2d70d6]">SOURCE HEALTH / LIVE ROUTES</div><div className="mt-1 text-sm font-bold">每一個來源都是獨立路徑</div></div>
+              <div className="flex items-center gap-3"><span className="atlas-mono text-[9px] font-medium tracking-[0.1em] text-[#6e7480]">點選來源查看結果；受阻來源可單獨重試</span><Button type="button" variant="ghost" size="sm" aria-pressed={!activePlatformFilter} onClick={() => setActivePlatformFilter(null)} className={`h-7 rounded-none border px-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] ${activePlatformFilter ? "border-[#111826]/15 bg-white/60 text-[#66757d] hover:border-[#2d70d6] hover:bg-[#e6efff]" : "border-[#2d70d6] bg-[#e6efff] text-[#2d70d6]"}`}>ALL / 全部</Button></div>
             </div>
-            <div className="grid gap-2 lg:grid-cols-5">
+            <div className="grid gap-2 lg:grid-cols-5 lg:gap-0">
               {platformStatuses.map((status) => {
                 const isSuccess = status.status === "success";
                 const isCooldown = status.status === "cooldown";
                 const isBlocked = status.status === "blocked";
                 const tone = isSuccess
-                  ? "border-[#80cfc8] bg-[#e4f8f4] text-[#176d61]"
+                  ? "border-[#9bded1] bg-[#e9f8f4] text-[#176d61]"
                   : isCooldown
                     ? "border-[#efd59a] bg-[#fff7df] text-[#8d6b20]"
                     : isBlocked || status.status === "error"
-                      ? "border-[#efb4c4] bg-[#fff0f4] text-[#913a59]"
-                      : "border-[#cfd6d8] bg-[#f4f6f5] text-[#65737a]";
+                      ? "border-[#efb4c4] bg-[#fff0f4] text-[#9b4358]"
+                      : "border-[#d5d8da] bg-[#f5f6f4] text-[#65737a]";
                 const stateLabel = isSuccess ? "已連線" : isCooldown ? "冷卻限制中" : isBlocked ? "觸發人機保護" : status.status === "error" ? "連線逾時" : "無公開結果";
                 const isActiveFilter = activePlatformFilter === status.platformId;
                 return (
@@ -468,12 +467,12 @@ export default function Home() {
                     aria-pressed={isActiveFilter}
                     onClick={() => togglePlatformQuickFilter(status.platformId as PlatformId)}
                     onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); togglePlatformQuickFilter(status.platformId as PlatformId); } }}
-                    className={`min-w-0 cursor-pointer border p-3 transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#45b9b2] ${tone} ${isActiveFilter ? "border-2 border-[#10151b] shadow-[4px_4px_0_#10151b]" : ""}`}
+                    className={`atlas-status-node min-w-0 cursor-pointer border p-3 transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2d70d6] ${tone} ${isActiveFilter ? "z-10 border-2 border-[#2d70d6] shadow-[4px_4px_0_#2d70d6]" : ""}`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="font-mono text-[10px] font-bold uppercase tracking-[0.14em]">{status.label}</div>
-                        <div className="mt-1 font-mono text-[9px] font-bold tracking-[0.1em]">{stateLabel}{isSuccess ? ` · ${status.itemCount} 筆` : ""}{isActiveFilter ? " · FILTER ACTIVE" : ""}</div>
+                        <div className="atlas-mono text-[10px] font-medium uppercase tracking-[0.12em]">{status.label}</div>
+                        <div className="mt-1 font-mono text-[9px] font-bold tracking-[0.08em]">{stateLabel}{isSuccess ? ` · ${status.itemCount} 筆` : ""}{isActiveFilter ? " · FILTER ACTIVE" : ""}</div>
                       </div>
                       {isPlatformRetryable(status) && (
                         <Button
@@ -489,7 +488,7 @@ export default function Home() {
                         </Button>
                       )}
                     </div>
-                    <div className="mt-2 truncate font-mono text-[9px] opacity-70" title={status.translatedQuery}>QUERY / {status.translatedQuery}</div>
+                    <div className="mt-2 truncate atlas-mono text-[9px] opacity-70" title={status.translatedQuery}>QUERY / {status.translatedQuery}</div>
                     {status.warning && <div className="mt-1 line-clamp-2 font-mono text-[8px] leading-4 opacity-75" title={status.warning}>{status.warning}</div>}
                   </div>
                 );
@@ -506,7 +505,7 @@ export default function Home() {
               onRemove={removeBookmark}
             />
           ) : <>
-          {!hasSearched && !searchMutation.isPending && <div className="relative overflow-hidden border border-[#10151b]/15 bg-white/60 p-8 sm:p-12"><div className="absolute right-0 top-0 h-24 w-24 border-b border-l border-[#f2a4bc]" /><div className="absolute bottom-0 left-0 h-16 w-16 border-r border-t border-[#72d2cc]" /><div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-center"><div><div className="mb-5 flex h-12 w-12 items-center justify-center border border-[#72d2cc] bg-[#d9f8f5] text-[#197b75]"><Sparkles className="h-5 w-5" /></div><h3 className="text-2xl font-black tracking-[-0.06em]">輸入一組關鍵字，開始建立你的閱讀座標。</h3><p className="mt-3 max-w-xl text-sm leading-6 text-[#64727a]">系統會透過獨立的平台 Adapter 同時查詢 AO3、同人誌中心、在水裡寫字、Penana 與 CxC，並將可驗證作品整理成統一索引。</p></div><div className="grid grid-cols-2 gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#66757d]"><div className="border border-[#10151b]/10 bg-white/70 p-4"><Database className="mb-3 h-4 w-4 text-[#e27d9d]" />SQLITE CACHE</div><div className="border border-[#10151b]/10 bg-white/70 p-4"><BookOpen className="mb-3 h-4 w-4 text-[#45b9b2]" />UNIFIED META</div></div></div></div>}
+          {!hasSearched && !searchMutation.isPending && <div className="atlas-panel relative overflow-hidden p-8 sm:p-10"><div className="absolute bottom-0 right-0 h-28 w-28 border-l border-t border-[#2d70d6]/20" /><div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-center"><div><div className="mb-5 flex h-12 w-12 items-center justify-center bg-[#e6efff] text-[#2d70d6]"><Sparkles className="h-5 w-5" /></div><div className="atlas-mono text-[9px] font-medium uppercase tracking-[0.18em] text-[#e76f51]">FIRST COORDINATE</div><h3 className="mt-2 text-2xl font-black tracking-[-0.06em]">輸入一組關鍵字，建立你的閱讀座標。</h3><p className="mt-3 max-w-xl text-sm leading-6 text-[#64727a]">選擇一個角色、配對或作品名；系統會沿著五條公開來源路徑，回傳可驗證的原站作品。</p></div><div className="grid grid-cols-2 gap-3 atlas-mono text-[9px] font-medium uppercase tracking-[0.14em] text-[#66757d]"><div className="border border-[#111826]/10 bg-white/70 p-4"><Database className="mb-3 h-4 w-4 text-[#e76f51]" />PRIVATE CACHE</div><div className="border border-[#111826]/10 bg-white/70 p-4"><BookOpen className="mb-3 h-4 w-4 text-[#2d70d6]" />VERIFIED LINKS</div></div></div></div>}
           {hasSearched && results.length === 0 && !searchMutation.isPending && (
             <div className="relative overflow-hidden border border-dashed border-[#10151b]/25 bg-white/45 px-6 py-16 text-center">
               <div className="absolute right-0 top-0 h-16 w-16 border-b border-l border-[#e27d9d]/20" />
@@ -550,12 +549,12 @@ export default function Home() {
                   const tags = allTags.filter((tag) => !highlightedTags.has(tag)).slice(0, 4);
                   const bookmark = bookmarks.find((item) => item.url === result.url);
                   return (
-                    <Card key={`${result.url}-${index}`} className="group rounded-none border-[#10151b]/15 bg-white/75 shadow-none transition-transform duration-200 hover:-translate-y-1 hover:border-[#10151b]/40">
+                    <Card key={`${result.url}-${index}`} className="atlas-panel group relative rounded-none border-[#111826]/15 bg-white/80 shadow-none transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-1 hover:border-[#2d70d6]/60 hover:shadow-[0_12px_28px_rgba(17,24,38,0.1)]">
                       <CardContent className="p-0">
                         {result.coverUrl && <img src={result.coverUrl} alt="" loading="lazy" className="h-44 w-full border-b border-[#10151b]/10 object-cover" />}
-                        <div className="flex items-center justify-between border-b border-[#10151b]/10 px-5 py-3">
+                        <div className="flex items-center justify-between border-b border-[#111826]/10 px-5 py-3">
                           <div className="flex items-center gap-2">
-                            <Badge className={`rounded-none border font-mono text-[9px] font-bold uppercase tracking-[0.16em] ${platformToneClass(meta.tone)} `}>
+                            <Badge className={`rounded-none border atlas-mono text-[9px] font-medium uppercase tracking-[0.14em] ${platformToneClass(meta.tone)} `}>
                               {meta.label}
                             </Badge>
                             {result.source && (
@@ -569,7 +568,7 @@ export default function Home() {
                         <div className="p-5 sm:p-6">
                           <div className="mb-4 flex items-start justify-between gap-4">
                             <h3 className="line-clamp-2 text-xl font-black leading-tight tracking-[-0.055em]">{result.title || "UNTITLED WORK"}</h3>
-                            <ArrowUpRight className="mt-1 h-5 w-5 shrink-0 text-[#9ca8ad] transition-colors group-hover:text-[#e27d9d]" />
+                            <ArrowUpRight className="mt-1 h-5 w-5 shrink-0 text-[#9ca8ad] transition-colors group-hover:text-[#2d70d6]" />
                           </div>
                           <div className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-[#56646d]">BY / {result.author || "UNKNOWN AUTHOR"}</div>
                           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#75838b]"><span>{result.wordCount ? `${result.wordCount} WORDS` : "WORD COUNT / 原站"}</span>{result.isComplete !== null && result.isComplete !== undefined && <span className={result.isComplete ? "text-[#197b75]" : "text-[#b46d25]"}>{result.isComplete ? "COMPLETED" : "IN PROGRESS"}</span>}{typeof result.relevanceScore === "number" && <span className="text-[#8b3e59]">RELEVANCE {result.relevanceScore}</span>}</div>
@@ -579,8 +578,8 @@ export default function Home() {
                             {characterTags.map((tag) => <span key={`character-${tag}`} className="border border-[#c9bcf2] bg-[#f0ecff] px-2 py-1 font-mono text-[9px] font-semibold text-[#5c4e87]">◇ {tag}</span>)}
                             {tags.map((tag) => <span key={`tag-${tag}`} className="border border-[#10151b]/10 bg-[#f3f6f5] px-2 py-1 font-mono text-[9px] font-semibold text-[#6a777e]">#{tag}</span>)}
                           </div>
-                          <a href={result.url} target="_blank" rel="noreferrer" className="mt-6 inline-flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#1d7f79] hover:text-[#e27d9d]">
-                            OPEN ORIGINAL <ArrowUpRight className="h-3.5 w-3.5" />
+                          <a href={result.url} target="_blank" rel="noreferrer" className="mt-6 inline-flex items-center gap-2 atlas-mono text-[10px] font-medium uppercase tracking-[0.15em] text-[#2d70d6] hover:text-[#e76f51]">
+                            READ AT SOURCE <ArrowUpRight className="h-3.5 w-3.5" />
                           </a>
                         </div>
                       </CardContent>
