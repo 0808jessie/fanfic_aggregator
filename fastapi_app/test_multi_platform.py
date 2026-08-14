@@ -54,7 +54,9 @@ def test_parallel_registry_keeps_successful_platform_when_another_fails():
 
 def test_platform_status_translates_cp_query_and_detects_cooldown():
     assert adapter_index.translated_query_for_platform("ao3", "義忍") == '"Tomioka Giyuu/Kochou Shinobu" OR "義忍"'
-    assert adapter_index.translated_query_for_platform("waterwriter", "義忍") == "義忍 富岡義勇 胡蝶忍"
+    assert adapter_index.translated_query_for_platform("waterwriter", "義忍") == "義忍"
+    assert adapter_index.translated_query_for_platform("doujin", "哨兵嚮導") == "哨兵嚮導"
+    assert adapter_index.ADAPTER_TIMEOUT_SECONDS == 18.0
     assert adapter_index.classify_platform_status(0, "[在水裡寫字] Blocked by Rate Limit, skipping cleanly") == "cooldown"
     assert adapter_index.classify_platform_status(0, "[同人誌中心] Triggered verification page") == "blocked"
     assert adapter_index.classify_platform_status(0, "[同人誌中心] No verified public result matched '義忍'") == "empty"
@@ -114,7 +116,7 @@ def test_custom_cp_mapping_overrides_ao3_and_local_query_per_request():
     ])
 
     assert adapter_index.translated_query_for_platform("ao3", "黑邪", custom_map) == "Heiyan/Wu Xie"
-    assert adapter_index.translated_query_for_platform("doujin", "黑邪", custom_map) == "黑邪 吳邪"
+    assert adapter_index.translated_query_for_platform("doujin", "黑邪", custom_map) == "黑邪"
     assert adapter_index.translated_query_for_platform("cxc", "黑邪", custom_map) == "黑邪"
 
 

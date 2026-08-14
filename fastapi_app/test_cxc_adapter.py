@@ -2,6 +2,8 @@ from pathlib import Path
 import sys
 from unittest.mock import MagicMock, patch
 
+import requests
+
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -78,6 +80,7 @@ def test_cxc_prefers_verified_public_api_records_with_creator_work_urls():
     assert item.author == "碳烤巧克力"
     assert item.url == "https://cxc.today/@grilledchocolate/work/57417"
     assert item.tags == "原創, 小說"
+    assert request.call_args.kwargs["timeout"] == (5, 10)
 
 
 def test_cxc_uses_clean_cp_alias_and_matches_title_tags_or_intro_fields():
@@ -153,6 +156,18 @@ def test_cxc_explicit_api_zero_results_are_successful_empty_not_error():
     }
     assert scraper.last_warning is None
     assert classify_platform_status(0, scraper.last_warning) == "empty"
+
+
+def test_cxc_public_api_timeout_skips_browser_fallback_and_returns_source_warning():
+    scraper = CxCScraper()
+    with patch("scrapers.cxc_scraper.requests.get", side_effect=requests.Timeout("slow public API")), patch.object(
+        scraper, "_render_public_search_html"
+    ) as render:
+        payload = scraper.scrape("義忍")
+
+    assert payload["items"] == []
+    assert "公開 API 連線不可用" in (scraper.last_warning or "")
+    render.assert_not_called()
 
 
 def test_search_api_preserves_completed_cxc_zero_result_as_live_empty():

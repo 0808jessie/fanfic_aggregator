@@ -230,4 +230,11 @@
 - [x] 為 AO3 實作單次、有界的 HTTP 525／503／暫時網路錯誤重試，保留成人偏好 Cookie 與官方總數解析
 - [x] 強化 Penana 403／驗證頁偵測、blocked 狀態與安全單一來源重試，避免規避站方人機保護
 - [x] 驗證 AO3／Penana 單一平台重試不觸發全域搜尋，完成完整回歸與實測；Python 67/67、Vitest 42/42、TypeScript 通過
-- [ ] 儲存本輪 AO3／Penana 防護與單一平台重試修復 checkpoint
+- [x] 儲存本輪 AO3／Penana 防護與單一平台重試修復 checkpoint（5f2cb63b）
+- [x] 稽核 AO3、在水裡寫字、Penana、同人誌中心、CxC 的 HTTP／瀏覽器 timeout、聚合 deadline 與請求標頭
+- [x] 校準各 Adapter 對外請求與聚合時間預算，避免過短 read timeout 造成來源集體降級
+- [x] 將聚合層共同等待改為每來源獨立 deadline，避免既有慢來源佔用 worker 後連帶判定其他來源逾時
+- [x] 限制 CxC／同人誌中心 browser fallback 的總預算，並在公開 HTTP 已逾時或受保護時不再啟動二次導覽
+- [x] 將在水裡寫字與同人誌中心的 CP 本地搜尋改為單一主關鍵字，保留使用者原詞與官方總數契約
+- [x] 驗證五平台的獨立重試、部分成功隔離與完整回歸；Python 70/70、Vitest 42/42、TypeScript 通過
+- [ ] 儲存本輪五平台 timeout 校準與來源隔離 checkpoint

@@ -8,6 +8,7 @@ into a result card.
 from __future__ import annotations
 
 import re
+import time
 from datetime import datetime
 from urllib.parse import quote_plus, urljoin
 
@@ -59,15 +60,20 @@ class DoujinScraper(BaseScraper):
         custom_cp_map: dict[str, CPTagConfig] | None = None,
     ) -> dict[str, object]:
         self.last_warning = None
+        self._static_unavailable_warning: str | None = None
         if not keyword.strip():
             return {"items": [], "total_works": 0, "total_pages": 1}
 
         try:
-            local_query = get_keyword_for_platform(keyword, "local", custom_cp_map)
-            html = self._fetch_static_search_html(local_query, page)
+            # The native catalogue treats whitespace as restrictive AND input.
+            # Use the original first term rather than the longer CP expansion.
+            search_keyword = keyword.strip().split()[0]
+            html = self._fetch_static_search_html(search_keyword, page)
             if html is None:
-                html = self._render_public_search_html(local_query, page)
-            items = self.parse_results(html, local_query)
+                if self._static_unavailable_warning:
+                    raise _PublicListingUnavailable(self._static_unavailable_warning)
+                html = self._render_public_search_html(search_keyword, page)
+            items = self.parse_results(html, search_keyword)
             total_works = self.extract_total_works(html) or len(items)
             total_pages = self.extract_total_pages(html) or 1
             for item in items:
@@ -90,14 +96,16 @@ class DoujinScraper(BaseScraper):
             response = requests.get(
                 self.build_search_url(keyword, page_number),
                 headers=self.headers,
-                timeout=(2, 4),
+                timeout=(5, 10),
             )
             if response.status_code in (403, 429, 503, 520, 521, 522, 525):
+                self._static_unavailable_warning = f"Request blocked (HTTP {response.status}), skipping cleanly"
                 return None
             response.raise_for_status()
             html = response.text
             text = BeautifulSoup(html, "html.parser").get_text(" ", strip=True)
             if self._is_protected_page(text):
+                self._static_unavailable_warning = "Triggered verification page, skipping cleanly"
                 return None
             soup = BeautifulSoup(html, "html.parser")
             if not soup.select('a[href*="/books/info/"]') and not re.search(r"共\s*\d+\s*本", text):
@@ -105,7 +113,8 @@ class DoujinScraper(BaseScraper):
             print("[同人誌中心 Static] Parsed native public listing HTML")
             return html
         except requests.RequestException as error:
-            print(f"[同人誌中心 Static] Public GET unavailable; using browser fallback: {error}")
+            self._static_unavailable_warning = f"Public HTTP request unavailable: {error}"
+            print(f"[同人誌中心 Static] {self._static_unavailable_warning}")
             return None
 
     def _render_public_search_html(self, keyword: str, page_number: int = 1) -> str:
@@ -126,18 +135,23 @@ class DoujinScraper(BaseScraper):
                 )
                 page = context.new_page()
                 configure_fast_page(page)
-                response = page.goto(self.build_search_url(keyword, page_number), timeout=18000, wait_until="domcontentloaded")
+                render_deadline = time.monotonic() + 10
+                response = page.goto(self.build_search_url(keyword, page_number), timeout=7_000, wait_until="domcontentloaded")
                 if response and response.status in (403, 429, 503, 520, 521, 522, 525):
                     raise _PublicListingUnavailable(f"Request blocked (HTTP {response.status}), skipping cleanly")
 
-                page.wait_for_timeout(1200)
-                body_text = page.locator("body").inner_text(timeout=3000)
+                page.wait_for_timeout(min(750, max(0, int((render_deadline - time.monotonic()) * 1000))))
+                remaining_ms = max(100, int((render_deadline - time.monotonic()) * 1000))
+                body_text = page.locator("body").inner_text(timeout=min(1_500, remaining_ms))
                 if self._is_protected_page(body_text):
                     raise _PublicListingUnavailable("Triggered verification page, skipping cleanly")
 
                 for selector in ('a[href*="/books/info/"]', *self.result_selectors):
+                    remaining_ms = int((render_deadline - time.monotonic()) * 1000)
+                    if remaining_ms <= 0:
+                        break
                     try:
-                        page.wait_for_selector(selector, timeout=2000)
+                        page.wait_for_selector(selector, timeout=min(750, remaining_ms))
                         break
                     except Exception:
                         continue

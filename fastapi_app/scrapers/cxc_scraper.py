@@ -99,6 +99,7 @@ class CxCScraper(BaseScraper):
         custom_cp_map: dict[str, CPTagConfig] | None = None,
     ) -> dict[str, object]:
         self.last_warning = None
+        self._api_transport_warning: str | None = None
         if not keyword.strip():
             return {"items": [], "total_works": 0, "total_pages": 1}
 
@@ -125,6 +126,8 @@ class CxCScraper(BaseScraper):
                 print(f"[CxC] 官方公開 API 成功抓取 {len(items)} 筆，公開總數 {total_works}")
                 return {"items": items, "total_works": total_works, "total_pages": 1}
 
+            if self._api_transport_warning:
+                raise _PublicSearchUnavailable(self._api_transport_warning)
             html = self._render_public_search_html(public_query)
             items = self.parse_results(html, public_query)
             for item in items:
@@ -194,12 +197,13 @@ class CxCScraper(BaseScraper):
                 self.public_api_url,
                 params=params,
                 headers=self.public_api_headers,
-                timeout=(2, 5),
+                timeout=(5, 10),
             )
             response.raise_for_status()
             payload = response.json()
         except (requests.RequestException, ValueError) as error:
-            print(f"[CxC] 公開 API 無法使用，改以公開頁渲染：{error}")
+            self._api_transport_warning = f"公開 API 連線不可用：{error}"
+            print(f"[CxC] {self._api_transport_warning}")
             return None
 
         data = payload.get("data") if isinstance(payload, dict) else None
@@ -307,6 +311,7 @@ class CxCScraper(BaseScraper):
                 )
                 page_obj = context.new_page()
                 configure_fast_page(page_obj)
+                render_deadline = time.monotonic() + 10
                 api_response_seen = False
 
                 def record_public_api_response(response) -> None:
@@ -321,13 +326,13 @@ class CxCScraper(BaseScraper):
                     # The document can commit while analytics or client chunks
                     # keep DOMContentLoaded pending. Commit is enough to begin
                     # the bounded public API/card observation below.
-                    response = page_obj.goto(self.build_search_url(keyword), timeout=8_000, wait_until="commit")
+                    response = page_obj.goto(self.build_search_url(keyword), timeout=7_000, wait_until="commit")
                 except Exception as error:
                     raise _PublicSearchUnavailable("連線逾時或等待渲染逾時") from error
                 if response and response.status in (403, 429, 503, 520, 521, 522, 525):
                     raise _PublicSearchUnavailable(f"Request blocked (HTTP {response.status})")
 
-                deadline = time.monotonic() + 6
+                deadline = render_deadline
                 card_found = False
                 while time.monotonic() < deadline:
                     if page_obj.locator(self.rendered_work_selector).count() > 0:

@@ -2,6 +2,8 @@ from pathlib import Path
 import sys
 from unittest.mock import patch
 
+import requests
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from scrapers.doujin_scraper import DoujinScraper, _PublicListingUnavailable
@@ -44,6 +46,18 @@ def test_doujin_adapter_isolates_cloudflare_challenge_without_inventing_results(
     assert payload["items"] == []
     assert "Triggered verification page" in (scraper.last_warning or "")
     assert DoujinScraper._is_protected_page("Just a moment... Cloudflare captcha")
+
+
+def test_doujin_http_timeout_skips_browser_fallback_and_returns_source_warning():
+    scraper = DoujinScraper()
+    with patch("scrapers.doujin_scraper.requests.get", side_effect=requests.Timeout("slow listing")), patch.object(
+        scraper, "_render_public_search_html"
+    ) as render:
+        payload = scraper.scrape("義忍")
+
+    assert payload["items"] == []
+    assert "Public HTTP request unavailable" in (scraper.last_warning or "")
+    render.assert_not_called()
 
 
 def test_doujin_platform_is_registered_and_uses_a_trusted_host_boundary():

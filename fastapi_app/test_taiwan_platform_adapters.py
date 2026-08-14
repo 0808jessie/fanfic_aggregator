@@ -155,7 +155,37 @@ def test_taiwan_adapters_pass_chinese_cp_query_to_public_search_pages():
     doujin = DoujinScraper()
     with patch.object(doujin, "_fetch_static_search_html", return_value=None), patch.object(doujin, "_render_public_search_html", return_value="") as render_doujin:
         doujin.scrape("義忍")
-    assert render_doujin.call_args.args == ("義忍 富岡義勇 胡蝶忍", 1)
+    assert render_doujin.call_args.args == ("義忍", 1)
+
+
+def test_taiwan_static_adapters_use_relaxed_http_timeout_and_single_primary_keyword():
+    class WaterwriterResponse:
+        status_code = 200
+        text = WATERWRITER_RESULTS
+
+        def raise_for_status(self):
+            return None
+
+    with patch("scrapers.waterwriter_scraper.requests.get", return_value=WaterwriterResponse()) as water_request:
+        payload = WaterWriterScraper().scrape("義忍 富岡義勇 胡蝶忍")
+
+    assert payload["items"]
+    assert "srchtxt=%E7%BE%A9%E5%BF%8D" in water_request.call_args.args[0]
+    assert water_request.call_args.kwargs["timeout"] == (5, 10)
+
+    class DoujinResponse:
+        status_code = 200
+        text = '<main><div class="listing-header">共 1 本</div></main>'
+
+        def raise_for_status(self):
+            return None
+
+    with patch("scrapers.doujin_scraper.requests.get", return_value=DoujinResponse()) as doujin_request:
+        payload = DoujinScraper().scrape("義忍 富岡義勇 胡蝶忍")
+
+    assert payload["total_works"] == 1
+    assert "keyword=%E7%BE%A9%E5%BF%8D" in doujin_request.call_args.args[0]
+    assert doujin_request.call_args.kwargs["timeout"] == (5, 10)
 
 
 def test_taiwan_adapters_prefer_verified_static_html_before_browser_fallback():
@@ -228,7 +258,7 @@ def test_penana_uses_ordinary_public_finder_headers_without_browser_fallback():
     headers = request.call_args.kwargs["headers"]
     assert headers["Referer"] == "https://www.penana.com/"
     assert "Windows NT 10.0" in headers["User-Agent"]
-    assert request.call_args.kwargs["timeout"] == (2, 4)
+    assert request.call_args.kwargs["timeout"] == (5, 10)
 
 
 def test_penana_http_timeout_returns_source_warning_without_browser_navigation():

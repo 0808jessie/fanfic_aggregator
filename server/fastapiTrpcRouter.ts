@@ -4,7 +4,10 @@ import { z } from "zod";
 import { publicProcedure, router } from "./_core/trpc";
 
 const FASTAPI_BASE_URL = process.env.FASTAPI_BASE_URL || "http://localhost:8000";
-const FASTAPI_PROXY_TIMEOUT_MS = 10_000;
+// Source aggregation allows each external platform up to a 5s connect + 10s
+// read budget. Keep the proxy above that bounded window so it can return
+// partial results rather than replacing them with a global error envelope.
+const FASTAPI_PROXY_TIMEOUT_MS = 20_000;
 const PLATFORM_LABELS: Record<string, string> = {
   ao3: "AO3",
   cxc: "CxC 創利市集",
@@ -63,8 +66,9 @@ export const fastapiTrpcRouter = router({
           url: targetUrl,
           params: input.params,
           data: input.data,
-          // The FastAPI registry enforces an 8s per-source deadline. Keep the
-          // proxy slightly above it to relay partial results, never to extend it.
+          // The FastAPI registry enforces a bounded per-source deadline. Keep
+          // the proxy slightly above it to relay partial results, never to
+          // replace source-level states with a global proxy error.
           timeout: FASTAPI_PROXY_TIMEOUT_MS,
           headers: { "Content-Type": "application/json" },
           validateStatus: () => true,

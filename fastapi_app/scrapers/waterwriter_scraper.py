@@ -57,12 +57,11 @@ class WaterWriterScraper(BaseScraper):
             return {"items": [], "total_works": 0, "total_pages": 1}
 
         try:
-            local_query = get_keyword_for_platform(keyword, "local", custom_cp_map)
             # Discuz treats whitespace-separated terms as a restrictive AND
-            # search. CP aliases may expand to several names, therefore search
-            # with the explicit CP headword while retaining the original alias
-            # on each returned record.
-            search_keyword = local_query.split()[0] if local_query.split() else keyword.strip()
+            # search. Send the user's primary literal term instead of a mapped
+            # multi-name CP expansion, while retaining the original query on
+            # returned records for relevance and history.
+            search_keyword = keyword.strip().split()[0]
             html = self._fetch_static_search_html(search_keyword)
             if html is None:
                 return {"items": [], "total_works": 0, "total_pages": 1}
@@ -88,7 +87,7 @@ class WaterWriterScraper(BaseScraper):
             response = requests.get(
                 self.build_search_url(keyword),
                 headers=self.headers,
-                timeout=(2, 4),
+                timeout=(5, 10),
             )
             if response.status_code in (403, 429, 503, 520, 521, 522, 525):
                 raise _PublicPageUnavailable(f"Request blocked (HTTP {response.status_code}), skipping cleanly")

@@ -55,7 +55,9 @@ class AO3Scraper(BaseScraper):
     static_cookies = {"view_adult": "true", "accepted_tos": "2018"}
     retryable_static_statuses = frozenset((503, 525))
     static_retry_delay_seconds = 1
-    static_search_budget_seconds = 6.5
+    static_connect_timeout_seconds = 5
+    static_read_timeout_seconds = 10
+    static_search_budget_seconds = 17
 
     def __init__(self):
         super().__init__()
@@ -120,20 +122,22 @@ class AO3Scraper(BaseScraper):
                 self._static_terminal_warning = "AO3 靜態搜尋連線逾時或不可用"
                 print("[AO3 Static] Shared HTTP budget exhausted; returning bounded source warning")
                 return None
-            connect_timeout = min(1.0, max(0.1, remaining_budget / 3))
-            read_timeout = min(3.0, max(0.1, remaining_budget - connect_timeout))
             try:
                 response = requests.get(
                     url,
                     headers=self.static_headers,
                     cookies=self.static_cookies,
-                    timeout=(connect_timeout, read_timeout),
+                    timeout=(self.static_connect_timeout_seconds, self.static_read_timeout_seconds),
                 )
                 remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 4.0
                 if (
                     response.status_code in self.retryable_static_statuses
                     and attempt == 0
-                    and remaining_budget > self.static_retry_delay_seconds + 0.1
+                    and remaining_budget >= (
+                        self.static_retry_delay_seconds
+                        + self.static_connect_timeout_seconds
+                        + self.static_read_timeout_seconds
+                    )
                 ):
                     print(f"[AO3 Static] HTTP {response.status_code}; retrying once after 1s")
                     time.sleep(self.static_retry_delay_seconds)
@@ -152,7 +156,11 @@ class AO3Scraper(BaseScraper):
                 return html
             except requests.RequestException as error:
                 remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 4.0
-                if attempt == 0 and remaining_budget > self.static_retry_delay_seconds + 0.1:
+                if attempt == 0 and remaining_budget >= (
+                    self.static_retry_delay_seconds
+                    + self.static_connect_timeout_seconds
+                    + self.static_read_timeout_seconds
+                ):
                     print(f"[AO3 Static] Transient public GET failure; retrying once after 1s: {error}")
                     time.sleep(self.static_retry_delay_seconds)
                     continue

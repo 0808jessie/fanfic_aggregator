@@ -47,16 +47,17 @@ PLATFORM_LABELS = {
     "penana": "Penana",
 }
 LOCAL_CP_PLATFORM_IDS = frozenset(("doujin", "waterwriter"))
-ADAPTER_TIMEOUT_SECONDS = 8.0
+# A platform may legitimately need the 5s connect + 10s read allowance below.
+# Keep the aggregate slightly higher so one valid source is not converted into a
+# timeout before its own HTTP request has finished, while still isolating slow
+# sources from the rest of the response.
+ADAPTER_TIMEOUT_SECONDS = 18.0
 SOURCE_CACHE_TTL_SECONDS = 600.0
 _SOURCE_CACHE: dict[tuple[str, str, int], tuple[float, list[ScrapedFanfic], int, int, str | None]] = {}
 _SOURCE_CACHE_LOCK = Lock()
 # A fixed worker pool lets each sync-Playwright worker keep its thread-local
 # browser alive between searches. The public response remains bounded by the
 # per-request wait below; long upstream jobs never block response finalization.
-_ADAPTER_EXECUTOR = ThreadPoolExecutor(max_workers=max(1, len(SCRAPERS)))
-
-
 def translated_query_for_platform(
     platform_key: str,
     keyword: str,
@@ -68,7 +69,10 @@ def translated_query_for_platform(
     if platform_key == "cxc":
         return get_keyword_for_platform(keyword, "cxc", custom_cp_map)
     if platform_key in LOCAL_CP_PLATFORM_IDS:
-        return get_keyword_for_platform(keyword, "local", custom_cp_map)
+        # Discuz and the Doujin search form interpret whitespace as an AND
+        # query. Keep CP expansions for reference in the vocabulary manager,
+        # but send the user's first literal term to the actual local source.
+        return keyword.strip().split()[0] if keyword.strip().split() else keyword.strip()
     return keyword.strip()
 
 
@@ -230,8 +234,13 @@ def parallel_search_platforms(
     warnings: list[str] = []
     any_success = False
 
+    # Give each aggregate request its own worker set. A previous request may
+    # still be unwinding a third-party socket after its source state has been
+    # returned; reusing its blocked global workers would make a fresh retry wait
+    # in queue and look like a simultaneous all-platform timeout.
+    executor = ThreadPoolExecutor(max_workers=max(1, len(platforms)), thread_name_prefix="fanfic-source")
     future_to_platform: dict[Future[tuple[str, list[ScrapedFanfic], int, int, PlatformStatus]], str] = {
-        _ADAPTER_EXECUTOR.submit(search_single_platform, platform, keyword, page, force_refresh, custom_cp_map): platform
+        executor.submit(search_single_platform, platform, keyword, page, force_refresh, custom_cp_map): platform
         for platform in platforms
     }
     done, pending = wait(future_to_platform, timeout=max(0.1, timeout_seconds))
@@ -263,11 +272,12 @@ def parallel_search_platforms(
             statuses_map[platform_key] = make_platform_status(platform_key, keyword, 0, warning, custom_cp_map)
             warnings.append(warning)
     finally:
-        # Do not wait for slow third-party network/browser work. Cancellation
-        # stops queued jobs; active jobs eventually close their fresh page and
-        # context while preserving the worker's reusable browser instance.
+        # Do not wait for slow third-party work. Pending jobs cannot be force-
+        # killed safely, but request-scoped workers ensure they never block the
+        # next aggregate retry from starting immediately.
         for future in pending:
             future.cancel()
+        executor.shutdown(wait=False, cancel_futures=True)
 
     all_items: list[ScrapedFanfic] = []
     for platform in platforms:
