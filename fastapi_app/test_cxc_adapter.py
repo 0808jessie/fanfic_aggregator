@@ -38,6 +38,16 @@ def test_cxc_adapter_parses_verified_public_work_cards():
     assert item.tags == "小說, 鬼滅之刃"
 
 
+def test_cxc_adapter_prefers_explicit_public_total_over_rendered_card_count():
+    scraper = CxCScraper()
+    html = '<div class="search-result-count">找到 27 部作品</div>' + RENDERED_CXC_RESULTS
+    with patch.object(scraper, "_render_public_search_html", return_value=html):
+        payload = scraper.scrape("義忍")
+
+    assert scraper.extract_total_works(html) == 27
+    assert payload["total_works"] == 27
+
+
 def test_cxc_adapter_isolates_unfinished_public_search_without_inventing_results():
     scraper = CxCScraper()
     with patch.object(
@@ -57,6 +67,7 @@ def test_cxc_platform_is_registered_and_constrained_to_trusted_work_urls():
     assert main.canonical_platforms(["cxc"]) == ["cxc"]
     assert translated_query_for_platform("cxc", "義忍") == "義忍 富岡義勇 胡蝶忍"
     assert CxCScraper.is_real_work_url("https://cxc.today/@mori/work/giyushino-summer")
+    assert CxCScraper.is_real_work_url("https://cxc.today/works/giyushino-summer")
     assert not CxCScraper.is_real_work_url("https://cxc.today/zh/search?keyword=%E7%BE%A9%E5%BF%8D")
     assert main.is_real_platform_url("https://cxc.today/@mori/work/giyushino-summer", "CxC 創利市集")
     assert not main.is_real_platform_url("https://example.com/@mori/work/giyushino-summer", "CxC 創利市集")

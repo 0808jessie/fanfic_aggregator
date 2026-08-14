@@ -8,6 +8,7 @@ CxC 搜尋頁以前端渲染為主，因此本 Adapter 僅解析瀏覽器實際�
 from __future__ import annotations
 
 from datetime import datetime
+import re
 from urllib.parse import urlencode, urljoin
 
 from bs4 import BeautifulSoup
@@ -42,6 +43,7 @@ class CxCScraper(BaseScraper):
         "User-Agent": user_agent,
     }
     work_link_selector = 'a[href*="/@"][href*="/work"], a[href*="/works/"]'
+    rendered_work_selector = ".cxc-store-card, .book-card, a[href*='/works/'], a[href*='/@'][href*='/work']"
 
     @classmethod
     def build_search_url(cls, keyword: str) -> str:
@@ -59,10 +61,11 @@ class CxCScraper(BaseScraper):
             items = self.parse_results(html, local_query)
             for item in items:
                 item.keyword = keyword
+            total_works = self.extract_total_works(html) or len(items)
             if not items:
                 self.last_warning = f"[CxC] No verified public result matched '{keyword}'"
-            print(f"[CxC] 成功抓取 {len(items)} 筆")
-            return {"items": items, "total_works": len(items), "total_pages": 1}
+            print(f"[CxC] 成功抓取 {len(items)} 筆，公開總數 {total_works}")
+            return {"items": items, "total_works": total_works, "total_pages": 1}
         except _PublicSearchUnavailable as error:
             self.last_warning = f"[CxC] {error}"
             print(self.last_warning)
@@ -92,7 +95,14 @@ class CxCScraper(BaseScraper):
                 if response and response.status in (403, 429, 503, 520, 521, 522, 525):
                     raise _PublicSearchUnavailable(f"Request blocked (HTTP {response.status}), skipping cleanly")
 
-                page_obj.wait_for_timeout(2200)
+                try:
+                    # CxC's listing is client-rendered. Wait only for public work
+                    # cards, never for private state or verification completion.
+                    page_obj.wait_for_selector(self.rendered_work_selector, timeout=7000)
+                except Exception:
+                    # A genuine no-result page is permitted; the bounded loading
+                    # check below distinguishes it from an unresolved spinner.
+                    page_obj.wait_for_timeout(500)
                 html = page_obj.content()
                 soup = BeautifulSoup(html, "html.parser")
                 if not soup.select(self.work_link_selector) and soup.select_one(".hourglass_loading.show, .q-spinner, [class*='loading']"):
@@ -151,7 +161,31 @@ class CxCScraper(BaseScraper):
             seen_urls.add(url)
         return results
 
+    @staticmethod
+    def extract_total_works(html: str) -> int | None:
+        """Read an explicit public CxC result total without inferring from cards."""
+        soup = BeautifulSoup(html, "html.parser")
+        total_nodes = soup.select(
+            ".search-result-count, .search-results-count, .result-count, "
+            "[data-total], [data-result-count], [class*='search'][class*='count']"
+        )
+        candidate_text = " ".join(node.get_text(" ", strip=True) for node in total_nodes)
+        patterns = (
+            r"(?:共|找到|總計)\s*([\d,]+)\s*(?:部|本|篇|項)?\s*(?:作品|結果|創作)",
+            r"([\d,]+)\s*(?:results?|works?)\b",
+        )
+        for node in total_nodes:
+            for attribute in ("data-total", "data-result-count"):
+                raw_total = (node.get(attribute) or "").strip()
+                if raw_total.replace(",", "").isdigit():
+                    return int(raw_total.replace(",", ""))
+        for pattern in patterns:
+            match = re.search(pattern, candidate_text, re.IGNORECASE)
+            if match:
+                return int(match.group(1).replace(",", ""))
+        return None
+
     @classmethod
     def is_real_work_url(cls, url: str) -> bool:
         """Constrain card links to CxC public creator-work routes."""
-        return url.startswith(f"{cls.base_url}/@") and "/work/" in url
+        return url.startswith(f"{cls.base_url}/@") and "/work/" in url or url.startswith(f"{cls.base_url}/works/")

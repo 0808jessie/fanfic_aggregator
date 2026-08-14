@@ -54,6 +54,7 @@ export function isDisplayableResult(value: unknown): value is SearchResult {
   if (platform.includes("同人誌中心") || platform.includes("doujin")) return normalizedUrl.includes("doujin.com.tw");
   if (platform.includes("在水裡寫字") || platform.includes("waterwriter")) return normalizedUrl.includes("slashtw.space");
   if (platform.includes("penana")) return normalizedUrl.includes("penana.com");
+  if (platform.includes("cxc") || platform.includes("創利市集")) return normalizedUrl.includes("cxc.today");
   return false;
 }
 

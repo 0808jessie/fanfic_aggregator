@@ -29,11 +29,20 @@ class ScrapedFanfic(BaseModel):
     warning: Optional[str] = Field(default=None, description="Diagnostic warning if live scraping failed")
 
 
+class CustomCpMapping(BaseModel):
+    """Optional browser-local CP override for one search request only."""
+
+    alias: str = Field(min_length=1, max_length=60)
+    ao3Query: str = Field(min_length=1, max_length=240)
+    localQuery: str = Field(min_length=1, max_length=240)
+
+
 class SearchQuery(BaseModel):
     keyword: str = Field(min_length=1, max_length=120)
     platforms: Optional[list[str]] = None
     page: int = Field(default=1, ge=1)
     forceRefresh: bool = False
+    customCpMappings: Optional[list[CustomCpMapping]] = Field(default=None, max_length=60)
 
 
 class PlatformStatus(BaseModel):

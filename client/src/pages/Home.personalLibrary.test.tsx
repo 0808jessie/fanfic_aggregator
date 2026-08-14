@@ -86,14 +86,37 @@ describe("Home personal reading tools", () => {
     expect(screen.getByText("義忍閱讀測試")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "篩選 5 星" }));
     expect(screen.getByText("想在夏天重讀。")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("全文搜尋閱讀清單"), { target: { value: "夏天" } });
+    expect(screen.getByText("義忍閱讀測試")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("閱讀清單排序方式"), { target: { value: "rating_desc" } });
     fireEvent.click(screen.getByRole("button", { name: "匯出備份 JSON" }));
     expect(createObjectURL).toHaveBeenCalledTimes(1);
 
+    const backup = new File([JSON.stringify({
+      version: 1,
+      exportedAt: "2026-08-14T00:00:00.000Z",
+      bookmarks: [
+        { url: "https://archiveofourown.org/works/4242", result: { title: "備份預覽 A", author: "預覽作者", platform: "AO3", url: "https://archiveofourown.org/works/4242", tags: "義忍", summary: "", scraped_at: "2026-08-14T00:00:00.000Z" }, rating: 5, notes: "備份筆記", tags: ["神作"], savedAt: "2026-08-14T00:00:00.000Z", updatedAt: "2026-08-14T00:00:00.000Z" },
+        { url: "https://www.penana.com/story/4243", result: { title: "備份預覽 B", author: "另一位作者", platform: "Penana", url: "https://www.penana.com/story/4243", tags: "同人", summary: "", scraped_at: "2026-08-14T00:00:00.000Z" }, rating: 3, notes: "", tags: ["待讀"], savedAt: "2026-08-14T00:00:00.000Z", updatedAt: "2026-08-14T00:00:00.000Z" },
+      ],
+    })], "reading-library-preview.json", { type: "application/json" });
+    fireEvent.change(screen.getByLabelText("匯入閱讀清單備份"), { target: { files: [backup] } });
+    expect(await screen.findByText("確認匯入閱讀清單")).toBeTruthy();
+    expect(screen.getByText("收藏作品")).toBeTruthy();
+    expect(screen.getByText("備份預覽 A")).toBeTruthy();
+    expect(screen.getByText("備份預覽 B")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "合併資料" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "完整覆蓋" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+
     fireEvent.click(screen.getAllByRole("button", { name: /CP 詞庫管理/ })[0]);
     fireEvent.change(screen.getByLabelText("中文縮寫"), { target: { value: "黑邪" } });
-    fireEvent.change(screen.getByLabelText("標準 Tag"), { target: { value: "Heiyan/Wu Xie" } });
+    fireEvent.change(screen.getByLabelText("AO3 標準 Tag／Query"), { target: { value: "Heiyan/Wu Xie" } });
+    fireEvent.change(screen.getByLabelText("中文全名／本地 Query"), { target: { value: "黑邪 黑眼鏡 吳邪" } });
     fireEvent.click(screen.getByRole("button", { name: "新增" }));
     expect(screen.getByText("黑邪")).toBeTruthy();
     expect(screen.getByText("Heiyan/Wu Xie")).toBeTruthy();
+    expect(screen.getByText("黑邪 黑眼鏡 吳邪")).toBeTruthy();
+    expect(window.localStorage.getItem("sui-read-custom-cp-map")).toContain("黑邪");
   });
 });

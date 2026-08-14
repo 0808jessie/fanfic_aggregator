@@ -47,15 +47,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { BookmarkEditorDialog, CpMappingManagerDialog, SavedBookmarksGrid } from "@/components/PersonalLibrary";
+import { BookmarkEditorDialog, BookmarkImportPreviewDialog, CpMappingManagerDialog, SavedBookmarksGrid } from "@/components/PersonalLibrary";
 import {
   loadBookmarks,
   loadCpMappings,
   loadFilterPreset,
   loadSearchHistory,
   collectBookmarkTags,
+  createBookmarkImportPreview,
   createBookmarkBackup,
-  filterBookmarks,
+  filterAndSortBookmarks,
+  mergeNewBookmarks,
   mergeImportedBookmarks,
   parseBookmarkBackup,
   persistBookmarks,
@@ -64,6 +66,8 @@ import {
   persistSearchHistory,
   recordSearch,
   upsertBookmark,
+  type BookmarkImportPreview,
+  type BookmarkLibrarySort,
   type BookmarkRecord,
   type CpMapping,
 } from "@/lib/personalLibrary";
@@ -117,6 +121,9 @@ export default function Home() {
   const [bookmarks, setBookmarks] = useState<BookmarkRecord[]>([]);
   const [bookmarkTagFilter, setBookmarkTagFilter] = useState<string | null>(null);
   const [bookmarkRatingFilter, setBookmarkRatingFilter] = useState<number | null>(null);
+  const [bookmarkSearch, setBookmarkSearch] = useState("");
+  const [bookmarkSort, setBookmarkSort] = useState<BookmarkLibrarySort>("saved_desc");
+  const [bookmarkImportPreview, setBookmarkImportPreview] = useState<BookmarkImportPreview | null>(null);
   const [bookmarkTarget, setBookmarkTarget] = useState<SearchResult | null>(null);
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
   const [cpMappings, setCpMappings] = useState<CpMapping[]>([]);
@@ -233,8 +240,8 @@ export default function Home() {
   );
   const bookmarkTags = useMemo(() => collectBookmarkTags(bookmarks), [bookmarks]);
   const displayedBookmarks = useMemo(
-    () => filterBookmarks(bookmarks, bookmarkTagFilter, bookmarkRatingFilter),
-    [bookmarks, bookmarkTagFilter, bookmarkRatingFilter],
+    () => filterAndSortBookmarks(bookmarks, { query: bookmarkSearch, tag: bookmarkTagFilter, rating: bookmarkRatingFilter, sort: bookmarkSort }),
+    [bookmarks, bookmarkSearch, bookmarkTagFilter, bookmarkRatingFilter, bookmarkSort],
   );
   const isRetryingSinglePlatform = searchMutation.isPending && Boolean(retryingPlatformRef.current);
 
@@ -289,10 +296,19 @@ export default function Home() {
     setCompletedElapsedMs(null);
     searchStartedAt.current = performance.now();
     setPagination({ totalWorks: 0, totalPages: 0, page: 1, loadedThroughPage: 0, nextPage: null, hasMore: false });
+    const customCpMappings = cpMappings
+      .filter((mapping) => mapping.source === "custom" && mapping.ao3Query && mapping.localQuery)
+      .map((mapping) => ({ alias: mapping.alias, ao3Query: mapping.ao3Query!, localQuery: mapping.localQuery! }));
     searchMutation.mutate({
       path: "/search",
       method: "POST",
-      data: { keyword: trimmedKeyword, platforms: platformOverride ?? selectedPlatforms, page: 1, forceRefresh },
+      data: {
+        keyword: trimmedKeyword,
+        platforms: platformOverride ?? selectedPlatforms,
+        page: 1,
+        forceRefresh,
+        ...(customCpMappings.length ? { customCpMappings } : {}),
+      },
     });
   };
 
@@ -353,13 +369,25 @@ export default function Home() {
     if (!file) return;
     try {
       const imported = parseBookmarkBackup(await file.text());
-      const next = mergeImportedBookmarks(bookmarks, imported);
-      setBookmarks(next);
-      persistBookmarks(next);
-      toast.success("已匯入閱讀清單備份", { description: `已安全合併 ${imported.length} 張閱讀卡。` });
+      setBookmarkImportPreview(createBookmarkImportPreview(imported));
     } catch (error) {
       toast.error("無法匯入備份", { description: error instanceof Error ? error.message : "請選擇有效的 JSON 備份檔。" });
     }
+  };
+
+  const confirmBookmarkImport = (mode: "merge" | "overwrite") => {
+    if (!bookmarkImportPreview) return;
+    const next = mode === "merge"
+      ? mergeNewBookmarks(bookmarks, bookmarkImportPreview.bookmarks)
+      : bookmarkImportPreview.bookmarks;
+    setBookmarks(next);
+    persistBookmarks(next);
+    setBookmarkImportPreview(null);
+    toast.success(mode === "merge" ? "已合併閱讀清單備份" : "已完整覆蓋閱讀清單", {
+      description: mode === "merge"
+        ? `保留原有閱讀卡，加入 ${Math.max(0, next.length - bookmarks.length)} 筆新作品。`
+        : `已改用備份中的 ${next.length} 張閱讀卡。`,
+    });
   };
 
   return (
@@ -520,6 +548,14 @@ export default function Home() {
                     <Button type="button" variant="outline" onClick={() => bookmarkImportRef.current?.click()} className="h-9 rounded-none border-[#10151b]/15 bg-white/70 font-mono text-[9px] font-bold uppercase tracking-[0.12em] hover:border-[#e27d9d] hover:bg-[#fff0f4]"><Upload className="mr-1.5 h-3.5 w-3.5" />匯入備份</Button>
                   </div>
                 </div>
+                <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_260px] lg:items-end">
+                  <label className="grid gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#75838b]">全文搜尋
+                    <div className="flex h-10 items-center gap-2 border border-[#10151b]/15 bg-white/75 px-3 focus-within:border-[#45b9b2]"><Search className="h-3.5 w-3.5 text-[#e27d9d]" /><input value={bookmarkSearch} onChange={(event) => setBookmarkSearch(event.target.value)} aria-label="全文搜尋閱讀清單" placeholder="標題、作者、筆記或標籤…" className="min-w-0 flex-1 bg-transparent font-sans text-sm font-normal normal-case tracking-normal outline-none placeholder:text-[#9aa5ab]" /></div>
+                  </label>
+                  <label className="grid gap-2 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#75838b]">排序方式
+                    <select value={bookmarkSort} onChange={(event) => setBookmarkSort(event.target.value as BookmarkLibrarySort)} aria-label="閱讀清單排序方式" className="h-10 border border-[#10151b]/15 bg-white px-3 font-mono text-[10px] font-bold tracking-[0.08em] text-[#52616b] outline-none focus:border-[#45b9b2]"><option value="saved_desc">收藏時間｜最新優先</option><option value="saved_asc">收藏時間｜最舊優先</option><option value="rating_desc">個人評分｜高至低 ★★★★★</option><option value="rating_asc">個人評分｜低至高 ★</option></select>
+                  </label>
+                </div>
                 <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
                   <div>
                     <div className="mb-2 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#75838b]">標籤</div>
@@ -641,6 +677,12 @@ export default function Home() {
           onOpenChange={setBookmarkDialogOpen}
           onSave={saveBookmark}
           onRemove={removeBookmark}
+        />
+        <BookmarkImportPreviewDialog
+          preview={bookmarkImportPreview}
+          onOpenChange={(open) => { if (!open) setBookmarkImportPreview(null); }}
+          onMerge={() => confirmBookmarkImport("merge")}
+          onOverwrite={() => confirmBookmarkImport("overwrite")}
         />
         <CpMappingManagerDialog open={cpManagerOpen} mappings={cpMappings} onOpenChange={setCpManagerOpen} onChange={updateCpMappings} />
       </main>

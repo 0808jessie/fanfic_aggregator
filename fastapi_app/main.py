@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta
+import hashlib
+import json
 from typing import Any, Callable
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -168,8 +170,20 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
         raise HTTPException(status_code=400, detail="No supported platform was selected")
 
     try:
+        custom_cp_mappings = {
+            mapping.alias.strip(): {
+                "ao3Query": mapping.ao3Query.strip(),
+                "localQuery": mapping.localQuery.strip(),
+            }
+            for mapping in (query.customCpMappings or [])
+            if mapping.alias.strip() and mapping.ao3Query.strip() and mapping.localQuery.strip()
+        }
         requested_page = query.page
-        cache_key = f"{keyword}:{'-'.join(sorted(platforms))}:page={requested_page}"
+        mapping_fingerprint = ""
+        if custom_cp_mappings:
+            serialized_mappings = json.dumps(custom_cp_mappings, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            mapping_fingerprint = f":cp={hashlib.sha256(serialized_mappings.encode()).hexdigest()[:16]}"
+        cache_key = f"{keyword}:{'-'.join(sorted(platforms))}:page={requested_page}{mapping_fingerprint}"
         # 強制更新只影響此次請求：略過既有快取、重新啟動 Adapter，並用成功結果覆寫快取。
         bypass_persistent_cache = query.forceRefresh
         if bypass_persistent_cache:
@@ -202,11 +216,20 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
                 del _MEMORY_CACHE[cache_key]
 
         # 2. 透過 Adapter registry 平行查詢所有已選平台
-        aggregate = (
-            parallel_search_platforms(platforms, keyword, requested_page, force_refresh=True)
-            if query.forceRefresh
-            else parallel_search_platforms(platforms, keyword, requested_page)
-        )
+        if custom_cp_mappings:
+            aggregate = (
+                parallel_search_platforms(platforms, keyword, requested_page, force_refresh=True, custom_cp_mappings=custom_cp_mappings)
+                if query.forceRefresh
+                else parallel_search_platforms(platforms, keyword, requested_page, custom_cp_mappings=custom_cp_mappings)
+            )
+        else:
+            # Preserve the original call shape for existing adapters, mocks, and
+            # cache paths when the browser has no custom local CP override.
+            aggregate = (
+                parallel_search_platforms(platforms, keyword, requested_page, force_refresh=True)
+                if query.forceRefresh
+                else parallel_search_platforms(platforms, keyword, requested_page)
+            )
         fresh_results = rank_results([
             result for result in aggregate["items"]
             if is_real_platform_url(result.url, result.platform)
@@ -265,7 +288,7 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
 
         # 4. 若即時抓取為 0 筆或失敗，絕對不寫入快取，且對 CP 映射關鍵字不使用 stale SQLite cache 避免污染
         stale_cached = None
-        if not query.forceRefresh and keyword not in CP_TAG_MAP:
+        if not query.forceRefresh and keyword not in CP_TAG_MAP and not custom_cp_mappings:
             stale_cached = get_cached_results(db, keyword, platforms, ignore_ttl=True, source_label="fallback-cache")
         if stale_cached:
             print(f"[SearchAPI] External failed, falling back to stale cache for '{keyword}'")
