@@ -58,24 +58,6 @@ def test_platform_status_translates_cp_query_and_detects_cooldown():
     assert adapter_index.classify_platform_status(0, "[同人誌中心] No verified public result matched '義忍'") == "empty"
 
 
-def test_platform_status_and_adapter_receive_request_scoped_custom_cp_queries():
-    received: list[str] = []
-
-    class CapturingAO3(FakeAO3):
-        def scrape(self, keyword: str, page: int = 1):
-            received.append(keyword)
-            return super().scrape(keyword, page)
-
-    custom = {"義忍": {"ao3Query": "Custom AO3 Pair", "localQuery": "自訂 中文 詞組"}}
-    with patch.object(adapter_index, "SCRAPERS", {"ao3": CapturingAO3}):
-        _, items, _, _, status = adapter_index.search_single_platform("ao3", "義忍", custom_cp_mappings=custom)
-
-    assert received == ["Custom AO3 Pair"]
-    assert items[0].keyword == "義忍"
-    assert status.translatedQuery == "Custom AO3 Pair"
-    assert adapter_index.translated_query_for_platform("waterwriter", "義忍", custom) == "自訂 中文 詞組"
-
-
 class FakeLofterSuccess:
     def __init__(self):
         self.last_warning = None

@@ -10,7 +10,6 @@ const mockState = vi.hoisted(() => ({
   lastVariables: null as unknown,
   responseWarning: null as string | null,
   responsePlatformStatuses: [] as unknown[],
-  responseItems: null as Record<string, unknown>[] | null,
   retryPayload: null as Record<string, unknown> | null,
 }));
 
@@ -39,7 +38,7 @@ vi.mock("@/lib/trpc", async () => {
                   ? mockState.retryPayload
                   : hookId === 0
                   ? {
-                      items: mockState.responseItems ?? [{ title: "PAGE ONE", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/9001", tags: "富岡義勇/胡蝶忍, Post-Canon", relationships: ["富岡義勇/胡蝶忍"], characters: ["富岡義勇", "胡蝶忍"], summary: "", scraped_at: "2026-01-01T00:00:00Z" }],
+                      items: [{ title: "PAGE ONE", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/9001", tags: "富岡義勇/胡蝶忍, Post-Canon", relationships: ["富岡義勇/胡蝶忍"], characters: ["富岡義勇", "胡蝶忍"], summary: "", scraped_at: "2026-01-01T00:00:00Z" }],
                       totalWorks: 60,
                       totalPages: 3,
                       page: 1,
@@ -82,7 +81,6 @@ beforeEach(() => {
   mockState.lastVariables = null;
   mockState.responseWarning = null;
   mockState.responsePlatformStatuses = [];
-  mockState.responseItems = null;
   mockState.retryPayload = null;
 });
 
@@ -121,26 +119,6 @@ describe("Home pagination interactions", () => {
     expect(screen.queryByText(/Triggered Challenge/)).toBeNull();
   });
 
-  it("keeps an empty search actionable through per-platform statuses without a global error banner", async () => {
-    mockState.responseItems = [];
-    mockState.responsePlatformStatuses = [
-      { platformId: "cxc", label: "CxC 創利市集", status: "error", itemCount: 0, warning: "Public search did not finish rendering", translatedQuery: "義忍" },
-      { platformId: "doujin", label: "同人誌中心", status: "blocked", itemCount: 0, warning: "CAPTCHA", translatedQuery: "義忍" },
-    ];
-    render(<Home />);
-
-    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "義忍" } });
-    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
-
-    await waitFor(() => expect(screen.getByLabelText("平台連線狀態")).toBeTruthy());
-    expect(screen.getByText("連線逾時")).toBeTruthy();
-    expect(screen.getByText("觸發人機保護")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "重試 CxC 創利市集" })).toBeTruthy();
-    expect(screen.getByText("NO VERIFIED STORIES")).toBeTruthy();
-    expect(screen.queryByText("DISCOVERY HALTED")).toBeNull();
-    expect(screen.queryByText("目前無法取得外部作品索引。")).toBeNull();
-  });
-
   it("keeps a CP alias intact for the backend and retries only a failed source", async () => {
     mockState.responsePlatformStatuses = [
       { platformId: "ao3", label: "AO3", status: "success", itemCount: 40, translatedQuery: '"Tomioka Giyuu/Kochou Shinobu" OR "義忍"' },
@@ -154,7 +132,7 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "義忍", platforms: ["ao3", "cxc", "lofter", "doujin", "waterwriter", "penana"], page: 1, forceRefresh: false },
+      data: { keyword: "義忍", platforms: ["ao3", "lofter", "doujin", "waterwriter", "penana", "cxc"], page: 1, forceRefresh: false },
     }));
     await waitFor(() => expect(screen.getByLabelText("平台連線狀態")).toBeTruthy());
     expect(screen.getByText("冷卻限制中")).toBeTruthy();
@@ -165,6 +143,22 @@ describe("Home pagination interactions", () => {
       method: "POST",
       data: { keyword: "義忍", platforms: ["waterwriter"], page: 1, forceRefresh: true },
     });
+  });
+
+  it("keeps the CxC card visible and retryable when the API omits its status", async () => {
+    mockState.responsePlatformStatuses = [
+      { platformId: "ao3", label: "AO3", status: "success", itemCount: 60, translatedQuery: "義忍" },
+    ];
+    render(<Home />);
+
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "義忍" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+
+    await waitFor(() => expect(screen.getByLabelText("平台連線狀態")).toBeTruthy());
+    expect(screen.getByText("CxC 創利市集")).toBeTruthy();
+    expect(screen.getAllByText("連線逾時").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("本次未收到來源回應，請單獨重試。").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "重試 CxC 創利市集" })).toBeTruthy();
   });
 
   it("merges a successfully retried platform without discarding other platform results", async () => {
@@ -193,29 +187,6 @@ describe("Home pagination interactions", () => {
     expect(screen.getByText("PAGE ONE")).toBeTruthy();
     expect(screen.getByText("已連線 · 25 筆")).toBeTruthy();
   });
-
-  it("filters rendered results by clicking a platform status card and restores all results on second click", async () => {
-    mockState.responsePlatformStatuses = [
-      { platformId: "ao3", label: "AO3", status: "success", itemCount: 1, translatedQuery: "義忍" },
-      { platformId: "waterwriter", label: "在水裡寫字", status: "success", itemCount: 1, translatedQuery: "義忍 富岡義勇 胡蝶忍" },
-    ];
-    mockState.responseItems = [
-      { title: "AO3 STORY", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/9002", tags: "義忍", summary: "", scraped_at: "2026-01-01T00:00:00Z" },
-      { title: "WATER STORY", author: "Author", platform: "在水裡寫字", url: "https://slashtw.space/forum.php?mod=viewthread&tid=9002", tags: "義忍", summary: "", scraped_at: "2026-01-01T00:00:00Z" },
-    ];
-    render(<Home />);
-
-    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "義忍" } });
-    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
-    await waitFor(() => expect(screen.getByText("WATER STORY")).toBeTruthy());
-
-    fireEvent.click(screen.getByRole("button", { name: "只顯示 在水裡寫字 結果" }));
-    expect(screen.getByText("WATER STORY")).toBeTruthy();
-    expect(screen.queryByText("AO3 STORY")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "顯示全部結果" }));
-    expect(screen.getByText("AO3 STORY")).toBeTruthy();
-  });
 });
 
   it("renders platform checkboxes and sends the selected platform list", async () => {
@@ -223,15 +194,15 @@ describe("Home pagination interactions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /FILTERS/ }));
     const lofterCheckbox = screen.getByRole("checkbox", { name: "搜尋 LOFTER" });
-    const cxcCheckbox = screen.getByRole("checkbox", { name: "搜尋 CXC 創利市集" });
     const doujinCheckbox = screen.getByRole("checkbox", { name: "搜尋 同人誌中心" });
     const waterwriterCheckbox = screen.getByRole("checkbox", { name: "搜尋 在水裡寫字" });
     const penanaCheckbox = screen.getByRole("checkbox", { name: "搜尋 PENANA" });
+    const cxcCheckbox = screen.getByRole("checkbox", { name: "搜尋 CxC 創利市集" });
     expect(lofterCheckbox.getAttribute("aria-checked")).toBe("true");
-    expect(cxcCheckbox.getAttribute("aria-checked")).toBe("true");
     expect(doujinCheckbox.getAttribute("aria-checked")).toBe("true");
     expect(waterwriterCheckbox.getAttribute("aria-checked")).toBe("true");
     expect(penanaCheckbox.getAttribute("aria-checked")).toBe("true");
+    expect(cxcCheckbox.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(lofterCheckbox);
     expect(lofterCheckbox.getAttribute("aria-checked")).toBe("false");
 
@@ -241,6 +212,6 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "花", platforms: ["ao3", "cxc", "doujin", "waterwriter", "penana"], page: 1, forceRefresh: false },
+      data: { keyword: "花", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc"], page: 1, forceRefresh: false },
     }));
   });

@@ -49,23 +49,3 @@ FastAPI 強制更新同一在水裡寫字搜尋後回傳 `source="live"`、`tota
 同人誌中心於後續同一查詢的公開頁檢查仍未提供可解析內容，因此尚無法取得可信的搜尋頁總數。總數擷取器僅會在公開頁明示 `.search_result_info`、同類搜尋標頭或分頁總數時使用其值；在 CAPTCHA 或無結果內容情境下，系統維持 `blocked/error` 狀態與零筆可驗證資料，避免以站內未篩選書目填充搜尋結果。
 
 最新版 FastAPI 的同人誌中心單一來源強制更新同樣在頁面導覽逾時時回傳 `items=[]`、`totalWorks=0` 與 `platformStatuses[0].status="error"`，並保留中文 `translatedQuery`。這確認網站保護／逾時時不會把未篩選公開書目當成匹配結果，且前端可對該來源顯示單獨重試操作。
-
-### 2026-08-14 CxC 公開搜尋頁初步稽核
-
-以公開 URL `https://cxc.today/zh/search?keyword=義忍` 進行兩次瀏覽器載入檢查後，頁面仍僅顯示載入動畫，未提供可驗證的作品卡片、創作者、封面、類型標籤或作品連結。CxC Adapter 因此須遵循既有來源隔離契約：僅解析實際公開頁取得的資料，若渲染逾時或無可驗證作品卡片，回傳空結果與可單獨重試的來源狀態，絕不建立 placeholder 作品。
-
-同日以 FastAPI 對 `keyword="義忍"`、`platforms=["cxc"]`、`forceRefresh=true` 執行實測，回傳 HTTP 200 的安全搜尋 envelope：`items=[]`、`totalWorks=0`、`platformStatuses[0].status="error"`，並保留 `translatedQuery="義忍 富岡義勇 胡蝶忍"` 與明確警示 `Public search did not finish rendering; skipping cleanly`。因此 CxC 在公開頁尚未提供可驗證作品時，可由前端顯示單獨重試，不會產生未驗證內容。
-
-2026-08-14 再次以瀏覽器開啟同一 CxC 公開搜尋 URL，畫面及可讀內容仍僅為 `img/ani_loading_black.png` 與載入動畫，未出現作品卡、公開作品連結或結果總數。因此本輪會以使用者指定的作品選擇器作有界等待；若頁面未產生可驗證卡片，持續回傳 `error` 與空結果，不猜測官方筆數。
-
-### 2026-08-14 閱讀清單升級 UI 預覽
-
-在預覽站實際切換「我的閱讀清單」後，畫面顯示既有 1 張本機閱讀卡，以及「全文搜尋」輸入欄、收藏時間／評分排序選單、JSON 匯出與匯入按鈕、標籤篩選和星級篩選。既有卡片的標題、作者、筆記與自訂標籤均未遺失，新增控制列以原有 Blueprint／Monospace 樣式呈現。此結果與閱讀清單 UI 互動測試共同確認新控制不會破壞 LocalStorage 內容或閱讀卡版面。
-
-同一預覽工作階段已開啟 CP 詞庫管理彈窗，確認畫面提供「中文縮寫」、「AO3 標準 Tag／Query」與「中文全名／本地 Query」三個欄位，並在每筆對照列中分開展示 AO3／LOCAL 查詢與 SYSTEM／CUSTOM 來源標示。後續熱更新會關閉暫開的彈窗，但首頁與既有本機閱讀卡仍可正常重新載入。
-
-CxC Adapter 更新後，以 FastAPI 對 `keyword="義忍"`、`platforms=["cxc"]`、`forceRefresh=true` 實測。CxC 公開頁未產生可驗證作品卡時，API 正確回傳 HTTP 200 安全 envelope：`items=[]`、`totalWorks=0`、`platformStatuses[0].status="error"`，且仍保留 `translatedQuery="義忍 富岡義勇 胡蝶忍"` 與可單獨重試的 warning。這確認新版有界等待不會讓 CxC 失敗阻斷其他來源或生成未驗證結果。
-
-另以自訂詞庫 `黑邪 → AO3: Heiyan/Wu Xie；LOCAL: 黑邪 黑眼鏡 吳邪` 進行同一 API 路徑實測；CxC 狀態回傳的 `translatedQuery` 為 `黑邪 黑眼鏡 吳邪`。即使 CxC 當下仍安全降級為空結果，自訂 AO3／本地雙查詢已確認可在每次請求中生效，不會寫入或污染其他使用者的快取。
-
-匯入預覽確認流程以使用者層級互動測試載入含兩張閱讀卡的 JSON 備份，驗證彈窗會顯示「確認匯入閱讀清單」、收藏／標籤統計、預覽作品「備份預覽 A」與「備份預覽 B」，並提供「合併資料」、「完整覆蓋」及「取消」三個動作。取消流程不寫入 LocalStorage；合併與覆蓋的資料策略則由閱讀清單工具測試另行驗證。

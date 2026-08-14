@@ -48,18 +48,8 @@ PLATFORM_LABELS = {
 LOCAL_CP_PLATFORM_IDS = frozenset(("cxc", "doujin", "waterwriter"))
 
 
-def translated_query_for_platform(
-    platform_key: str,
-    keyword: str,
-    custom_cp_mappings: dict[str, dict[str, str]] | None = None,
-) -> str:
+def translated_query_for_platform(platform_key: str, keyword: str) -> str:
     """Expose the adapter's CP translation without altering free-text input."""
-    custom = (custom_cp_mappings or {}).get(keyword)
-    if custom:
-        if platform_key == "ao3" and custom.get("ao3Query"):
-            return custom["ao3Query"]
-        if platform_key in LOCAL_CP_PLATFORM_IDS and custom.get("localQuery"):
-            return custom["localQuery"]
     if platform_key == "ao3":
         return get_keyword_for_platform(keyword, "ao3")
     if platform_key in LOCAL_CP_PLATFORM_IDS:
@@ -85,27 +75,19 @@ def classify_platform_status(item_count: int, warning: str | None) -> str:
         return "cooldown"
     if any(marker in diagnostic for marker in blocked_markers):
         return "blocked"
-    if "public search did not finish rendering" in diagnostic or "browser render failed safely" in diagnostic:
-        return "error"
     if "no verified public result" in diagnostic or "no tag results" in diagnostic:
         return "empty"
     return "error"
 
 
-def make_platform_status(
-    platform_key: str,
-    keyword: str,
-    item_count: int,
-    warning: str | None,
-    custom_cp_mappings: dict[str, dict[str, str]] | None = None,
-) -> PlatformStatus:
+def make_platform_status(platform_key: str, keyword: str, item_count: int, warning: str | None) -> PlatformStatus:
     return PlatformStatus(
         platformId=platform_key,
         label=PLATFORM_LABELS.get(platform_key, platform_key),
         status=classify_platform_status(item_count, warning),
         itemCount=item_count,
         warning=warning,
-        translatedQuery=translated_query_for_platform(platform_key, keyword, custom_cp_mappings),
+        translatedQuery=translated_query_for_platform(platform_key, keyword),
     )
 
 
@@ -114,21 +96,19 @@ def search_single_platform(
     keyword: str,
     page: int = 1,
     force_refresh: bool = False,
-    custom_cp_mappings: dict[str, dict[str, str]] | None = None,
 ) -> tuple[str, list[ScrapedFanfic], int, int, PlatformStatus]:
     """Execute one adapter safely and return a UI-ready status for that source."""
     adapter_cls = SCRAPERS.get(platform_key)
     if not adapter_cls:
         warning = f"Platform '{platform_key}' is not supported."
-        return platform_key, [], 0, 0, make_platform_status(platform_key, keyword, 0, warning, custom_cp_mappings)
+        return platform_key, [], 0, 0, make_platform_status(platform_key, keyword, 0, warning)
 
     adapter = adapter_cls()
-    adapter_keyword = translated_query_for_platform(platform_key, keyword, custom_cp_mappings)
     try:
         payload = (
-            adapter.scrape(adapter_keyword, page=page, force_refresh=True)
+            adapter.scrape(keyword, page=page, force_refresh=True)
             if force_refresh
-            else adapter.scrape(adapter_keyword, page=page)
+            else adapter.scrape(keyword, page=page)
         )
         items: list[ScrapedFanfic] = []
         total_works = 0
@@ -145,23 +125,16 @@ def search_single_platform(
         for item in items:
             if not item.id:
                 item.id = f"{platform_key}:{item.url}"
-            item.keyword = keyword
         warning = getattr(adapter, "last_warning", None)
         status_count = total_works if total_works > 0 else len(items)
-        return platform_key, items, total_works, total_pages, make_platform_status(platform_key, keyword, status_count, warning, custom_cp_mappings)
+        return platform_key, items, total_works, total_pages, make_platform_status(platform_key, keyword, status_count, warning)
     except Exception as error:
         warning = f"Platform '{platform_key}' scrape failed: {error}"
         print(f"[AdapterIndex] {warning}")
-        return platform_key, [], 0, 0, make_platform_status(platform_key, keyword, 0, warning, custom_cp_mappings)
+        return platform_key, [], 0, 0, make_platform_status(platform_key, keyword, 0, warning)
 
 
-def parallel_search_platforms(
-    platforms: list[str],
-    keyword: str,
-    page: int = 1,
-    force_refresh: bool = False,
-    custom_cp_mappings: dict[str, dict[str, str]] | None = None,
-) -> dict[str, Any]:
+def parallel_search_platforms(platforms: list[str], keyword: str, page: int = 1, force_refresh: bool = False) -> dict[str, Any]:
     """Search selected platforms concurrently without letting any failure block another."""
     results_map: dict[str, list[ScrapedFanfic]] = {}
     statuses_map: dict[str, PlatformStatus] = {}
@@ -172,7 +145,7 @@ def parallel_search_platforms(
 
     with ThreadPoolExecutor(max_workers=len(platforms) or 1) as executor:
         future_to_platform = {
-            executor.submit(search_single_platform, platform, keyword, page, force_refresh, custom_cp_mappings): platform
+            executor.submit(search_single_platform, platform, keyword, page, force_refresh): platform
             for platform in platforms
         }
         for future in as_completed(future_to_platform):

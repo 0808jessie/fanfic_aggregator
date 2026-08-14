@@ -141,12 +141,6 @@ def test_penana_parser_standardizes_public_story_cards_without_mislabeling_reads
     assert item.isComplete is True
 
 
-def test_penana_extracts_explicit_finder_result_total_without_guessing_from_cards():
-    html = '<div class="searchResultTitle">找到 2,468 篇故事</div>' + PENANA_RESULTS
-    assert PenanaScraper.extract_total_works(html) == 2468
-    assert PenanaScraper.extract_total_works(PENANA_RESULTS) is None
-
-
 def test_penana_detail_metadata_uses_labelled_word_count_and_explicit_status_only():
     metadata = PenanaScraper.parse_detail_metadata(PENANA_DETAIL)
     assert metadata == {"wordCount": "3,200 words", "isComplete": True}
