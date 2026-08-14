@@ -61,13 +61,13 @@ class PenanaScraper(BaseScraper):
                     page_obj = context.new_page()
                     configure_fast_page(page_obj)
                     try:
-                        response = page_obj.goto(search_url, timeout=7000, wait_until="domcontentloaded")
+                        response = page_obj.goto(search_url, timeout=3500, wait_until="domcontentloaded")
                         status_code = response.status if response else 200
                         if status_code in (403, 429, 503, 520, 521, 522, 525):
                             self.last_warning = f"[Penana] Request blocked (HTTP {status_code})"
                             return {"items": [], "total_works": 0, "total_pages": 1}
                         try:
-                            page_obj.wait_for_selector(".newXbox.p0.storydata", timeout=2000)
+                            page_obj.wait_for_selector(".newXbox.p0.storydata", timeout=1200)
                         except Exception:
                             # A zero-result search is valid. The parser below will avoid fabricating cards.
                             pass
@@ -107,7 +107,7 @@ class PenanaScraper(BaseScraper):
                 f"{self.base_url}/search",
                 params={"t": "story", "genre": "all", "filter": "", "rating_multiple": "0,1,2", "search": keyword},
                 headers=self.search_headers,
-                timeout=12,
+                timeout=(2, 4),
             )
             if response.status_code in (403, 429, 503, 520, 521, 522, 525):
                 print(f"[Penana] Public Finder fetch blocked (HTTP {response.status_code}); using safe fallback.")

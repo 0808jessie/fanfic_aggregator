@@ -12,6 +12,7 @@ from datetime import datetime
 from urllib.parse import quote_plus, urljoin
 
 from bs4 import BeautifulSoup
+import requests
 
 from constants.cp_tags import CPTagConfig, get_keyword_for_platform
 from models import ScrapedFanfic
@@ -63,7 +64,9 @@ class DoujinScraper(BaseScraper):
 
         try:
             local_query = get_keyword_for_platform(keyword, "local", custom_cp_map)
-            html = self._render_public_search_html(local_query, page)
+            html = self._fetch_static_search_html(local_query, page)
+            if html is None:
+                html = self._render_public_search_html(local_query, page)
             items = self.parse_results(html, local_query)
             total_works = self.extract_total_works(html) or len(items)
             total_pages = self.extract_total_pages(html) or 1
@@ -80,6 +83,30 @@ class DoujinScraper(BaseScraper):
             self.last_warning = f"[同人誌中心] Browser render failed safely: {error}"
             print(self.last_warning)
         return {"items": [], "total_works": 0, "total_pages": 1}
+
+    def _fetch_static_search_html(self, keyword: str, page_number: int = 1) -> str | None:
+        """Read the native server-rendered listing before using browser fallback."""
+        try:
+            response = requests.get(
+                self.build_search_url(keyword, page_number),
+                headers=self.headers,
+                timeout=(2, 4),
+            )
+            if response.status_code in (403, 429, 503, 520, 521, 522, 525):
+                return None
+            response.raise_for_status()
+            html = response.text
+            text = BeautifulSoup(html, "html.parser").get_text(" ", strip=True)
+            if self._is_protected_page(text):
+                return None
+            soup = BeautifulSoup(html, "html.parser")
+            if not soup.select('a[href*="/books/info/"]') and not re.search(r"共\s*\d+\s*本", text):
+                return None
+            print("[同人誌中心 Static] Parsed native public listing HTML")
+            return html
+        except requests.RequestException as error:
+            print(f"[同人誌中心 Static] Public GET unavailable; using browser fallback: {error}")
+            return None
 
     def _render_public_search_html(self, keyword: str, page_number: int = 1) -> str:
         if not PLAYWRIGHT_AVAILABLE:

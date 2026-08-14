@@ -194,7 +194,7 @@ class CxCScraper(BaseScraper):
                 self.public_api_url,
                 params=params,
                 headers=self.public_api_headers,
-                timeout=(5, 12),
+                timeout=(2, 5),
             )
             response.raise_for_status()
             payload = response.json()

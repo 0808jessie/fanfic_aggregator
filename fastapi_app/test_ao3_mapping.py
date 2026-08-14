@@ -116,3 +116,41 @@ def test_ao3_total_works_reads_only_explicit_result_heading():
     current_heading = BeautifulSoup('<h2 class="heading">311,063 Found ?</h2>', "html.parser")
     assert AO3Scraper.extract_total_works_heading(current_heading) == ("311,063 Found ?", 311063)
     assert AO3Scraper.extract_total_works_from_heading(BeautifulSoup("<p>15,420 Works Found</p>", "html.parser")) is None
+
+
+def test_ao3_static_html_path_parses_cards_and_official_heading_without_browser():
+    static_html = """
+    <h2 class="heading">1 - 20 of 51,428 Works</h2>
+    <li class="work blurb">
+      <h4 class="heading"><a href="/works/42001">Static AO3 Story</a><a rel="author">Static Author</a></h4>
+      <blockquote class="userstuff">Public summary</blockquote>
+      <ul class="tags"><li class="relationships">A/B</li><li class="characters">A</li></ul>
+      <dd class="words">1,024</dd><p class="datetime">14 Aug 2026</p><dd class="status">Completed</dd>
+    </li>
+    """
+    response = MagicMock(status_code=200, text=static_html)
+    response.raise_for_status.return_value = None
+    scraper = AO3Scraper()
+
+    with patch("scrapers.ao3_scraper.requests.get", return_value=response) as get:
+        payload = scraper.scrape("花", force_refresh=True)
+
+    assert payload["total_works"] == 51428
+    assert payload["total_pages"] == 2572
+    assert payload["items"][0].title == "Static AO3 Story"
+    assert payload["items"][0].url == "https://archiveofourown.org/works/42001"
+    assert payload["items"][0].relationships == ["A/B"]
+    assert get.call_args.kwargs["cookies"] == {"view_adult": "true"}
+
+
+def test_ao3_static_protection_returns_bounded_warning_without_browser_fallback():
+    blocked_response = MagicMock(status_code=525, text="")
+    blocked_response.raise_for_status.return_value = None
+    scraper = AO3Scraper()
+
+    with patch("scrapers.ao3_scraper.requests.get", return_value=blocked_response), patch("scrapers.ao3_scraper.sync_playwright") as browser_session:
+        payload = scraper.scrape("鬼滅", force_refresh=True)
+
+    assert payload["items"] == []
+    assert "HTTP 525" in (scraper.last_warning or "")
+    browser_session.assert_not_called()

@@ -45,6 +45,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { BlueprintCover } from "@/components/BlueprintCover";
 import { BookmarkEditorDialog, CpMappingManagerDialog, SavedBookmarksGrid } from "@/components/PersonalLibrary";
 import {
   loadBookmarks,
@@ -316,12 +317,20 @@ export default function Home() {
     setElapsedMs(0);
     setCompletedElapsedMs(null);
     searchStartedAt.current = performance.now();
-    setPagination({ totalWorks: 0, totalPages: 0, page: 1, loadedThroughPage: 0, nextPage: null, hasMore: false });
+    if (!retryPlatform) {
+      setPagination({ totalWorks: 0, totalPages: 0, page: 1, loadedThroughPage: 0, nextPage: null, hasMore: false });
+    }
     searchMutation.mutate({
       path: "/search",
       method: "POST",
       data: { keyword: trimmedKeyword, platforms: platformOverride ?? selectedPlatforms, page: 1, forceRefresh, customCpMappings },
     });
+  };
+
+  const retrySinglePlatform = (event: React.MouseEvent<HTMLButtonElement>, platform: PlatformId) => {
+    event.preventDefault();
+    event.stopPropagation();
+    runSearch(true, activeQuery || keyword, [platform]);
   };
 
   const submitSearch = (event: FormEvent<HTMLFormElement>) => {
@@ -498,7 +507,7 @@ export default function Home() {
                           size="sm"
                           disabled={searchMutation.isPending}
                           aria-label={`重試 ${status.label}`}
-                          onClick={(event) => { event.stopPropagation(); runSearch(true, activeQuery || keyword, [status.platformId as PlatformId]); }}
+                          onClick={(event) => retrySinglePlatform(event, status.platformId as PlatformId)}
                           className="h-7 shrink-0 rounded-none border border-current px-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em] hover:bg-white/70"
                         >
                           <RotateCw className={`mr-1 h-3 w-3 ${searchMutation.isPending ? "animate-spin" : ""}`} />重試
@@ -568,7 +577,7 @@ export default function Home() {
                   return (
                     <Card key={`${result.url}-${index}`} className="atlas-panel group relative rounded-none border-[#111826]/15 bg-white/80 shadow-none transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-1 hover:border-[#2d70d6]/60 hover:shadow-[0_12px_28px_rgba(17,24,38,0.1)]">
                       <CardContent className="p-0">
-                        {result.coverUrl && <img src={result.coverUrl} alt="" loading="lazy" className="h-44 w-full border-b border-[#10151b]/10 object-cover" />}
+                        <BlueprintCover src={result.coverUrl} title={result.title} />
                         <div className="flex items-center justify-between border-b border-[#111826]/10 px-5 py-3">
                           <div className="flex items-center gap-2">
                             <Badge className={`rounded-none border atlas-mono text-[9px] font-medium uppercase tracking-[0.14em] ${platformToneClass(meta.tone)} `}>

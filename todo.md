@@ -214,4 +214,10 @@
 - [x] 建立來源級短期記憶體快取與 forceRefresh 略過策略，保留既有回應與快取 TTL 契約
 - [x] 驗證並補強單一平台重試只呼叫指定來源、合併對應結果與更新對應狀態卡的行為
 - [x] 補上資源攔截、browser provider、來源快取與單一來源重試的回歸／效能驗證；Python 61/61、Vitest 39/39、TypeScript 通過；CxC cache hit 10 ms
-- [ ] 儲存本輪爬蟲穩定度與速度優化 checkpoint
+- [x] 儲存本輪爬蟲穩定度與速度優化 checkpoint，版本 785baa5c；Python 61/61、Vitest 39/39、TypeScript 通過；CxC cache hit 10 ms
+- [x] 稽核 AO3、在水裡寫字、Penana、同人誌中心的現行取得路徑、前端單一來源重試事件與封面渲染點
+- [x] 為可公開靜態解析的來源建立有界 HTTP／HTML 解析優先路徑，保留瀏覽器或 API 的安全降級、8 秒 deadline 與官方總數
+- [x] 驗證並補強單一平台重試僅呼叫指定來源、停止事件冒泡並局部合併結果／狀態的前端契約
+- [x] 為作品封面加入 no-referrer、lazy loading 與 Blueprint fallback cover，處理 CxC 與同人誌中心的防盜鏈失敗
+- [x] 補上靜態解析、單一重試與封面降級回歸測試，完成效能與 UI 驗證；Python 64/64、Vitest 41/41、TypeScript 通過；AO3 防護降級 3,850 ms
+- [ ] 儲存本輪輕量爬蟲、重試與封面修復 checkpoint

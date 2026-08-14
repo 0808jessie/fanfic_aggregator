@@ -12,6 +12,7 @@ from datetime import datetime
 from urllib.parse import urlencode, urljoin
 
 from bs4 import BeautifulSoup
+import requests
 
 from constants.cp_tags import CPTagConfig, get_keyword_for_platform
 from models import ScrapedFanfic
@@ -63,7 +64,9 @@ class WaterWriterScraper(BaseScraper):
             # with the explicit CP headword while retaining the original alias
             # on each returned record.
             search_keyword = local_query.split()[0] if local_query.split() else keyword.strip()
-            html = self._render_public_search_html(search_keyword)
+            html = self._fetch_static_search_html(search_keyword)
+            if html is None:
+                html = self._render_public_search_html(search_keyword)
             items = self.parse_results(html, search_keyword)
             total_works = self.extract_total_works(html) or len(items)
             for item in items:
@@ -79,6 +82,32 @@ class WaterWriterScraper(BaseScraper):
             self.last_warning = f"[在水裡寫字] Browser render failed safely: {error}"
             print(self.last_warning)
         return {"items": [], "total_works": 0, "total_pages": 1}
+
+    def _fetch_static_search_html(self, keyword: str) -> str | None:
+        """Use Discuz's server-rendered public search HTML before browser fallback."""
+        try:
+            response = requests.get(
+                self.build_search_url(keyword),
+                headers=self.headers,
+                timeout=(2, 4),
+            )
+            if response.status_code in (403, 429, 503, 520, 521, 522, 525):
+                return None
+            response.raise_for_status()
+            html = response.text
+            text = BeautifulSoup(html, "html.parser").get_text(" ", strip=True)
+            if self._is_challenge_page(text) or self._is_search_cooldown_page(text):
+                return None
+            # Discuz returns static rows and its result summary together. If
+            # neither appears, let the bounded browser fallback decide safely.
+            soup = BeautifulSoup(html, "html.parser")
+            if not soup.select("a[href*='viewthread'], a[href*='forum.php?mod=viewthread']") and not re.search(r"(?:共檢索到|找到相關內容)", text):
+                return None
+            print("[在水裡寫字 Static] Parsed public search HTML")
+            return html
+        except requests.RequestException as error:
+            print(f"[在水裡寫字 Static] Public GET unavailable; using browser fallback: {error}")
+            return None
 
     def _render_public_search_html(self, keyword: str) -> str:
         if not PLAYWRIGHT_AVAILABLE:

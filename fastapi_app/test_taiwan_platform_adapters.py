@@ -84,7 +84,7 @@ def test_waterwriter_challenge_markers_are_isolated_without_creating_results():
 
 def test_waterwriter_browser_rendered_search_results_are_standardized():
     scraper = WaterWriterScraper()
-    with patch.object(scraper, "_render_public_search_html", return_value=WATERWRITER_RESULTS):
+    with patch.object(scraper, "_fetch_static_search_html", return_value=None), patch.object(scraper, "_render_public_search_html", return_value=WATERWRITER_RESULTS):
         payload = scraper.scrape("義忍")
 
     assert payload["total_works"] == 1
@@ -94,7 +94,7 @@ def test_waterwriter_browser_rendered_search_results_are_standardized():
 def test_taiwan_adapters_prefer_explicit_page_totals_over_rendered_card_counts():
     waterwriter_html = WATERWRITER_RESULTS + '<div id="ct">共檢索到 1,234 篇主題</div>'
     scraper = WaterWriterScraper()
-    with patch.object(scraper, "_render_public_search_html", return_value=waterwriter_html):
+    with patch.object(scraper, "_fetch_static_search_html", return_value=None), patch.object(scraper, "_render_public_search_html", return_value=waterwriter_html):
         payload = scraper.scrape("義忍")
 
     assert payload["total_works"] == 1234
@@ -146,14 +146,33 @@ def test_doujin_single_page_result_safely_defaults_to_one_page():
 
 def test_taiwan_adapters_pass_chinese_cp_query_to_public_search_pages():
     waterwriter = WaterWriterScraper()
-    with patch.object(waterwriter, "_render_public_search_html", return_value=WATERWRITER_RESULTS) as render_waterwriter:
+    with patch.object(waterwriter, "_fetch_static_search_html", return_value=None), patch.object(waterwriter, "_render_public_search_html", return_value=WATERWRITER_RESULTS) as render_waterwriter:
         waterwriter.scrape("義忍")
     assert render_waterwriter.call_args.args == ("義忍",)
 
     doujin = DoujinScraper()
-    with patch.object(doujin, "_render_public_search_html", return_value="") as render_doujin:
+    with patch.object(doujin, "_fetch_static_search_html", return_value=None), patch.object(doujin, "_render_public_search_html", return_value="") as render_doujin:
         doujin.scrape("義忍")
     assert render_doujin.call_args.args == ("義忍 富岡義勇 胡蝶忍", 1)
+
+
+def test_taiwan_adapters_prefer_verified_static_html_before_browser_fallback():
+    waterwriter_html = WATERWRITER_RESULTS + '<div id="ct">共檢索到 25 篇主題</div>'
+    waterwriter = WaterWriterScraper()
+    with patch.object(waterwriter, "_fetch_static_search_html", return_value=waterwriter_html), patch.object(waterwriter, "_render_public_search_html") as render_waterwriter:
+        water_payload = waterwriter.scrape("義忍")
+
+    assert len(water_payload["items"]) == 1
+    assert water_payload["total_works"] == 25
+    render_waterwriter.assert_not_called()
+
+    doujin_html = '<main><div class="listing-header">共 4 本</div></main>'
+    doujin = DoujinScraper()
+    with patch.object(doujin, "_fetch_static_search_html", return_value=doujin_html), patch.object(doujin, "_render_public_search_html") as render_doujin:
+        doujin_payload = doujin.scrape("義忍")
+
+    assert doujin_payload["total_works"] == 4
+    render_doujin.assert_not_called()
 
 
 def test_waterwriter_keeps_each_rendered_discuz_row_title_and_summary_separate():

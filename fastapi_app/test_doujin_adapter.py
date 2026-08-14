@@ -20,7 +20,7 @@ RENDERED_BOOK_RESULTS = """
 
 def test_doujin_adapter_parses_only_matching_verified_book_links():
     scraper = DoujinScraper()
-    with patch.object(scraper, "_render_public_search_html", return_value=RENDERED_BOOK_RESULTS):
+    with patch.object(scraper, "_fetch_static_search_html", return_value=None), patch.object(scraper, "_render_public_search_html", return_value=RENDERED_BOOK_RESULTS):
         payload = scraper.scrape("義忍")
 
     headers = scraper.headers
@@ -38,7 +38,7 @@ def test_doujin_adapter_parses_only_matching_verified_book_links():
 
 def test_doujin_adapter_isolates_cloudflare_challenge_without_inventing_results():
     scraper = DoujinScraper()
-    with patch.object(scraper, "_render_public_search_html", side_effect=_PublicListingUnavailable("Triggered verification page, skipping cleanly")):
+    with patch.object(scraper, "_fetch_static_search_html", return_value=None), patch.object(scraper, "_render_public_search_html", side_effect=_PublicListingUnavailable("Triggered verification page, skipping cleanly")):
         payload = scraper.scrape("義忍")
 
     assert payload["items"] == []

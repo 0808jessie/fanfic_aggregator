@@ -6,6 +6,9 @@ import time
 import urllib.parse
 from typing import Any
 
+import requests
+from bs4 import BeautifulSoup
+
 from scrapers.base_scraper import BaseScraper
 from scrapers.browser_runtime import PLAYWRIGHT_AVAILABLE, configure_fast_page, sync_playwright
 from models import ScrapedFanfic
@@ -38,12 +41,19 @@ def extract_ao3_tag_metadata(work_element) -> tuple[list[str], list[str], list[s
 class AO3Scraper(BaseScraper):
     """Best-effort AO3 public search adapter with canonical query semantics."""
 
-    navigation_timeout_ms = 7000
+    # Static HTTP is the primary path. Browser fallback is deliberately brief
+    # so a protected/upstream-slow AO3 document cannot monopolize a worker.
+    navigation_timeout_ms = 3500
     adult_content_cookie = {
         "name": "view_adult",
         "value": "true",
         "domain": "archiveofourown.org",
         "path": "/",
+    }
+    static_headers = {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
     }
 
     def __init__(self):
@@ -51,6 +61,7 @@ class AO3Scraper(BaseScraper):
         self._memory_cache: dict[str, tuple[datetime, dict[str, Any]]] = {}
         self.cache_ttl = 1800  # 30 minutes
         self.last_total_heading: tuple[str, int] | None = None
+        self._static_terminal_warning: str | None = None
 
     @staticmethod
     def build_search_url(keyword: str, page: int = 1) -> str:
@@ -93,6 +104,84 @@ class AO3Scraper(BaseScraper):
                     return heading_text, int(match.group(1).replace(",", ""))
         return None
 
+    def _fetch_static_search_html(self, keyword: str, page: int) -> str | None:
+        """Fetch AO3's server-rendered public search document with a bounded GET."""
+        try:
+            response = requests.get(
+                self.build_search_url(keyword, page),
+                headers=self.static_headers,
+                cookies={"view_adult": "true"},
+                timeout=(2, 4),
+            )
+            if response.status_code in (403, 429, 503, 520, 521, 522, 525):
+                self._static_terminal_warning = f"AO3 靜態搜尋暫時不可用（HTTP {response.status_code}）"
+                print(f"[AO3 Static] HTTP {response.status_code}; returning bounded source warning")
+                return None
+            response.raise_for_status()
+            html = response.text
+            page_text = html.casefold()
+            if any(marker in page_text for marker in ("cf-chl", "just a moment", "captcha")):
+                self._static_terminal_warning = "AO3 靜態搜尋觸發保護頁"
+                print("[AO3 Static] Protected response; returning bounded source warning")
+                return None
+            return html
+        except requests.RequestException as error:
+            self._static_terminal_warning = "AO3 靜態搜尋連線逾時或不可用"
+            print(f"[AO3 Static] Public GET unavailable; returning bounded source warning: {error}")
+            return None
+
+    def _parse_static_results(self, html: str, keyword: str) -> list[ScrapedFanfic]:
+        soup = BeautifulSoup(html, "html.parser")
+        items: list[ScrapedFanfic] = []
+        for work in soup.select("li.work.blurb"):
+            title_el = work.select_one("h4.heading a:first-of-type")
+            title = title_el.get_text(strip=True) if title_el else "Untitled work"
+            rel_href = title_el.get("href", "") if title_el else ""
+            url = f"https://archiveofourown.org{rel_href}" if rel_href.startswith("/") else rel_href
+            author_el = work.select_one("h4.heading a[rel='author']")
+            author = author_el.get_text(strip=True) if author_el else "Unknown author"
+            summary_el = work.select_one("blockquote.userstuff")
+            summary = summary_el.get_text(strip=True) if summary_el else ""
+            rels, chars, others = extract_ao3_tag_metadata(work)
+            word_count_el = work.select_one("dd.words")
+            updated_el = work.select_one("p.datetime")
+            status_el = work.select_one("dd.status")
+            status_text = status_el.get_text(" ", strip=True) if status_el else ""
+            if not url or not is_real_url(url):
+                continue
+            items.append(ScrapedFanfic(
+                id=f"ao3:{url}", title=title, author=author, platform="AO3", url=url,
+                tags=", ".join(tag for tag in rels + chars + others if tag), relationships=rels,
+                characters=chars, summary=summary,
+                wordCount=word_count_el.get_text(strip=True) if word_count_el else None,
+                updatedAt=updated_el.get_text(strip=True) if updated_el else None,
+                isComplete=status_text.casefold().startswith("completed"),
+                scraped_at=datetime.utcnow(), keyword=keyword,
+            ))
+        return items
+
+    def _scrape_static_pages(self, keyword: str, target_pages: list[int], requested_page: int) -> dict[str, Any] | None:
+        """Parse cards and official totals from the same server-rendered documents."""
+        items: list[ScrapedFanfic] = []
+        total_works = 0
+        for target_page in target_pages:
+            html = self._fetch_static_search_html(keyword, target_page)
+            if html is None:
+                return None
+            soup = BeautifulSoup(html, "html.parser")
+            works = soup.select("li.work.blurb")
+            heading_match = self.extract_total_works_heading(soup)
+            if not works and heading_match is None and "no results" not in html.casefold():
+                return None
+            if target_page == requested_page and heading_match:
+                self.last_total_heading = heading_match
+                total_works = heading_match[1]
+                print(f"[AO3 Static] Official result heading: {heading_match[0]!r} => totalWorks={total_works}")
+            items.extend(self._parse_static_results(html, keyword))
+        total_pages = max(1, (total_works + 19) // 20) if total_works else 1
+        print(f"[AO3 Static] Parsed {len(items)} cards from server-rendered search HTML")
+        return {"items": items, "total_works": total_works, "total_pages": total_pages}
+
     def scrape(
         self,
         keyword: str,
@@ -102,6 +191,7 @@ class AO3Scraper(BaseScraper):
     ) -> dict[str, Any]:
         self.last_warning = None
         self.last_total_heading = None
+        self._static_terminal_warning = None
         trimmed_kw = keyword.strip()
         if not trimmed_kw:
             return {"items": [], "total_works": 0, "total_pages": 1}
@@ -121,6 +211,17 @@ class AO3Scraper(BaseScraper):
                 return cached_payload
 
         target_pages = [page, page + 1] if page == 1 else [page]
+        static_payload = self._scrape_static_pages(ao3_query, target_pages, page)
+        if static_payload is not None:
+            for item in static_payload["items"]:
+                item.keyword = trimmed_kw
+            if static_payload["items"]:
+                self._memory_cache[cache_key] = (now, static_payload)
+            return static_payload
+        if self._static_terminal_warning:
+            self.last_warning = self._static_terminal_warning
+            return {"items": [], "total_works": 0, "total_pages": 1}
+
         all_items: list[ScrapedFanfic] = []
         total_works = 0
         total_pages = 1
@@ -181,7 +282,7 @@ class AO3Scraper(BaseScraper):
                             continue
 
                         try:
-                            page_obj.wait_for_selector("li.work.blurb", timeout=2000)
+                            page_obj.wait_for_selector("li.work.blurb", timeout=1200)
                         except Exception:
                             print(f"[AO3Scraper Playwright] Timeout waiting for works on page {target_page}.")
 
