@@ -220,4 +220,9 @@
 - [x] 驗證並補強單一平台重試僅呼叫指定來源、停止事件冒泡並局部合併結果／狀態的前端契約
 - [x] 為作品封面加入 no-referrer、lazy loading 與 Blueprint fallback cover，處理 CxC 與同人誌中心的防盜鏈失敗
 - [x] 補上靜態解析、單一重試與封面降級回歸測試，完成效能與 UI 驗證；Python 64/64、Vitest 41/41、TypeScript 通過；AO3 防護降級 3,850 ms
-- [ ] 儲存本輪輕量爬蟲、重試與封面修復 checkpoint
+- [x] 儲存本輪輕量爬蟲、重試與封面修復 checkpoint，版本 920488b3；Python 64/64、Vitest 41/41、TypeScript 通過；AO3 防護降級 3,850 ms
+- [x] 稽核 Penana、AO3 與在水裡寫字仍可能觸發 page.goto 的 browser 降級路徑
+- [x] 將 Penana 改為純 HTTP／HTML 解析，並移除 AO3、在水裡寫字的 browser fallback，保留官方總數與來源級錯誤狀態
+- [x] 補上 HTTP 逾時、403／429／525、防護頁與空結果的純靜態回歸測試，確認不會呼叫 Playwright
+- [x] 重啟 FastAPI，完成完整回歸與實際單一來源快速降級驗證；Python 65/65、Vitest 41/41、TypeScript 通過
+- [ ] 儲存本輪純 HTTP 靜態 Adapter 修復 checkpoint

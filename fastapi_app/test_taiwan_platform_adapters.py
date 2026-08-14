@@ -2,6 +2,8 @@ from pathlib import Path
 import sys
 from unittest.mock import patch
 
+import requests
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import main
@@ -82,9 +84,9 @@ def test_waterwriter_challenge_markers_are_isolated_without_creating_results():
     assert "srchfid=all" in WaterWriterScraper.build_search_url("義忍")
 
 
-def test_waterwriter_browser_rendered_search_results_are_standardized():
+def test_waterwriter_static_search_results_are_standardized():
     scraper = WaterWriterScraper()
-    with patch.object(scraper, "_fetch_static_search_html", return_value=None), patch.object(scraper, "_render_public_search_html", return_value=WATERWRITER_RESULTS):
+    with patch.object(scraper, "_fetch_static_search_html", return_value=WATERWRITER_RESULTS):
         payload = scraper.scrape("義忍")
 
     assert payload["total_works"] == 1
@@ -94,7 +96,7 @@ def test_waterwriter_browser_rendered_search_results_are_standardized():
 def test_taiwan_adapters_prefer_explicit_page_totals_over_rendered_card_counts():
     waterwriter_html = WATERWRITER_RESULTS + '<div id="ct">共檢索到 1,234 篇主題</div>'
     scraper = WaterWriterScraper()
-    with patch.object(scraper, "_fetch_static_search_html", return_value=None), patch.object(scraper, "_render_public_search_html", return_value=waterwriter_html):
+    with patch.object(scraper, "_fetch_static_search_html", return_value=waterwriter_html):
         payload = scraper.scrape("義忍")
 
     assert payload["total_works"] == 1234
@@ -146,9 +148,9 @@ def test_doujin_single_page_result_safely_defaults_to_one_page():
 
 def test_taiwan_adapters_pass_chinese_cp_query_to_public_search_pages():
     waterwriter = WaterWriterScraper()
-    with patch.object(waterwriter, "_fetch_static_search_html", return_value=None), patch.object(waterwriter, "_render_public_search_html", return_value=WATERWRITER_RESULTS) as render_waterwriter:
+    with patch.object(waterwriter, "_fetch_static_search_html", return_value=WATERWRITER_RESULTS) as fetch_waterwriter:
         waterwriter.scrape("義忍")
-    assert render_waterwriter.call_args.args == ("義忍",)
+    assert fetch_waterwriter.call_args.args == ("義忍",)
 
     doujin = DoujinScraper()
     with patch.object(doujin, "_fetch_static_search_html", return_value=None), patch.object(doujin, "_render_public_search_html", return_value="") as render_doujin:
@@ -159,12 +161,11 @@ def test_taiwan_adapters_pass_chinese_cp_query_to_public_search_pages():
 def test_taiwan_adapters_prefer_verified_static_html_before_browser_fallback():
     waterwriter_html = WATERWRITER_RESULTS + '<div id="ct">共檢索到 25 篇主題</div>'
     waterwriter = WaterWriterScraper()
-    with patch.object(waterwriter, "_fetch_static_search_html", return_value=waterwriter_html), patch.object(waterwriter, "_render_public_search_html") as render_waterwriter:
+    with patch.object(waterwriter, "_fetch_static_search_html", return_value=waterwriter_html):
         water_payload = waterwriter.scrape("義忍")
 
     assert len(water_payload["items"]) == 1
     assert water_payload["total_works"] == 25
-    render_waterwriter.assert_not_called()
 
     doujin_html = '<main><div class="listing-header">共 4 本</div></main>'
     doujin = DoujinScraper()
@@ -219,7 +220,7 @@ def test_penana_detail_metadata_uses_labelled_word_count_and_explicit_status_onl
     assert not PenanaScraper._is_verification_page(PENANA_DETAIL)
 
 
-def test_penana_uses_ordinary_public_finder_headers_before_rendered_fallback():
+def test_penana_uses_ordinary_public_finder_headers_without_browser_fallback():
     with patch("scrapers.penana_scraper.requests.get", return_value=PublicFinderResponse()) as request:
         html = PenanaScraper()._fetch_public_search_html("fanfiction")
 
@@ -227,6 +228,16 @@ def test_penana_uses_ordinary_public_finder_headers_before_rendered_fallback():
     headers = request.call_args.kwargs["headers"]
     assert headers["Referer"] == "https://www.penana.com/"
     assert "Windows NT 10.0" in headers["User-Agent"]
+    assert request.call_args.kwargs["timeout"] == (2, 4)
+
+
+def test_penana_http_timeout_returns_source_warning_without_browser_navigation():
+    scraper = PenanaScraper()
+    with patch("scrapers.penana_scraper.requests.get", side_effect=requests.Timeout("slow public finder")):
+        payload = scraper.scrape("義忍")
+
+    assert payload == {"items": [], "total_works": 0, "total_pages": 1}
+    assert "HTTP request unavailable" in (scraper.last_warning or "")
 
 
 def test_partial_platform_warnings_are_silent_when_a_verified_result_exists():

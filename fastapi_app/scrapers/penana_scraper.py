@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime
 import re
-import time
 from urllib.parse import quote, urljoin
 
 from bs4 import BeautifulSoup
@@ -12,11 +11,10 @@ import requests
 
 from models import ScrapedFanfic
 from scrapers.base_scraper import BaseScraper
-from scrapers.browser_runtime import PLAYWRIGHT_AVAILABLE, configure_fast_page, sync_playwright
 
 
 class PenanaScraper(BaseScraper):
-    """Parse public Penana story cards after its Finder results finish loading."""
+    """Parse server-rendered public Penana Finder cards with bounded HTTP only."""
 
     base_url = "https://www.penana.com"
     detail_enrichment_limit = 3
@@ -32,9 +30,7 @@ class PenanaScraper(BaseScraper):
         trimmed_keyword = keyword.strip()
         if not trimmed_keyword:
             return {"items": [], "total_works": 0, "total_pages": 1}
-        search_url = f"{self.base_url}/search?&t=story&genre=all&filter=&rating_multiple=0,1,2&search={quote(trimmed_keyword, safe='')}"
         items: list[ScrapedFanfic] = []
-        detail_outcomes: list[bool] = []
         official_total: int | None = None
         try:
             lightweight_html = self._fetch_public_search_html(trimmed_keyword)
@@ -42,55 +38,8 @@ class PenanaScraper(BaseScraper):
                 items = self.parse_results(lightweight_html, trimmed_keyword)
                 official_total = self.extract_total_works(lightweight_html)
 
-            # Penana Finder renders many public cards client-side. Use the rendered page
-            # only when the ordinary public request has no verified story cards.
-            if not items and not PLAYWRIGHT_AVAILABLE:
-                self.last_warning = "[Penana] Public Finder could not return verified result cards"
-                return {"items": [], "total_works": 0, "total_pages": 1}
             if not items:
-                with sync_playwright() as playwright:
-                    browser = playwright.chromium.launch(
-                        headless=True,
-                        args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
-                    )
-                    context = browser.new_context(
-                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/123 Safari/537.36",
-                        locale="zh-TW",
-                        viewport={"width": 1280, "height": 900},
-                    )
-                    page_obj = context.new_page()
-                    configure_fast_page(page_obj)
-                    try:
-                        response = page_obj.goto(search_url, timeout=3500, wait_until="domcontentloaded")
-                        status_code = response.status if response else 200
-                        if status_code in (403, 429, 503, 520, 521, 522, 525):
-                            self.last_warning = f"[Penana] Request blocked (HTTP {status_code})"
-                            return {"items": [], "total_works": 0, "total_pages": 1}
-                        try:
-                            page_obj.wait_for_selector(".newXbox.p0.storydata", timeout=1200)
-                        except Exception:
-                            # A zero-result search is valid. The parser below will avoid fabricating cards.
-                            pass
-                        html = page_obj.content()
-                        items = self.parse_results(html, trimmed_keyword)
-                        official_total = self.extract_total_works(html)
-                        # Cards and the official total are deliberately parsed
-                        # from this same Finder document. Detail-page visits add
-                        # unpredictable navigation latency and are not required
-                        # to return verified search results.
-                        detail_outcomes = []
-                    finally:
-                        try:
-                            page_obj.close()
-                        except Exception:
-                            pass
-                        context.close()
-                        browser.close()
-
-            if not items:
-                self.last_warning = f"[Penana] No verified public story result matched '{trimmed_keyword}'"
-            elif detail_outcomes and not any(detail_outcomes):
-                self.last_warning = "[Penana] Public detail metadata is verification-protected; optional fields were left unknown."
+                self.last_warning = self.last_warning or f"[Penana] No verified public story result matched '{trimmed_keyword}'"
             # Do not use the visible page-card length as an all-site count. If
             # Penana does not render a verified result heading, callers receive
             # zero rather than an inflated official total.
@@ -101,7 +50,7 @@ class PenanaScraper(BaseScraper):
             return {"items": [], "total_works": 0, "total_pages": 1}
 
     def _fetch_public_search_html(self, keyword: str) -> str | None:
-        """Attempt the ordinary public Finder document before using rendered fallback."""
+        """Fetch the ordinary public Finder document with a bounded HTTP request."""
         try:
             response = requests.get(
                 f"{self.base_url}/search",
@@ -110,11 +59,12 @@ class PenanaScraper(BaseScraper):
                 timeout=(2, 4),
             )
             if response.status_code in (403, 429, 503, 520, 521, 522, 525):
-                print(f"[Penana] Public Finder fetch blocked (HTTP {response.status_code}); using safe fallback.")
+                self.last_warning = f"[Penana] Public Finder blocked (HTTP {response.status_code})"
                 return None
             response.raise_for_status()
             return None if self._is_verification_page(response.text) else response.text
         except requests.RequestException as error:
+            self.last_warning = "[Penana] Public Finder HTTP request unavailable"
             print(f"[Penana] Public Finder fetch unavailable: {error}")
             return None
 
@@ -185,37 +135,6 @@ class PenanaScraper(BaseScraper):
             if match:
                 return int(match.group(1).replace(",", ""))
         return None
-
-    def _enrich_from_public_detail(self, page_obj, item: ScrapedFanfic) -> bool:
-        """Populate only metadata explicitly exposed by a public Penana story page.
-
-        Detail requests are capped per search to keep the public source load modest.
-        An unavailable page leaves optional metadata as ``None`` without discarding
-        the already verified search-card result.
-        """
-        try:
-            time.sleep(0.25)
-            response = page_obj.goto(item.url, timeout=12000, wait_until="domcontentloaded")
-            if response and response.status in (403, 429, 503, 520, 521, 522, 525):
-                return False
-            try:
-                page_obj.wait_for_selector('span[title="Word Count"] .bkwords', timeout=6000)
-            except Exception:
-                # Detail pages without a public count remain intentionally unset.
-                pass
-            word_locator = page_obj.locator('span[title="Word Count"] .bkwords').first
-            if word_locator.count():
-                item.wordCount = self._normalize_word_count(word_locator.inner_text())
-            detail_html = page_obj.content()
-            if self._is_verification_page(detail_html):
-                return False
-            metadata = self.parse_detail_metadata(detail_html)
-            item.wordCount = item.wordCount or metadata["wordCount"]
-            item.isComplete = metadata["isComplete"] if metadata["isComplete"] is not None else item.isComplete
-            return item.wordCount is not None or metadata["isComplete"] is not None
-        except Exception as error:
-            print(f"[Penana] Detail metadata unavailable for {item.url}: {error}")
-            return False
 
     @staticmethod
     def _is_verification_page(html: str) -> bool:

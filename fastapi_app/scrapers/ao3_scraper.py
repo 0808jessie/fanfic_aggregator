@@ -1,8 +1,6 @@
 from datetime import datetime
 import json
-import random
 import re
-import time
 import urllib.parse
 from typing import Any
 
@@ -10,7 +8,6 @@ import requests
 from bs4 import BeautifulSoup
 
 from scrapers.base_scraper import BaseScraper
-from scrapers.browser_runtime import PLAYWRIGHT_AVAILABLE, configure_fast_page, sync_playwright
 from models import ScrapedFanfic
 from constants.cp_tags import CPTagConfig, get_keyword_for_platform
 
@@ -41,9 +38,6 @@ def extract_ao3_tag_metadata(work_element) -> tuple[list[str], list[str], list[s
 class AO3Scraper(BaseScraper):
     """Best-effort AO3 public search adapter with canonical query semantics."""
 
-    # Static HTTP is the primary path. Browser fallback is deliberately brief
-    # so a protected/upstream-slow AO3 document cannot monopolize a worker.
-    navigation_timeout_ms = 3500
     adult_content_cookie = {
         "name": "view_adult",
         "value": "true",
@@ -221,171 +215,8 @@ class AO3Scraper(BaseScraper):
         if self._static_terminal_warning:
             self.last_warning = self._static_terminal_warning
             return {"items": [], "total_works": 0, "total_pages": 1}
-
-        all_items: list[ScrapedFanfic] = []
-        total_works = 0
-        total_pages = 1
-        last_error_warning = None
-
-        if not PLAYWRIGHT_AVAILABLE:
-            self.last_warning = "Playwright is not installed in sandbox environment."
-            return {"items": [], "total_works": 0, "total_pages": 1}
-
-        try:
-            with sync_playwright() as p:
-                browser = p.chromium.launch(
-                    headless=True,
-                    args=[
-                        "--no-sandbox",
-                        "--disable-setuid-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--disable-accelerated-2d-canvas",
-                        "--disable-gpu",
-                    ],
-                )
-                context = browser.new_context(
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-                    locale="zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-                    viewport={"width": 1280, "height": 800},
-                )
-                # AO3's public preference cookie includes mature works in a
-                # search result instead of silently hiding them from totals.
-                context.add_cookies([self.adult_content_cookie])
-                page_obj = context.new_page()
-                configure_fast_page(page_obj)
-
-                try:
-                    for idx, target_page in enumerate(target_pages):
-                        if idx > 0:
-                            sleep_secs = 1.0 + random.random() * 0.8
-                            print(f"[AO3Scraper Playwright] Waiting {sleep_secs:.2f}s before fetching page {target_page}...")
-                            time.sleep(sleep_secs)
-
-                        search_url = self.build_search_url(ao3_query, target_page)
-                        print(f"[AO3Scraper Playwright] Navigating to: {search_url}")
-
-                        try:
-                            response = page_obj.goto(search_url, timeout=self.navigation_timeout_ms, wait_until="commit")
-                            status_code = response.status if response else 200
-                            if status_code in (403, 429, 525):
-                                err_msg = f"AO3 HTTP {status_code} on page {target_page}; results may be partial."
-                                print(f"[AO3Scraper Playwright] ERROR: {err_msg}")
-                                last_error_warning = err_msg
-                                if status_code in (403, 429) and target_page == 1:
-                                    break
-                        except Exception as nav_err:
-                            err_msg = f"Navigation error on page {target_page}: {nav_err}"
-                            print(f"[AO3Scraper Playwright] {err_msg}")
-                            last_error_warning = err_msg
-                            if target_page == 1:
-                                break
-                            continue
-
-                        try:
-                            page_obj.wait_for_selector("li.work.blurb", timeout=1200)
-                        except Exception:
-                            print(f"[AO3Scraper Playwright] Timeout waiting for works on page {target_page}.")
-
-                        html_content = page_obj.content()
-                        from bs4 import BeautifulSoup
-                        soup = BeautifulSoup(html_content, "html.parser")
-
-                        works = soup.select("li.work.blurb")
-                        print(f"[AO3Scraper Playwright] Page {target_page}: found {len(works)} work items.")
-
-                        if target_page == page:
-                            heading_match = self.extract_total_works_heading(soup)
-                            if heading_match:
-                                heading_text, total_works = heading_match
-                                self.last_total_heading = heading_match
-                                print(f"[AO3Scraper Playwright] Official result heading: {heading_text!r} => totalWorks={total_works}")
-                            else:
-                                total_works = max(len(works), 1) if works else 0
-                                heading_candidates = [
-                                    node.get_text(" ", strip=True)[:240]
-                                    for node in soup.select("h2.heading, .heading, #main h2, #main h3")
-                                ]
-                                print(f"[AO3Scraper Playwright] No verifiable result heading; candidates={heading_candidates!r}; using fetched item count only.")
-
-                            total_pages = max(1, (total_works + 19) // 20)
-
-                        for work in works:
-                            title_el = work.select_one("h4.heading a:first-of-type")
-                            title = title_el.get_text(strip=True) if title_el else "Untitled work"
-                            rel_href = title_el.get("href", "") if title_el else ""
-                            url = f"https://archiveofourown.org{rel_href}" if rel_href.startswith("/") else rel_href
-
-                            author_el = work.select_one("h4.heading a[rel='author']")
-                            author = author_el.get_text(strip=True) if author_el else "Unknown author"
-
-                            summary_el = work.select_one("blockquote.userstuff")
-                            summary = summary_el.get_text(strip=True) if summary_el else ""
-
-                            rels, chars, others = extract_ao3_tag_metadata(work)
-                            tags_list = rels + chars + others
-                            tags_str = ", ".join([t for t in tags_list if t])
-
-                            word_count_el = work.select_one("dd.words")
-                            word_count = word_count_el.get_text(strip=True) if word_count_el else None
-
-                            updated_el = work.select_one("p.datetime")
-                            updated_at = updated_el.get_text(strip=True) if updated_el else None
-
-                            status_el = work.select_one("dd.status")
-                            status_text = status_el.get_text(" ", strip=True) if status_el else ""
-                            is_complete = status_text.casefold().startswith("completed")
-
-                            if not url or not is_real_url(url):
-                                continue
-
-                            fanfic = ScrapedFanfic(
-                                id=f"ao3:{url}",
-                                title=title,
-                                author=author,
-                                platform="AO3",
-                                url=url,
-                                tags=tags_str,
-                                relationships=rels,
-                                characters=chars,
-                                summary=summary,
-                                wordCount=word_count,
-                                updatedAt=updated_at,
-                                isComplete=is_complete,
-                                scraped_at=datetime.utcnow(),
-                                keyword=trimmed_kw,
-                            )
-                            all_items.append(fanfic)
-
-                finally:
-                    try:
-                        page_obj.close()
-                    except Exception:
-                        pass
-                    context.close()
-                    browser.close()
-
-        except Exception as e:
-            err_msg = f"AO3 Scraper Playwright failed: {e}"
-            print(f"[AO3Scraper Playwright] ERROR: {err_msg}")
-            last_error_warning = err_msg
-
-        if last_error_warning and not all_items:
-            self.last_warning = last_error_warning
-        elif last_error_warning:
-            self.last_warning = f"Partial results: {last_error_warning}"
-
-        payload = {
-            "items": all_items,
-            "total_works": total_works or len(all_items),
-            "total_pages": total_pages,
-        }
-
-        if all_items and not bypass_memory_cache:
-            self._memory_cache[cache_key] = (datetime.utcnow(), payload)
-        elif cache_key in self._memory_cache:
-            del self._memory_cache[cache_key]
-
-        return payload
+        self.last_warning = "AO3 靜態搜尋頁未提供可驗證的結果標記"
+        return {"items": [], "total_works": 0, "total_pages": 1}
 
 
 def is_real_url(url: str) -> bool:

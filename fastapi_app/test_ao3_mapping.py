@@ -148,9 +148,8 @@ def test_ao3_static_protection_returns_bounded_warning_without_browser_fallback(
     blocked_response.raise_for_status.return_value = None
     scraper = AO3Scraper()
 
-    with patch("scrapers.ao3_scraper.requests.get", return_value=blocked_response), patch("scrapers.ao3_scraper.sync_playwright") as browser_session:
+    with patch("scrapers.ao3_scraper.requests.get", return_value=blocked_response):
         payload = scraper.scrape("鬼滅", force_refresh=True)
 
     assert payload["items"] == []
     assert "HTTP 525" in (scraper.last_warning or "")
-    browser_session.assert_not_called()

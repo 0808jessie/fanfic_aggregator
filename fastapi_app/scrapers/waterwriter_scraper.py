@@ -1,7 +1,7 @@
 """Public-search adapter for Written in Waters (在水裡寫字).
 
 The forum may require human verification or apply Discuz search cooldowns. This
-adapter renders only the public result page, detects those responses, and exits
+adapter reads only the public result page, detects those responses, and exits
 cleanly without trying to solve a challenge or reuse verification credentials.
 """
 
@@ -17,7 +17,6 @@ import requests
 from constants.cp_tags import CPTagConfig, get_keyword_for_platform
 from models import ScrapedFanfic
 from scrapers.base_scraper import BaseScraper
-from scrapers.browser_runtime import PLAYWRIGHT_AVAILABLE, configure_fast_page, sync_playwright
 
 
 class _PublicPageUnavailable(RuntimeError):
@@ -25,7 +24,7 @@ class _PublicPageUnavailable(RuntimeError):
 
 
 class WaterWriterScraper(BaseScraper):
-    """Parse publicly rendered Discuz thread search results from slashtw.space."""
+    """Parse server-rendered Discuz thread search results from slashtw.space."""
 
     base_url = "https://slashtw.space"
     search_url = f"{base_url}/search.php"
@@ -66,7 +65,7 @@ class WaterWriterScraper(BaseScraper):
             search_keyword = local_query.split()[0] if local_query.split() else keyword.strip()
             html = self._fetch_static_search_html(search_keyword)
             if html is None:
-                html = self._render_public_search_html(search_keyword)
+                return {"items": [], "total_works": 0, "total_pages": 1}
             items = self.parse_results(html, search_keyword)
             total_works = self.extract_total_works(html) or len(items)
             for item in items:
@@ -79,12 +78,12 @@ class WaterWriterScraper(BaseScraper):
             self.last_warning = f"[在水裡寫字] {error}"
             print(self.last_warning)
         except Exception as error:
-            self.last_warning = f"[在水裡寫字] Browser render failed safely: {error}"
+            self.last_warning = f"[在水裡寫字] Public HTTP parse failed safely: {error}"
             print(self.last_warning)
         return {"items": [], "total_works": 0, "total_pages": 1}
 
     def _fetch_static_search_html(self, keyword: str) -> str | None:
-        """Use Discuz's server-rendered public search HTML before browser fallback."""
+        """Use Discuz's server-rendered public search HTML with a bounded GET."""
         try:
             response = requests.get(
                 self.build_search_url(keyword),
@@ -92,70 +91,19 @@ class WaterWriterScraper(BaseScraper):
                 timeout=(2, 4),
             )
             if response.status_code in (403, 429, 503, 520, 521, 522, 525):
-                return None
+                raise _PublicPageUnavailable(f"Request blocked (HTTP {response.status_code}), skipping cleanly")
             response.raise_for_status()
             html = response.text
             text = BeautifulSoup(html, "html.parser").get_text(" ", strip=True)
             if self._is_challenge_page(text) or self._is_search_cooldown_page(text):
-                return None
-            # Discuz returns static rows and its result summary together. If
-            # neither appears, let the bounded browser fallback decide safely.
+                raise _PublicPageUnavailable("Triggered verification or cooldown page, skipping cleanly")
             soup = BeautifulSoup(html, "html.parser")
             if not soup.select("a[href*='viewthread'], a[href*='forum.php?mod=viewthread']") and not re.search(r"(?:共檢索到|找到相關內容)", text):
-                return None
+                raise _PublicPageUnavailable("Public search page has no verifiable result markup")
             print("[在水裡寫字 Static] Parsed public search HTML")
             return html
         except requests.RequestException as error:
-            print(f"[在水裡寫字 Static] Public GET unavailable; using browser fallback: {error}")
-            return None
-
-    def _render_public_search_html(self, keyword: str) -> str:
-        if not PLAYWRIGHT_AVAILABLE:
-            raise _PublicPageUnavailable("Playwright is unavailable; skipping cleanly")
-
-        with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-            )
-            try:
-                context = browser.new_context(
-                    user_agent=self.desktop_user_agent,
-                    locale="zh-TW",
-                    viewport={"width": 1280, "height": 900},
-                    extra_http_headers={"Accept-Language": self.headers["Accept-Language"], "Referer": self.headers["Referer"]},
-                )
-                page = context.new_page()
-                configure_fast_page(page)
-                response = page.goto(self.build_search_url(keyword), timeout=18000, wait_until="domcontentloaded")
-                if response and response.status in (403, 429, 503, 520, 521, 522, 525):
-                    raise _PublicPageUnavailable(f"Request blocked (HTTP {response.status}), skipping cleanly")
-
-                # This is a bounded rendering wait, not an attempt to complete verification.
-                page.wait_for_timeout(1200)
-                body_text = page.locator("body").inner_text(timeout=3000)
-                if self._is_challenge_page(body_text):
-                    raise _PublicPageUnavailable("Triggered Challenge, skipping cleanly")
-                if self._is_search_cooldown_page(body_text):
-                    raise _PublicPageUnavailable("Blocked by Rate Limit, skipping cleanly")
-
-                for selector in self.result_selectors:
-                    try:
-                        page.wait_for_selector(selector, timeout=2000)
-                        break
-                    except Exception:
-                        continue
-
-                return page.content()
-            finally:
-                try:
-                    page.close()
-                except Exception:
-                    pass
-                try:
-                    context.close()
-                finally:
-                    browser.close()
+            raise _PublicPageUnavailable(f"Public HTTP request unavailable: {error}") from error
 
     @staticmethod
     def _is_challenge_page(text: str) -> bool:
