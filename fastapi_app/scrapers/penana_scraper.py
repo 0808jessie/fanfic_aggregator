@@ -19,7 +19,7 @@ class PenanaScraper(BaseScraper):
     base_url = "https://www.penana.com"
     detail_enrichment_limit = 3
     search_headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
         "Referer": "https://www.penana.com/",
@@ -58,11 +58,17 @@ class PenanaScraper(BaseScraper):
                 headers=self.search_headers,
                 timeout=(2, 4),
             )
-            if response.status_code in (403, 429, 503, 520, 521, 522, 525):
-                self.last_warning = f"[Penana] Public Finder blocked (HTTP {response.status_code})"
+            if response.status_code in (403, 520, 521, 522, 525):
+                self.last_warning = f"[Penana] 觸發人機保護（HTTP {response.status_code}）"
+                return None
+            if response.status_code in (429, 503):
+                self.last_warning = f"[Penana] Public Finder 暫時不可用（HTTP {response.status_code}）"
                 return None
             response.raise_for_status()
-            return None if self._is_verification_page(response.text) else response.text
+            if self._is_verification_page(response.text):
+                self.last_warning = "[Penana] 觸發人機保護（驗證頁）"
+                return None
+            return response.text
         except requests.RequestException as error:
             self.last_warning = "[Penana] Public Finder HTTP request unavailable"
             print(f"[Penana] Public Finder fetch unavailable: {error}")

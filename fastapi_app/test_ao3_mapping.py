@@ -98,6 +98,9 @@ def test_ao3_adult_content_cookie_and_open_search_parameters_are_explicit():
     assert "with_real_author_name=1" in url
     assert "language_id" not in url
     assert "complete" not in url
+    assert AO3Scraper.static_cookies == {"view_adult": "true", "accepted_tos": "2018"}
+    assert AO3Scraper.static_headers["Cookie"] == "view_adult=true; accepted_tos=2018"
+    assert "Chrome/124" in AO3Scraper.static_headers["User-Agent"]
 
 
 def test_ao3_total_works_reads_only_explicit_result_heading():
@@ -140,7 +143,7 @@ def test_ao3_static_html_path_parses_cards_and_official_heading_without_browser(
     assert payload["items"][0].title == "Static AO3 Story"
     assert payload["items"][0].url == "https://archiveofourown.org/works/42001"
     assert payload["items"][0].relationships == ["A/B"]
-    assert get.call_args.kwargs["cookies"] == {"view_adult": "true"}
+    assert get.call_args.kwargs["cookies"] == {"view_adult": "true", "accepted_tos": "2018"}
 
 
 def test_ao3_static_protection_returns_bounded_warning_without_browser_fallback():
@@ -148,8 +151,29 @@ def test_ao3_static_protection_returns_bounded_warning_without_browser_fallback(
     blocked_response.raise_for_status.return_value = None
     scraper = AO3Scraper()
 
-    with patch("scrapers.ao3_scraper.requests.get", return_value=blocked_response):
+    with patch("scrapers.ao3_scraper.requests.get", return_value=blocked_response) as get, patch("scrapers.ao3_scraper.time.sleep") as sleep:
         payload = scraper.scrape("鬼滅", force_refresh=True)
 
     assert payload["items"] == []
     assert "HTTP 525" in (scraper.last_warning or "")
+    assert get.call_count == 2
+    sleep.assert_called_once_with(1)
+
+
+def test_ao3_retries_a_transient_525_once_then_parses_the_second_static_response():
+    blocked_response = MagicMock(status_code=525, text="")
+    static_html = """
+    <h2 class="heading">1 - 20 of 21 Works</h2>
+    <li class="work blurb"><h4 class="heading"><a href="/works/21">Recovered Work</a><a rel="author">Author</a></h4></li>
+    """
+    recovered_response = MagicMock(status_code=200, text=static_html)
+    recovered_response.raise_for_status.return_value = None
+    scraper = AO3Scraper()
+
+    with patch("scrapers.ao3_scraper.requests.get", side_effect=[blocked_response, recovered_response, recovered_response]) as get, patch("scrapers.ao3_scraper.time.sleep") as sleep:
+        payload = scraper.scrape("花", force_refresh=True)
+
+    assert payload["total_works"] == 21
+    assert payload["items"][0].title == "Recovered Work"
+    assert get.call_count == 3  # 525, retry page 1, then page 2
+    sleep.assert_called_once_with(1)

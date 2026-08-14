@@ -1,7 +1,9 @@
 from datetime import datetime
 import json
 import re
+import time
 import urllib.parse
+from time import monotonic
 from typing import Any
 
 import requests
@@ -46,9 +48,14 @@ class AO3Scraper(BaseScraper):
     }
     static_headers = {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9,zh-TW;q=0.8,zh;q=0.7",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Cookie": "view_adult=true; accepted_tos=2018",
     }
+    static_cookies = {"view_adult": "true", "accepted_tos": "2018"}
+    retryable_static_statuses = frozenset((503, 525))
+    static_retry_delay_seconds = 1
+    static_search_budget_seconds = 6.5
 
     def __init__(self):
         super().__init__()
@@ -56,6 +63,7 @@ class AO3Scraper(BaseScraper):
         self.cache_ttl = 1800  # 30 minutes
         self.last_total_heading: tuple[str, int] | None = None
         self._static_terminal_warning: str | None = None
+        self._static_deadline: float | None = None
 
     @staticmethod
     def build_search_url(keyword: str, page: int = 1) -> str:
@@ -99,30 +107,59 @@ class AO3Scraper(BaseScraper):
         return None
 
     def _fetch_static_search_html(self, keyword: str, page: int) -> str | None:
-        """Fetch AO3's server-rendered public search document with a bounded GET."""
-        try:
-            response = requests.get(
-                self.build_search_url(keyword, page),
-                headers=self.static_headers,
-                cookies={"view_adult": "true"},
-                timeout=(2, 4),
-            )
-            if response.status_code in (403, 429, 503, 520, 521, 522, 525):
-                self._static_terminal_warning = f"AO3 靜態搜尋暫時不可用（HTTP {response.status_code}）"
-                print(f"[AO3 Static] HTTP {response.status_code}; returning bounded source warning")
+        """Fetch AO3 HTML with one bounded retry for transient public-edge errors.
+
+        The retry applies only to temporary 503/525 responses and transport-level
+        failures. Protection pages and non-retryable HTTP statuses remain source-
+        scoped warnings; this adapter never opens a browser fallback.
+        """
+        url = self.build_search_url(keyword, page)
+        for attempt in range(2):
+            remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 4.0
+            if remaining_budget <= 0:
+                self._static_terminal_warning = "AO3 靜態搜尋連線逾時或不可用"
+                print("[AO3 Static] Shared HTTP budget exhausted; returning bounded source warning")
                 return None
-            response.raise_for_status()
-            html = response.text
-            page_text = html.casefold()
-            if any(marker in page_text for marker in ("cf-chl", "just a moment", "captcha")):
-                self._static_terminal_warning = "AO3 靜態搜尋觸發保護頁"
-                print("[AO3 Static] Protected response; returning bounded source warning")
+            connect_timeout = min(1.0, max(0.1, remaining_budget / 3))
+            read_timeout = min(3.0, max(0.1, remaining_budget - connect_timeout))
+            try:
+                response = requests.get(
+                    url,
+                    headers=self.static_headers,
+                    cookies=self.static_cookies,
+                    timeout=(connect_timeout, read_timeout),
+                )
+                remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 4.0
+                if (
+                    response.status_code in self.retryable_static_statuses
+                    and attempt == 0
+                    and remaining_budget > self.static_retry_delay_seconds + 0.1
+                ):
+                    print(f"[AO3 Static] HTTP {response.status_code}; retrying once after 1s")
+                    time.sleep(self.static_retry_delay_seconds)
+                    continue
+                if response.status_code in (403, 429, 503, 520, 521, 522, 525):
+                    self._static_terminal_warning = f"AO3 靜態搜尋暫時不可用（HTTP {response.status_code}）"
+                    print(f"[AO3 Static] HTTP {response.status_code}; returning bounded source warning")
+                    return None
+                response.raise_for_status()
+                html = response.text
+                page_text = html.casefold()
+                if any(marker in page_text for marker in ("cf-chl", "just a moment", "captcha")):
+                    self._static_terminal_warning = "AO3 靜態搜尋觸發保護頁"
+                    print("[AO3 Static] Protected response; returning bounded source warning")
+                    return None
+                return html
+            except requests.RequestException as error:
+                remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 4.0
+                if attempt == 0 and remaining_budget > self.static_retry_delay_seconds + 0.1:
+                    print(f"[AO3 Static] Transient public GET failure; retrying once after 1s: {error}")
+                    time.sleep(self.static_retry_delay_seconds)
+                    continue
+                self._static_terminal_warning = "AO3 靜態搜尋連線逾時或不可用"
+                print(f"[AO3 Static] Public GET unavailable; returning bounded source warning: {error}")
                 return None
-            return html
-        except requests.RequestException as error:
-            self._static_terminal_warning = "AO3 靜態搜尋連線逾時或不可用"
-            print(f"[AO3 Static] Public GET unavailable; returning bounded source warning: {error}")
-            return None
+        return None
 
     def _parse_static_results(self, html: str, keyword: str) -> list[ScrapedFanfic]:
         soup = BeautifulSoup(html, "html.parser")
@@ -205,7 +242,11 @@ class AO3Scraper(BaseScraper):
                 return cached_payload
 
         target_pages = [page, page + 1] if page == 1 else [page]
-        static_payload = self._scrape_static_pages(ao3_query, target_pages, page)
+        self._static_deadline = monotonic() + self.static_search_budget_seconds
+        try:
+            static_payload = self._scrape_static_pages(ao3_query, target_pages, page)
+        finally:
+            self._static_deadline = None
         if static_payload is not None:
             for item in static_payload["items"]:
                 item.keyword = trimmed_kw

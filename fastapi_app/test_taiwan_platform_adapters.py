@@ -1,6 +1,6 @@
 from pathlib import Path
 import sys
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import requests
 
@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import main
 from fastapi.testclient import TestClient
 from models import PlatformStatus, ScrapedFanfic
-from scrapers.index import SCRAPERS
+from scrapers.index import SCRAPERS, classify_platform_status
 from scrapers.penana_scraper import PenanaScraper
 from scrapers.doujin_scraper import DoujinScraper
 from scrapers.waterwriter_scraper import WaterWriterScraper
@@ -238,6 +238,30 @@ def test_penana_http_timeout_returns_source_warning_without_browser_navigation()
 
     assert payload == {"items": [], "total_works": 0, "total_pages": 1}
     assert "HTTP request unavailable" in (scraper.last_warning or "")
+
+
+def test_penana_cloudflare_403_returns_a_blocked_source_warning_without_browser_navigation():
+    blocked_response = MagicMock(status_code=403, text="<html>Cloudflare</html>")
+    scraper = PenanaScraper()
+
+    with patch("scrapers.penana_scraper.requests.get", return_value=blocked_response):
+        payload = scraper.scrape("義忍")
+
+    assert payload == {"items": [], "total_works": 0, "total_pages": 1}
+    assert "觸發人機保護" in (scraper.last_warning or "")
+
+
+def test_penana_verification_html_returns_a_blocked_source_warning_without_browser_navigation():
+    verification_response = MagicMock(status_code=200, text="<title>Just a moment… Cloudflare</title>")
+    verification_response.raise_for_status.return_value = None
+    scraper = PenanaScraper()
+
+    with patch("scrapers.penana_scraper.requests.get", return_value=verification_response):
+        payload = scraper.scrape("義忍")
+
+    assert payload == {"items": [], "total_works": 0, "total_pages": 1}
+    assert "觸發人機保護" in (scraper.last_warning or "")
+    assert classify_platform_status(0, scraper.last_warning) == "blocked"
 
 
 def test_partial_platform_warnings_are_silent_when_a_verified_result_exists():

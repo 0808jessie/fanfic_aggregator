@@ -157,6 +157,33 @@ describe("Home pagination interactions", () => {
     });
   });
 
+  it("retries AO3 and Penana as independent force-refresh requests", async () => {
+    mockState.responsePlatformStatuses = [
+      { platformId: "ao3", label: "AO3", status: "blocked", itemCount: 0, warning: "HTTP 525", translatedQuery: "義忍" },
+      { platformId: "penana", label: "Penana", status: "blocked", itemCount: 0, warning: "觸發人機保護", translatedQuery: "義忍" },
+    ];
+    render(<Home />);
+
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "義忍" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "重試 AO3" })).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "重試 AO3" }));
+    expect(mockState.lastVariables).toEqual({
+      path: "/search",
+      method: "POST",
+      data: { keyword: "義忍", platforms: ["ao3"], page: 1, forceRefresh: true, customCpMappings: [] },
+    });
+
+    await waitFor(() => expect((screen.getByRole("button", { name: "重試 Penana" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "重試 Penana" }));
+    expect(mockState.lastVariables).toEqual({
+      path: "/search",
+      method: "POST",
+      data: { keyword: "義忍", platforms: ["penana"], page: 1, forceRefresh: true, customCpMappings: [] },
+    });
+  });
+
   it("keeps the CxC card visible and retryable when the API omits its status", async () => {
     mockState.responsePlatformStatuses = [
       { platformId: "ao3", label: "AO3", status: "success", itemCount: 60, translatedQuery: "義忍" },

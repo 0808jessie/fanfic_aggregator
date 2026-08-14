@@ -225,4 +225,9 @@
 - [x] 將 Penana 改為純 HTTP／HTML 解析，並移除 AO3、在水裡寫字的 browser fallback，保留官方總數與來源級錯誤狀態
 - [x] 補上 HTTP 逾時、403／429／525、防護頁與空結果的純靜態回歸測試，確認不會呼叫 Playwright
 - [x] 重啟 FastAPI，完成完整回歸與實際單一來源快速降級驗證；Python 65/65、Vitest 41/41、TypeScript 通過
-- [ ] 儲存本輪純 HTTP 靜態 Adapter 修復 checkpoint
+- [x] 儲存本輪純 HTTP 靜態 Adapter 修復 checkpoint（8185a738）
+- [x] 稽核 AO3 HTTP 標頭／成人偏好、525／503 重試與 Penana 防護偵測的現有實作及測試契約
+- [x] 為 AO3 實作單次、有界的 HTTP 525／503／暫時網路錯誤重試，保留成人偏好 Cookie 與官方總數解析
+- [x] 強化 Penana 403／驗證頁偵測、blocked 狀態與安全單一來源重試，避免規避站方人機保護
+- [x] 驗證 AO3／Penana 單一平台重試不觸發全域搜尋，完成完整回歸與實測；Python 67/67、Vitest 42/42、TypeScript 通過
+- [ ] 儲存本輪 AO3／Penana 防護與單一平台重試修復 checkpoint
