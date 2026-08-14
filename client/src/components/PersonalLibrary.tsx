@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { BookmarkRecord, CpMapping } from "@/lib/personalLibrary";
+import { isCustomCpMapping, upsertCpMapping, type BookmarkRecord, type CpMapping } from "@/lib/personalLibrary";
 import type { SearchResult } from "@/lib/searchResults";
 import { ArrowUpRight, Bookmark, Pencil, Plus, Star, Tag, Trash2 } from "lucide-react";
 import React, { useEffect, useState } from "react";
@@ -88,23 +88,24 @@ export function BookmarkEditorDialog({
 type CpMappingManagerDialogProps = {
   open: boolean;
   mappings: CpMapping[];
+  customMappings: CpMapping[];
   onOpenChange: (open: boolean) => void;
-  onChange: (mappings: CpMapping[]) => void;
+  onChange: (customMappings: CpMapping[]) => void;
 };
 
-export function CpMappingManagerDialog({ open, mappings, onOpenChange, onChange }: CpMappingManagerDialogProps) {
+export function CpMappingManagerDialog({ open, mappings, customMappings, onOpenChange, onChange }: CpMappingManagerDialogProps) {
   const [alias, setAlias] = useState("");
-  const [tag, setTag] = useState("");
+  const [ao3Query, setAo3Query] = useState("");
+  const [localQuery, setLocalQuery] = useState("");
   const [editingAlias, setEditingAlias] = useState<string | null>(null);
 
-  const reset = () => { setAlias(""); setTag(""); setEditingAlias(null); };
+  const reset = () => { setAlias(""); setAo3Query(""); setLocalQuery(""); setEditingAlias(null); };
   const save = () => {
-    const nextAlias = alias.trim();
-    const nextTag = tag.trim();
-    if (!nextAlias || !nextTag) return;
-    onChange([{ alias: nextAlias, tag: nextTag }, ...mappings.filter((item) => item.alias !== nextAlias && item.alias !== editingAlias)]);
+    if (!alias.trim() || !ao3Query.trim() || !localQuery.trim()) return;
+    onChange(upsertCpMapping(customMappings, { alias, ao3Query, localQuery }, editingAlias || undefined));
     reset();
   };
+  const resetToDefaults = () => { onChange([]); reset(); };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -112,24 +113,27 @@ export function CpMappingManagerDialog({ open, mappings, onOpenChange, onChange 
         <DialogHeader className="border-b border-[#10151b]/10 px-6 py-5 text-left">
           <div className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#45b9b2]"><Tag className="h-3.5 w-3.5" /> PERSONAL REFERENCE INDEX</div>
           <DialogTitle className="pt-1 text-xl font-black tracking-[-0.05em]">CP 詞庫管理</DialogTitle>
-          <DialogDescription className="text-[#64727a]">詞庫只儲存在此裝置。搜尋縮寫時會優先使用你設定的標準 Tag。</DialogDescription>
+          <DialogDescription className="text-[#64727a]">系統預設與你的自訂對照會合併使用；自訂值只儲存在此裝置，並於下一次搜尋即時套用。</DialogDescription>
         </DialogHeader>
         <div className="space-y-5 px-6 py-5">
-          <div className="grid gap-3 border border-[#10151b]/15 bg-white/55 p-4 sm:grid-cols-[0.65fr_1.35fr_auto] sm:items-end">
+          <div className="grid gap-3 border border-[#10151b]/15 bg-white/55 p-4 sm:grid-cols-2">
             <label className="grid gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#61707a]">中文縮寫
               <input value={alias} onChange={(event) => setAlias(event.target.value)} placeholder="例：義忍" className="h-10 border border-[#10151b]/15 bg-white px-3 font-sans text-sm font-normal normal-case tracking-normal text-[#10151b] outline-none focus:border-[#45b9b2]" />
             </label>
-            <label className="grid gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#61707a]">標準 Tag
-              <input value={tag} onChange={(event) => setTag(event.target.value)} placeholder="例：Tomioka Giyuu/Kochou Shinobu" className="h-10 border border-[#10151b]/15 bg-white px-3 font-sans text-sm font-normal normal-case tracking-normal text-[#10151b] outline-none focus:border-[#45b9b2]" />
+            <label className="grid gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#61707a]">AO3 關係標籤
+              <input value={ao3Query} onChange={(event) => setAo3Query(event.target.value)} placeholder="例：Uchiha Sasuke/Haruno Sakura" className="h-10 border border-[#10151b]/15 bg-white px-3 font-sans text-sm font-normal normal-case tracking-normal text-[#10151b] outline-none focus:border-[#45b9b2]" />
             </label>
-            <Button type="button" onClick={save} disabled={!alias.trim() || !tag.trim()} className="h-10 rounded-none bg-[#10151b] font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-white hover:bg-[#24313a]"><Plus className="mr-1.5 h-3.5 w-3.5" />{editingAlias ? "更新" : "新增"}</Button>
+            <label className="grid gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#61707a] sm:col-span-2">繁中本地關鍵字
+              <input value={localQuery} onChange={(event) => setLocalQuery(event.target.value)} placeholder="例：佐櫻 宇智波佐助 春野櫻" className="h-10 border border-[#10151b]/15 bg-white px-3 font-sans text-sm font-normal normal-case tracking-normal text-[#10151b] outline-none focus:border-[#45b9b2]" />
+            </label>
+            <div className="sm:col-span-2"><Button type="button" onClick={save} disabled={!alias.trim() || !ao3Query.trim() || !localQuery.trim()} className="h-10 rounded-none bg-[#10151b] font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-white hover:bg-[#24313a]"><Plus className="mr-1.5 h-3.5 w-3.5" />{editingAlias ? "更新自訂對照" : "新增自訂對照"}</Button></div>
           </div>
-          <div className="divide-y divide-[#10151b]/10 border-y border-[#10151b]/10">
-            {mappings.map((mapping) => <div key={mapping.alias} className="grid gap-3 px-1 py-4 sm:grid-cols-[0.65fr_1.35fr_auto] sm:items-center"><div className="font-mono text-sm font-bold text-[#8b3e59]">{mapping.alias}</div><div className="font-mono text-xs text-[#52616b] break-all">{mapping.tag}</div><div className="flex gap-1"><Button type="button" variant="ghost" size="icon" onClick={() => { setEditingAlias(mapping.alias); setAlias(mapping.alias); setTag(mapping.tag); }} aria-label={`編輯 ${mapping.alias}`} className="h-8 w-8 rounded-none hover:bg-[#d9f8f5]"><Pencil className="h-3.5 w-3.5" /></Button><Button type="button" variant="ghost" size="icon" onClick={() => onChange(mappings.filter((item) => item.alias !== mapping.alias))} aria-label={`刪除 ${mapping.alias}`} className="h-8 w-8 rounded-none text-[#ad355d] hover:bg-[#ffe3eb] hover:text-[#8b3e59]"><Trash2 className="h-3.5 w-3.5" /></Button></div></div>)}
-            {!mappings.length && <div className="px-1 py-8 text-center text-sm text-[#75838b]">尚未建立自訂對照。</div>}
+          <div className="overflow-hidden border border-[#10151b]/15">
+            <div className="grid gap-2 border-b border-[#10151b]/10 bg-[#eef6f4] px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#61707a] sm:grid-cols-[0.5fr_1.25fr_1.25fr_auto]"><span>CP</span><span>AO3 TAG</span><span>LOCAL QUERY</span><span>STATUS</span></div>
+            <div className="divide-y divide-[#10151b]/10">{mappings.map((mapping) => { const custom = isCustomCpMapping(mapping, customMappings); return <div key={mapping.alias} className="grid gap-2 px-3 py-3 sm:grid-cols-[0.5fr_1.25fr_1.25fr_auto] sm:items-center"><div className="font-mono text-sm font-bold text-[#8b3e59]">{mapping.alias}</div><div className="break-all font-mono text-[11px] text-[#52616b]">{mapping.ao3Query}</div><div className="break-all font-mono text-[11px] text-[#52616b]">{mapping.localQuery}</div><div className="flex items-center gap-1"><span className={`border px-1.5 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] ${custom ? "border-[#75d6d0] bg-[#d9f8f5] text-[#197b75]" : "border-[#10151b]/15 bg-white/60 text-[#75838b]"}`}>{custom ? "CUSTOM" : "SYSTEM"}</span><Button type="button" variant="ghost" size="icon" onClick={() => { setEditingAlias(mapping.alias); setAlias(mapping.alias); setAo3Query(mapping.ao3Query); setLocalQuery(mapping.localQuery); }} aria-label={`${custom ? "編輯" : "自訂覆寫"} ${mapping.alias}`} className="h-8 w-8 rounded-none hover:bg-[#d9f8f5]"><Pencil className="h-3.5 w-3.5" /></Button>{custom && <Button type="button" variant="ghost" size="icon" onClick={() => onChange(customMappings.filter((item) => item.alias !== mapping.alias))} aria-label={`刪除 ${mapping.alias}`} className="h-8 w-8 rounded-none text-[#ad355d] hover:bg-[#ffe3eb] hover:text-[#8b3e59]"><Trash2 className="h-3.5 w-3.5" /></Button>}</div></div>; })}</div>
           </div>
         </div>
-        <DialogFooter className="border-t border-[#10151b]/10 bg-white/40 px-6 py-4"><Button type="button" variant="outline" onClick={reset} className="rounded-none border-[#10151b]/15 font-mono text-[10px] font-bold uppercase tracking-[0.12em]">清除表單</Button></DialogFooter>
+        <DialogFooter className="border-t border-[#10151b]/10 bg-white/40 px-6 py-4 sm:justify-between"><Button type="button" variant="ghost" onClick={resetToDefaults} disabled={!customMappings.length} className="rounded-none font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#ad355d] hover:bg-[#ffe3eb]">重設為系統預設</Button><Button type="button" variant="outline" onClick={reset} className="rounded-none border-[#10151b]/15 font-mono text-[10px] font-bold uppercase tracking-[0.12em]">清除表單</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );

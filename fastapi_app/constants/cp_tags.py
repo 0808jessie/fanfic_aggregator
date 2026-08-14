@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Literal
+from typing import Iterable, Literal
 
 
 @dataclass(frozen=True)
@@ -45,10 +45,33 @@ MULTI_PLATFORM_CP_MAP: dict[str, CPTagConfig] = {
 }
 
 
-def get_keyword_for_platform(keyword: str, platform_type: Literal["ao3", "local", "cxc"]) -> str:
+def build_custom_cp_map(mappings: Iterable[object] | None) -> dict[str, CPTagConfig]:
+    """Normalize request-scoped UI mappings without mutating system defaults."""
+    custom_map: dict[str, CPTagConfig] = {}
+    for mapping in mappings or ():
+        alias = str(getattr(mapping, "alias", "") or "").strip()
+        ao3_query = str(getattr(mapping, "ao3Query", "") or "").strip()
+        local_query = str(getattr(mapping, "localQuery", "") or "").strip()
+        if not alias or not ao3_query or not local_query:
+            continue
+        custom_map[alias] = CPTagConfig(
+            ao3_query=ao3_query,
+            local_query=local_query,
+            # CxC accepts literal terms only; the alias is the safe fallback
+            # because the management UI intentionally has no CxC boolean field.
+            cxc_query=alias,
+        )
+    return custom_map
+
+
+def get_keyword_for_platform(
+    keyword: str,
+    platform_type: Literal["ao3", "local", "cxc"],
+    custom_map: dict[str, CPTagConfig] | None = None,
+) -> str:
     """Translate a known CP alias or preserve a free-text search unchanged."""
     normalized_keyword = keyword.strip()
-    config = MULTI_PLATFORM_CP_MAP.get(normalized_keyword)
+    config = (custom_map or {}).get(normalized_keyword) or MULTI_PLATFORM_CP_MAP.get(normalized_keyword)
     if config is None:
         return normalized_keyword
     if platform_type == "ao3":

@@ -185,3 +185,9 @@
 - [x] 以瀏覽器實際用僅 CxC 單一來源搜尋義忍，確認 ADAPTER CONNECTIONS 顯示 CxC 已連線而非 error，並保存驗證紀錄
 - [x] 修正 CxC 正常零結果仍顯示 DISCOVERY HALTED 的前端空狀態判斷，改為僅顯示來源專屬「無公開結果」
 - [x] 儲存本輪 CxC CP 查詢轉譯、空結果與多欄位比對 checkpoint，版本 f07bd83c；Python 52/52、Vitest 34/34、TypeScript 通過
+- [x] 停用 Lofter Adapter，從可選搜尋來源與 ADAPTER CONNECTIONS 移除，並更新六平台既有契約
+- [x] 校正 AO3、在水裡寫字、Penana、同人誌中心的官方總數與分頁資訊解析，避免以首頁卡片數代替總數
+- [x] 完善 Blueprint CP 詞庫管理 Modal，支援新增、刪除、重設與 localStorage 自訂對照合併
+- [x] 讓 ADAPTER CONNECTIONS 平台卡提供可見的單一來源快捷篩選、再次點擊還原全部與 active 狀態
+- [x] 補上停用 Lofter、官方總數、CP 詞庫與平台快捷篩選的回歸測試及公開頁／UI 驗證；Python 54/54、Vitest 35/35、TypeScript 通過
+- [ ] 儲存本輪 Adapter 總數校正與前端管理／篩選功能 checkpoint

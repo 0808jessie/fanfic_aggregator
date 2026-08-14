@@ -13,7 +13,7 @@ from urllib.parse import urlencode, urljoin
 
 from bs4 import BeautifulSoup
 
-from constants.cp_tags import get_keyword_for_platform
+from constants.cp_tags import CPTagConfig, get_keyword_for_platform
 from models import ScrapedFanfic
 from scrapers.base_scraper import BaseScraper
 
@@ -49,15 +49,26 @@ class WaterWriterScraper(BaseScraper):
         """Build the public Discuz quick-search URL without hidden form state."""
         return f"{cls.search_url}?{urlencode({'srchtxt': keyword, 'searchsubmit': 'yes', 'srchfid': 'all'})}"
 
-    def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False) -> dict[str, object]:
+    def scrape(
+        self,
+        keyword: str,
+        page: int = 1,
+        force_refresh: bool = False,
+        custom_cp_map: dict[str, CPTagConfig] | None = None,
+    ) -> dict[str, object]:
         self.last_warning = None
         if not keyword.strip():
             return {"items": [], "total_works": 0, "total_pages": 1}
 
         try:
-            local_query = get_keyword_for_platform(keyword, "local")
-            html = self._render_public_search_html(local_query)
-            items = self.parse_results(html, local_query)
+            local_query = get_keyword_for_platform(keyword, "local", custom_cp_map)
+            # Discuz treats whitespace-separated terms as a restrictive AND
+            # search. CP aliases may expand to several names, therefore search
+            # with the explicit CP headword while retaining the original alias
+            # on each returned record.
+            search_keyword = local_query.split()[0] if local_query.split() else keyword.strip()
+            html = self._render_public_search_html(search_keyword)
+            items = self.parse_results(html, search_keyword)
             total_works = self.extract_total_works(html) or len(items)
             for item in items:
                 item.keyword = keyword

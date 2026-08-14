@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta
+import hashlib
+import json
 from typing import Any, Callable
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -8,7 +10,7 @@ from sqlalchemy.orm import Session
 from config import settings
 from database import Fanfic, SessionLocal
 from models import ScrapedFanfic, SearchQuery, SearchResponse
-from constants.cp_tags import CP_CACHE_ALIASES, CP_TAG_MAP
+from constants.cp_tags import CP_CACHE_ALIASES, CP_TAG_MAP, build_custom_cp_map
 from relevance import rank_results
 from scrapers.index import SCRAPERS, parallel_search_platforms
 
@@ -39,6 +41,20 @@ def canonical_platforms(platforms: list[str] | None) -> list[str]:
         if key in SCRAPERS and key not in normalized:
             normalized.append(key)
     return normalized
+
+
+def custom_cp_mapping_fingerprint(mappings: list[object]) -> str:
+    """Keep cache entries isolated between distinct browser-local CP vocabularies."""
+    normalized = [
+        {
+            "alias": getattr(mapping, "alias", ""),
+            "ao3Query": getattr(mapping, "ao3Query", ""),
+            "localQuery": getattr(mapping, "localQuery", ""),
+        }
+        for mapping in mappings
+    ]
+    encoded = json.dumps(normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()[:12]
 
 
 def clear_live_only_cp_memory_cache(keyword: str) -> list[str]:
@@ -76,7 +92,6 @@ def is_real_platform_url(url: str, platform: str | None = None) -> bool:
         allowed_hosts = {
             "ao3": ("archiveofourown.org",),
             "cxc 創利市集": ("cxc.today",),
-            "lofter": ("lofter.com",),
             "同人誌中心": ("doujin.com.tw",),
             "在水裡寫字": ("slashtw.space",),
             "penana": ("penana.com",),
@@ -151,7 +166,6 @@ def list_platforms() -> list[dict[str, str]]:
     return [
         {"id": "ao3", "label": "AO3", "status": "ready"},
         {"id": "cxc", "label": "CxC 創利市集", "status": "best-effort"},
-        {"id": "lofter", "label": "Lofter", "status": "ready"},
         {"id": "doujin", "label": "同人誌中心", "status": "best-effort"},
         {"id": "waterwriter", "label": "在水裡寫字", "status": "best-effort"},
         {"id": "penana", "label": "Penana", "status": "best-effort"},
@@ -170,7 +184,13 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
 
     try:
         requested_page = query.page
-        cache_key = f"{keyword}:{'-'.join(sorted(platforms))}:page={requested_page}"
+        custom_cp_map = build_custom_cp_map(query.customCpMappings)
+        base_cache_key = f"{keyword}:{'-'.join(sorted(platforms))}:page={requested_page}"
+        cache_key = (
+            f"{keyword}:{'-'.join(sorted(platforms))}:cp={custom_cp_mapping_fingerprint(query.customCpMappings)}:page={requested_page}"
+            if custom_cp_map
+            else base_cache_key
+        )
         # 強制更新只影響此次請求：略過既有快取、重新啟動 Adapter，並用成功結果覆寫快取。
         bypass_persistent_cache = query.forceRefresh
         if bypass_persistent_cache:
@@ -203,11 +223,18 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
                 del _MEMORY_CACHE[cache_key]
 
         # 2. 透過 Adapter registry 平行查詢所有已選平台
-        aggregate = (
-            parallel_search_platforms(platforms, keyword, requested_page, force_refresh=True)
-            if query.forceRefresh
-            else parallel_search_platforms(platforms, keyword, requested_page)
-        )
+        if custom_cp_map:
+            aggregate = (
+                parallel_search_platforms(platforms, keyword, requested_page, force_refresh=True, custom_cp_map=custom_cp_map)
+                if query.forceRefresh
+                else parallel_search_platforms(platforms, keyword, requested_page, custom_cp_map=custom_cp_map)
+            )
+        else:
+            aggregate = (
+                parallel_search_platforms(platforms, keyword, requested_page, force_refresh=True)
+                if query.forceRefresh
+                else parallel_search_platforms(platforms, keyword, requested_page)
+            )
         fresh_results = rank_results([
             result for result in aggregate["items"]
             if is_real_platform_url(result.url, result.platform)
@@ -283,7 +310,7 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
 
         # 4. 若即時抓取為 0 筆或失敗，絕對不寫入快取，且對 CP 映射關鍵字不使用 stale SQLite cache 避免污染
         stale_cached = None
-        if not query.forceRefresh and keyword not in CP_TAG_MAP:
+        if not query.forceRefresh and keyword not in CP_TAG_MAP and not custom_cp_map:
             stale_cached = get_cached_results(db, keyword, platforms, ignore_ttl=True, source_label="fallback-cache")
         if stale_cached:
             print(f"[SearchAPI] External failed, falling back to stale cache for '{keyword}'")

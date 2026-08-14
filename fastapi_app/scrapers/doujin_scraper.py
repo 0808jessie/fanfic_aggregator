@@ -13,7 +13,7 @@ from urllib.parse import quote_plus, urljoin
 
 from bs4 import BeautifulSoup
 
-from constants.cp_tags import get_keyword_for_platform
+from constants.cp_tags import CPTagConfig, get_keyword_for_platform
 from models import ScrapedFanfic
 from scrapers.base_scraper import BaseScraper
 
@@ -54,13 +54,19 @@ class DoujinScraper(BaseScraper):
             query = f"{query}&page={page}"
         return f"{cls.search_url}?{query}"
 
-    def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False) -> dict[str, object]:
+    def scrape(
+        self,
+        keyword: str,
+        page: int = 1,
+        force_refresh: bool = False,
+        custom_cp_map: dict[str, CPTagConfig] | None = None,
+    ) -> dict[str, object]:
         self.last_warning = None
         if not keyword.strip():
             return {"items": [], "total_works": 0, "total_pages": 1}
 
         try:
-            local_query = get_keyword_for_platform(keyword, "local")
+            local_query = get_keyword_for_platform(keyword, "local", custom_cp_map)
             html = self._render_public_search_html(local_query, page)
             items = self.parse_results(html, local_query)
             total_works = self.extract_total_works(html) or len(items)
@@ -199,7 +205,7 @@ class DoujinScraper(BaseScraper):
         soup = BeautifulSoup(html, "html.parser")
         result_nodes = soup.select(
             ".search_result_info, .search-results-info, .search-result-info, "
-            ".pagination, .pager, [class*='search'][class*='info']"
+            ".listing-header, .pagination, .pager, [class*='search'][class*='info']"
         )
         candidate_text = " ".join(node.get_text(" ", strip=True) for node in result_nodes)
         # The production results page places `共 N 本` directly in its listing

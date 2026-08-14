@@ -8,7 +8,7 @@ from typing import Any
 
 from scrapers.base_scraper import BaseScraper
 from models import ScrapedFanfic
-from constants.cp_tags import get_keyword_for_platform
+from constants.cp_tags import CPTagConfig, get_keyword_for_platform
 
 try:
     from playwright.sync_api import sync_playwright
@@ -97,14 +97,20 @@ class AO3Scraper(BaseScraper):
                     return heading_text, int(match.group(1).replace(",", ""))
         return None
 
-    def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False) -> dict[str, Any]:
+    def scrape(
+        self,
+        keyword: str,
+        page: int = 1,
+        force_refresh: bool = False,
+        custom_cp_map: dict[str, CPTagConfig] | None = None,
+    ) -> dict[str, Any]:
         self.last_warning = None
         self.last_total_heading = None
         trimmed_kw = keyword.strip()
         if not trimmed_kw:
             return {"items": [], "total_works": 0, "total_pages": 1}
 
-        ao3_query = get_keyword_for_platform(trimmed_kw, "ao3")
+        ao3_query = get_keyword_for_platform(trimmed_kw, "ao3", custom_cp_map)
 
         cache_key = f"{trimmed_kw}:page={page}"
         # 強制更新會跳過 Adapter cache；一般 CP 則由 API 的高可信度 TTL 管理。

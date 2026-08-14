@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+from fastapi_app.constants.cp_tags import build_custom_cp_map
 from fastapi_app.models import ScrapedFanfic
 from fastapi_app.scrapers import index as adapter_index
 
@@ -24,18 +25,18 @@ class FakeAO3:
         }
 
 
-class SafeFallbackLofter:
+class SafeFallbackCxC:
     def __init__(self):
-        self.last_warning = "[Lofter] Request blocked (HTTP 403)"
+        self.last_warning = "[CxC] Request blocked (HTTP 403)"
 
     def scrape(self, keyword: str, page: int = 1):
-        print("[Lofter] Request blocked")
+        print("[CxC] Request blocked")
         return []
 
 
 def test_parallel_registry_keeps_successful_platform_when_another_fails():
-    with patch.object(adapter_index, "SCRAPERS", {"ao3": FakeAO3, "lofter": SafeFallbackLofter}):
-        aggregate = adapter_index.parallel_search_platforms(["ao3", "lofter"], "花", page=1)
+    with patch.object(adapter_index, "SCRAPERS", {"ao3": FakeAO3, "cxc": SafeFallbackCxC}):
+        aggregate = adapter_index.parallel_search_platforms(["ao3", "cxc"], "花", page=1)
 
     assert aggregate["any_success"] is True
     assert len(aggregate["items"]) == 1
@@ -43,11 +44,11 @@ def test_parallel_registry_keeps_successful_platform_when_another_fails():
     assert aggregate["items"][0].id == "ao3:https://archiveofourown.org/works/2001"
     assert aggregate["total_works"] == 100
     assert aggregate["total_pages"] == 5
-    assert any("[Lofter] Request blocked" in warning for warning in aggregate["warnings"])
+    assert any("[CxC] Request blocked" in warning for warning in aggregate["warnings"])
     statuses = {status.platformId: status for status in aggregate["platform_statuses"]}
     assert statuses["ao3"].status == "success"
     assert statuses["ao3"].itemCount == 100
-    assert statuses["lofter"].status == "blocked"
+    assert statuses["cxc"].status == "blocked"
 
 
 def test_platform_status_translates_cp_query_and_detects_cooldown():
@@ -58,17 +59,17 @@ def test_platform_status_translates_cp_query_and_detects_cooldown():
     assert adapter_index.classify_platform_status(0, "[同人誌中心] No verified public result matched '義忍'") == "empty"
 
 
-class FakeLofterSuccess:
+class FakeCxCSuccess:
     def __init__(self):
         self.last_warning = None
 
     def scrape(self, keyword: str, page: int = 1):
         return [
             ScrapedFanfic(
-                title="Lofter story",
-                author="Lofter author",
-                platform="Lofter",
-                url="https://www.lofter.com/post/2002",
+                title="CxC story",
+                author="CxC author",
+                platform="CxC 創利市集",
+                url="https://cxc.today/@creator/work/2002",
                 keyword=keyword,
             )
         ]
@@ -81,13 +82,13 @@ def test_parallel_registry_combines_totals_across_platforms():
     with patch.object(
         adapter_index,
         "SCRAPERS",
-        {"ao3": FakeAO3WithTotal, "lofter": FakeLofterSuccess},
+        {"ao3": FakeAO3WithTotal, "cxc": FakeCxCSuccess},
     ):
-        aggregate = adapter_index.parallel_search_platforms(["ao3", "lofter"], "花", page=1)
+        aggregate = adapter_index.parallel_search_platforms(["ao3", "cxc"], "花", page=1)
 
     assert aggregate["any_success"] is True
-    assert sorted(item.platform for item in aggregate["items"]) == ["AO3", "Lofter"]
-    assert aggregate["total_works"] == 101
+    assert sorted(item.platform for item in aggregate["items"]) == ["AO3", "CxC 創利市集"]
+    assert aggregate["total_works"] == 100
     assert aggregate["total_pages"] == 5
 
 
@@ -97,27 +98,20 @@ class FakeBlockedResponse:
     text = ""
 
 
-def test_real_lofter_adapter_isolates_http_block(capsys):
-    from fastapi_app.scrapers.lofter_scraper import LofterScraper
-
-    with patch("fastapi_app.scrapers.lofter_scraper.requests.get", return_value=FakeBlockedResponse()):
-        scraper = LofterScraper()
-        assert scraper.scrape("義忍") == []
-
-    assert "[Lofter] Request blocked" in capsys.readouterr().out
-    assert scraper.last_warning == "[Lofter] Request blocked (HTTP 403)"
+def test_lofter_is_not_an_enabled_adapter_or_status_source():
+    assert "lofter" not in adapter_index.SCRAPERS
+    assert "lofter" not in adapter_index.PLATFORM_LABELS
 
 
-def test_real_lofter_adapter_isolates_connection_error(capsys):
-    import requests
-    from fastapi_app.scrapers.lofter_scraper import LofterScraper
+def test_custom_cp_mapping_overrides_ao3_and_local_query_per_request():
+    custom_map = build_custom_cp_map([
+        type("Mapping", (), {
+            "alias": "黑邪",
+            "ao3Query": "Heiyan/Wu Xie",
+            "localQuery": "黑邪 吳邪",
+        })(),
+    ])
 
-    with patch(
-        "fastapi_app.scrapers.lofter_scraper.requests.get",
-        side_effect=requests.RequestException("offline"),
-    ):
-        scraper = LofterScraper()
-        assert scraper.scrape("義忍") == []
-
-    assert "[Lofter] Request blocked" in capsys.readouterr().out
-    assert scraper.last_warning.startswith("[Lofter] Request blocked")
+    assert adapter_index.translated_query_for_platform("ao3", "黑邪", custom_map) == "Heiyan/Wu Xie"
+    assert adapter_index.translated_query_for_platform("doujin", "黑邪", custom_map) == "黑邪 吳邪"
+    assert adapter_index.translated_query_for_platform("cxc", "黑邪", custom_map) == "黑邪"

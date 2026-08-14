@@ -15,7 +15,7 @@ from urllib.parse import quote_plus, urljoin
 from bs4 import BeautifulSoup
 import requests
 
-from constants.cp_tags import get_keyword_for_platform
+from constants.cp_tags import CPTagConfig, get_keyword_for_platform
 from models import ScrapedFanfic
 from scrapers.base_scraper import BaseScraper
 
@@ -95,7 +95,13 @@ class CxCScraper(BaseScraper):
         ))
         return f"{cls.search_url}?{query}"
 
-    def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False) -> dict[str, object]:
+    def scrape(
+        self,
+        keyword: str,
+        page: int = 1,
+        force_refresh: bool = False,
+        custom_cp_map: dict[str, CPTagConfig] | None = None,
+    ) -> dict[str, object]:
         self.last_warning = None
         if not keyword.strip():
             return {"items": [], "total_works": 0, "total_pages": 1}
@@ -103,7 +109,7 @@ class CxCScraper(BaseScraper):
         # CxC does not support AO3-style boolean operators or quote syntax.
         # Known CP aliases have a dedicated literal query; free text is also
         # normalized defensively before it is sent to the public API/page.
-        public_query = self.clean_cxc_keyword(get_keyword_for_platform(keyword, "cxc"))
+        public_query = self.clean_cxc_keyword(get_keyword_for_platform(keyword, "cxc", custom_cp_map))
         try:
             api_payload = self._fetch_public_api_results(public_query)
             if api_payload is not None:

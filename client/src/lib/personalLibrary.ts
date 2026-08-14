@@ -1,7 +1,8 @@
 import type { ResultViewFilters, SearchResult } from "./searchResults";
 
 export const BOOKMARKS_STORAGE_KEY = "sui-read-bookmarks";
-export const CP_MAP_STORAGE_KEY = "sui-read-cp-map";
+export const LEGACY_CP_MAP_STORAGE_KEY = "sui-read-cp-map";
+export const CP_MAP_STORAGE_KEY = "sui-read-custom-cp-map";
 export const SEARCH_HISTORY_STORAGE_KEY = "sui-read-search-history";
 export const FILTER_PRESET_STORAGE_KEY = "sui-read-filter-preset";
 
@@ -15,14 +16,19 @@ export type BookmarkRecord = {
   updatedAt: string;
 };
 
-export type CpMapping = { alias: string; tag: string };
+export type CpMapping = {
+  alias: string;
+  ao3Query: string;
+  localQuery: string;
+};
 
 export const DEFAULT_CP_MAPPINGS: CpMapping[] = [
-  { alias: "義忍", tag: "Tomioka Giyuu/Kochou Shinobu" },
-  { alias: "五夏", tag: "Gojo Satoru/Geto Suguru" },
-  { alias: "夏五", tag: "Geto Suguru/Gojo Satoru" },
-  { alias: "勝出", tag: "Bakugou Katsuki/Midoriya Izuku" },
-  { alias: "轟出", tag: "Todoroki Shouto/Midoriya Izuku" },
+  { alias: "義忍", ao3Query: "Tomioka Giyuu/Kochou Shinobu", localQuery: "義忍 富岡義勇 胡蝶忍" },
+  { alias: "五夏", ao3Query: "Gojo Satoru/Geto Suguru", localQuery: "五夏 五條悟 夏油傑" },
+  { alias: "夏五", ao3Query: "Geto Suguru/Gojo Satoru", localQuery: "夏五 夏油傑 五條悟" },
+  { alias: "勝出", ao3Query: "Bakugou Katsuki/Midoriya Izuku", localQuery: "勝出 爆豪勝己 綠谷出久" },
+  { alias: "轟出", ao3Query: "Todoroki Shouto/Midoriya Izuku", localQuery: "轟出 轟焦凍 綠谷出久" },
+  { alias: "佐櫻", ao3Query: "Uchiha Sasuke/Haruno Sakura", localQuery: "佐櫻 宇智波佐助 春野櫻" },
 ];
 
 const DEFAULT_FILTERS: ResultViewFilters = { wordCount: "all", completion: "all", sort: "relevance" };
@@ -46,6 +52,22 @@ function writeJson<T>(key: string, value: T): void {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
+function normalizeCpMapping(value: unknown): CpMapping | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const alias = typeof record.alias === "string" ? record.alias.trim() : "";
+  const legacyTag = typeof record.tag === "string" ? record.tag.trim() : "";
+  const ao3Query = typeof record.ao3Query === "string" ? record.ao3Query.trim() : legacyTag;
+  const localQuery = typeof record.localQuery === "string" ? record.localQuery.trim() : alias;
+  return alias && ao3Query && localQuery ? { alias, ao3Query, localQuery } : null;
+}
+
+function normalizeCpMappings(value: unknown): CpMapping[] {
+  return Array.isArray(value)
+    ? value.map(normalizeCpMapping).filter((mapping): mapping is CpMapping => Boolean(mapping))
+    : [];
+}
+
 export function loadBookmarks(): BookmarkRecord[] {
   const records = readJson<BookmarkRecord[]>(BOOKMARKS_STORAGE_KEY, []);
   return Array.isArray(records) ? records.filter((record) => record && typeof record.url === "string" && record.result) : [];
@@ -62,20 +84,42 @@ export function upsertBookmark(bookmarks: BookmarkRecord[], next: Omit<BookmarkR
   return [record, ...bookmarks.filter((bookmark) => bookmark.url !== next.url)];
 }
 
-export function loadCpMappings(): CpMapping[] {
-  const records = readJson<CpMapping[]>(CP_MAP_STORAGE_KEY, DEFAULT_CP_MAPPINGS);
-  return Array.isArray(records) ? records.filter((record) => record && typeof record.alias === "string" && typeof record.tag === "string") : DEFAULT_CP_MAPPINGS;
+/** Load only user-created overrides, migrating the earlier single-tag key once. */
+export function loadCustomCpMappings(): CpMapping[] {
+  const stored = normalizeCpMappings(readJson<unknown>(CP_MAP_STORAGE_KEY, []));
+  if (stored.length || !canUseStorage() || window.localStorage.getItem(CP_MAP_STORAGE_KEY) !== null) return stored;
+
+  const migrated = normalizeCpMappings(readJson<unknown>(LEGACY_CP_MAP_STORAGE_KEY, []));
+  if (migrated.length) writeJson(CP_MAP_STORAGE_KEY, migrated);
+  return migrated;
 }
 
-export function persistCpMappings(mappings: CpMapping[]): void {
-  writeJson(CP_MAP_STORAGE_KEY, mappings);
+/** Merge user overrides onto the built-in cross-platform vocabulary. */
+export function mergeCpMappings(customMappings: CpMapping[]): CpMapping[] {
+  const normalizedCustom = normalizeCpMappings(customMappings);
+  const customByAlias = new Map(normalizedCustom.map((mapping) => [mapping.alias, mapping]));
+  const defaults = DEFAULT_CP_MAPPINGS.map((mapping) => customByAlias.get(mapping.alias) || mapping);
+  const additions = normalizedCustom.filter((mapping) => !DEFAULT_CP_MAPPINGS.some((item) => item.alias === mapping.alias));
+  return [...defaults, ...additions];
+}
+
+export function loadCpMappings(): CpMapping[] {
+  return mergeCpMappings(loadCustomCpMappings());
+}
+
+/** Persist only custom mappings so a reset can always restore the system defaults. */
+export function persistCpMappings(customMappings: CpMapping[]): void {
+  writeJson(CP_MAP_STORAGE_KEY, normalizeCpMappings(customMappings));
 }
 
 export function upsertCpMapping(mappings: CpMapping[], next: CpMapping, previousAlias?: string): CpMapping[] {
-  const alias = next.alias.trim();
-  const tag = next.tag.trim();
-  if (!alias || !tag) return mappings;
-  return [{ alias, tag }, ...mappings.filter((mapping) => mapping.alias !== alias && mapping.alias !== previousAlias)];
+  const normalized = normalizeCpMapping(next);
+  if (!normalized) return mappings;
+  return [normalized, ...normalizeCpMappings(mappings).filter((mapping) => mapping.alias !== normalized.alias && mapping.alias !== previousAlias)];
+}
+
+export function isCustomCpMapping(mapping: CpMapping, customMappings: CpMapping[]): boolean {
+  return customMappings.some((item) => item.alias === mapping.alias);
 }
 
 export function loadSearchHistory(): string[] {

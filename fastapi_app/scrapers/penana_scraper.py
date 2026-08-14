@@ -39,10 +39,12 @@ class PenanaScraper(BaseScraper):
         search_url = f"{self.base_url}/search?&t=story&genre=all&filter=&rating_multiple=0,1,2&search={quote(trimmed_keyword, safe='')}"
         items: list[ScrapedFanfic] = []
         detail_outcomes: list[bool] = []
+        official_total: int | None = None
         try:
             lightweight_html = self._fetch_public_search_html(trimmed_keyword)
             if lightweight_html:
                 items = self.parse_results(lightweight_html, trimmed_keyword)
+                official_total = self.extract_total_works(lightweight_html)
 
             # Penana Finder renders many public cards client-side. Use the rendered page
             # only when the ordinary public request has no verified story cards.
@@ -74,6 +76,7 @@ class PenanaScraper(BaseScraper):
                             pass
                         html = page_obj.content()
                         items = self.parse_results(html, trimmed_keyword)
+                        official_total = self.extract_total_works(html)
                         detail_outcomes = [
                             self._enrich_from_public_detail(page_obj, item)
                             for item in items[: self.detail_enrichment_limit]
@@ -86,7 +89,10 @@ class PenanaScraper(BaseScraper):
                 self.last_warning = f"[Penana] No verified public story result matched '{trimmed_keyword}'"
             elif detail_outcomes and not any(detail_outcomes):
                 self.last_warning = "[Penana] Public detail metadata is verification-protected; optional fields were left unknown."
-            return {"items": items, "total_works": len(items), "total_pages": 1}
+            # Do not use the visible page-card length as an all-site count. If
+            # Penana does not render a verified result heading, callers receive
+            # zero rather than an inflated official total.
+            return {"items": items, "total_works": official_total or 0, "total_pages": 1}
         except Exception as error:
             self.last_warning = f"[Penana] Request unavailable or parse failed safely: {error}"
             print(self.last_warning)
@@ -151,6 +157,32 @@ class PenanaScraper(BaseScraper):
             )
             seen_urls.add(url)
         return results
+
+    @staticmethod
+    def extract_total_works(html: str) -> int | None:
+        """Read Penana Finder's declared result count from its search title bar.
+
+        The Finder has used both Traditional Chinese and English title variants
+        across its rendered and non-rendered pages. Only explicit result labels
+        are considered; ordinary card metadata and pagination are excluded.
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        title_nodes = soup.select(
+            "h1, h2, h3, .search-title, .searchTitle, .search-result-title, "
+            ".searchResultTitle, .finder-title, [class*='search'][class*='title'], "
+            "[class*='result'][class*='title']"
+        )
+        candidate_text = " ".join(node.get_text(" ", strip=True) for node in title_nodes)
+        patterns = (
+            r"(?:search\s*results?|results?)\s*[:：(]?\s*\(?\s*([\d,]+)\s*\)?",
+            r"(?:found|找到|搜尋結果(?:共)?|共)\s*([\d,]+)\s*(?:stories?|works?|作品|項目|筆|本|部|結果)",
+            r"([\d,]+)\s*(?:stories?|works?|作品|項目|筆|本|部|結果)\s*(?:found|搜尋結果)?",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, candidate_text, re.IGNORECASE)
+            if match:
+                return int(match.group(1).replace(",", ""))
+        return None
 
     def _enrich_from_public_detail(self, page_obj, item: ScrapedFanfic) -> bool:
         """Populate only metadata explicitly exposed by a public Penana story page.

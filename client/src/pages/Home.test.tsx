@@ -134,7 +134,7 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "義忍", platforms: ["ao3", "lofter", "doujin", "waterwriter", "penana", "cxc"], page: 1, forceRefresh: false },
+      data: { keyword: "義忍", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
     await waitFor(() => expect(screen.getByLabelText("平台連線狀態")).toBeTruthy());
     expect(screen.getByText("冷卻限制中")).toBeTruthy();
@@ -143,7 +143,7 @@ describe("Home pagination interactions", () => {
     expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "義忍", platforms: ["waterwriter"], page: 1, forceRefresh: true },
+      data: { keyword: "義忍", platforms: ["waterwriter"], page: 1, forceRefresh: true, customCpMappings: [] },
     });
   });
 
@@ -219,25 +219,55 @@ describe("Home pagination interactions", () => {
     render(<Home />);
 
     fireEvent.click(screen.getByRole("button", { name: /FILTERS/ }));
-    const lofterCheckbox = screen.getByRole("checkbox", { name: "搜尋 LOFTER" });
     const doujinCheckbox = screen.getByRole("checkbox", { name: "搜尋 同人誌中心" });
     const waterwriterCheckbox = screen.getByRole("checkbox", { name: "搜尋 在水裡寫字" });
     const penanaCheckbox = screen.getByRole("checkbox", { name: "搜尋 PENANA" });
     const cxcCheckbox = screen.getByRole("checkbox", { name: "搜尋 CxC 創利市集" });
-    expect(lofterCheckbox.getAttribute("aria-checked")).toBe("true");
+    expect(screen.queryByRole("checkbox", { name: "搜尋 LOFTER" })).toBeNull();
     expect(doujinCheckbox.getAttribute("aria-checked")).toBe("true");
     expect(waterwriterCheckbox.getAttribute("aria-checked")).toBe("true");
     expect(penanaCheckbox.getAttribute("aria-checked")).toBe("true");
     expect(cxcCheckbox.getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(lofterCheckbox);
-    expect(lofterCheckbox.getAttribute("aria-checked")).toBe("false");
-
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "花" } });
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
 
     await waitFor(() => expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "花", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc"], page: 1, forceRefresh: false },
+      data: { keyword: "花", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
+  });
+
+  it("filters by an adapter card, shows active state, and restores all results on a second click", async () => {
+    mockState.primaryPayload = {
+      items: [
+        { title: "AO3 ONLY", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/8123", tags: "", summary: "", scraped_at: "2026-01-01T00:00:00Z" },
+        { title: "WATER ONLY", author: "Author", platform: "在水裡寫字", url: "https://slashtw.space/forum.php?mod=viewthread&tid=8123", tags: "", summary: "", scraped_at: "2026-01-01T00:00:00Z" },
+      ],
+      totalWorks: 2,
+      totalPages: 1,
+      page: 1,
+      loadedThroughPage: 1,
+      nextPage: null,
+      hasMore: false,
+      platformStatuses: [
+        { platformId: "ao3", label: "AO3", status: "success", itemCount: 1, translatedQuery: "花" },
+        { platformId: "waterwriter", label: "在水裡寫字", status: "success", itemCount: 1, translatedQuery: "花" },
+      ],
+    };
+    render(<Home />);
+
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "花" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+    await waitFor(() => expect(screen.getByText("WATER ONLY")).toBeTruthy());
+
+    const ao3Card = screen.getByRole("button", { name: "篩選 AO3 平台結果" });
+    fireEvent.click(ao3Card);
+    expect(ao3Card.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("AO3 ONLY")).toBeTruthy();
+    expect(screen.queryByText("WATER ONLY")).toBeNull();
+
+    fireEvent.click(ao3Card);
+    expect(ao3Card.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByText("WATER ONLY")).toBeTruthy();
   });

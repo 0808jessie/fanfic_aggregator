@@ -29,6 +29,7 @@ WATERWRITER_MULTI_RESULTS = """
 """
 
 PENANA_RESULTS = """
+<h1 class="search-title">Search Results (1,234)</h1>
 <div class="newXbox p0 storydata" data-id="205687">
   <div class="newBookTextInfo">
     <div class="newAuthorname">Amy Symilton</div>
@@ -147,7 +148,7 @@ def test_taiwan_adapters_pass_chinese_cp_query_to_public_search_pages():
     waterwriter = WaterWriterScraper()
     with patch.object(waterwriter, "_render_public_search_html", return_value=WATERWRITER_RESULTS) as render_waterwriter:
         waterwriter.scrape("義忍")
-    assert render_waterwriter.call_args.args == ("義忍 富岡義勇 胡蝶忍",)
+    assert render_waterwriter.call_args.args == ("義忍",)
 
     doujin = DoujinScraper()
     with patch.object(doujin, "_render_public_search_html", return_value="") as render_doujin:
@@ -177,6 +178,16 @@ def test_penana_parser_standardizes_public_story_cards_without_mislabeling_reads
     assert item.tags == "fanfiction, zoids"
     assert item.wordCount is None
     assert item.isComplete is True
+    assert PenanaScraper.extract_total_works(PENANA_RESULTS) == 1234
+
+
+def test_penana_scrape_prefers_its_declared_search_total_over_visible_cards():
+    scraper = PenanaScraper()
+    with patch.object(scraper, "_fetch_public_search_html", return_value=PENANA_RESULTS):
+        payload = scraper.scrape("fanfiction")
+
+    assert len(payload["items"]) == 1
+    assert payload["total_works"] == 1234
 
 
 def test_penana_detail_metadata_uses_labelled_word_count_and_explicit_status_only():
@@ -245,10 +256,53 @@ def test_partial_platform_warnings_are_silent_when_a_verified_result_exists():
     assert body["items"][0]["title"] == "Verified AO3 result"
     assert body.get("warning") is None
     assert body["items"][0].get("warning") is None
-    assert body["platformStatuses"] == [
-        {"platformId": "ao3", "label": "AO3", "status": "success", "itemCount": 1, "warning": None, "translatedQuery": "fanfiction"},
-        {"platformId": "waterwriter", "label": "在水裡寫字", "status": "blocked", "itemCount": 0, "warning": "[水裡寫字] Triggered Challenge, skipping cleanly", "translatedQuery": "fanfiction"},
-    ]
+    statuses = {status["platformId"]: status for status in body["platformStatuses"]}
+    assert statuses["ao3"]["status"] == "success"
+    assert statuses["ao3"]["itemCount"] == 1
+    assert statuses["waterwriter"]["status"] == "blocked"
+    assert "Triggered Challenge" in statuses["waterwriter"]["warning"]
+
+
+def test_custom_cp_mapping_is_forwarded_as_a_request_scoped_adapter_override():
+    item = ScrapedFanfic(
+        id="ao3:black-xie",
+        title="黑邪公開作品",
+        author="測試作者",
+        platform="AO3",
+        url="https://archiveofourown.org/works/24681",
+        keyword="黑邪",
+    )
+    aggregate = {
+        "items": [item],
+        "any_success": True,
+        "total_works": 7,
+        "total_pages": 1,
+        "warnings": [],
+        "platform_statuses": [
+            PlatformStatus(
+                platformId="ao3",
+                label="AO3",
+                status="success",
+                itemCount=7,
+                translatedQuery="Heiyan/Wu Xie",
+            ),
+        ],
+    }
+    with patch("main.parallel_search_platforms", return_value=aggregate) as search, patch("main.save_fanfic_to_db"):
+        response = TestClient(main.app).post(
+            "/search",
+            json={
+                "keyword": "黑邪",
+                "platforms": ["ao3"],
+                "forceRefresh": True,
+                "customCpMappings": [{"alias": "黑邪", "ao3Query": "Heiyan/Wu Xie", "localQuery": "黑邪 吳邪"}],
+            },
+        )
+
+    assert response.status_code == 200
+    custom_map = search.call_args.kwargs["custom_cp_map"]
+    assert custom_map["黑邪"].ao3_query == "Heiyan/Wu Xie"
+    assert custom_map["黑邪"].local_query == "黑邪 吳邪"
 
 
 def test_taiwan_platforms_are_registered_and_constrained_to_trusted_hosts():

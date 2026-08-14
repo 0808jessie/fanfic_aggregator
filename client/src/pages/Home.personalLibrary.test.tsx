@@ -75,9 +75,12 @@ describe("Home personal reading tools", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: /CP 詞庫管理/ })[0]);
     fireEvent.change(screen.getByLabelText("中文縮寫"), { target: { value: "黑邪" } });
-    fireEvent.change(screen.getByLabelText("標準 Tag"), { target: { value: "Heiyan/Wu Xie" } });
-    fireEvent.click(screen.getByRole("button", { name: "新增" }));
+    fireEvent.change(screen.getByLabelText("AO3 關係標籤"), { target: { value: "Heiyan/Wu Xie" } });
+    fireEvent.change(screen.getByLabelText("繁中本地關鍵字"), { target: { value: "黑邪 吳邪" } });
+    fireEvent.click(screen.getByRole("button", { name: "新增自訂對照" }));
     expect(screen.getByText("黑邪")).toBeTruthy();
     expect(screen.getByText("Heiyan/Wu Xie")).toBeTruthy();
+    expect(screen.getByText("黑邪 吳邪")).toBeTruthy();
+    expect(window.localStorage.getItem("sui-read-custom-cp-map")).toContain("黑邪");
   });
 });

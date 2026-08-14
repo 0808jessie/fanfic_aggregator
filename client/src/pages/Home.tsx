@@ -47,9 +47,10 @@ import { Input } from "@/components/ui/input";
 import { BookmarkEditorDialog, CpMappingManagerDialog, SavedBookmarksGrid } from "@/components/PersonalLibrary";
 import {
   loadBookmarks,
-  loadCpMappings,
+  loadCustomCpMappings,
   loadFilterPreset,
   loadSearchHistory,
+  mergeCpMappings,
   persistBookmarks,
   persistCpMappings,
   persistFilterPreset,
@@ -62,7 +63,6 @@ import {
 
 const PLATFORMS = [
   { id: "ao3", label: "AO3", detail: "ARCHIVE OF OUR OWN", tone: "cyan" },
-  { id: "lofter", label: "LOFTER", detail: "LOFTER.COM", tone: "pink" },
   { id: "doujin", label: "同人誌中心", detail: "DOUJIN.COM.TW", tone: "violet" },
   { id: "waterwriter", label: "在水裡寫字", detail: "SLASHTW.SPACE", tone: "amber" },
   { id: "penana", label: "PENANA", detail: "PENANA.COM", tone: "teal" },
@@ -77,7 +77,6 @@ function platformMeta(platform: string) {
 }
 
 function platformToneClass(tone: (typeof PLATFORMS)[number]["tone"]) {
-  if (tone === "pink") return "border-[#eea3bb] bg-[#ffe3eb] text-[#8b3e59]";
   if (tone === "violet") return "border-[#c9bcf2] bg-[#f0ecff] text-[#5c4e87]";
   if (tone === "amber") return "border-[#e8c681] bg-[#fff4d8] text-[#8b671e]";
   if (tone === "teal") return "border-[#79cdbd] bg-[#ddf6ef] text-[#176d61]";
@@ -122,7 +121,8 @@ function completePlatformStatuses(
 export default function Home() {
   const [keyword, setKeyword] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
-  const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformId[]>(["ao3", "lofter", "doujin", "waterwriter", "penana", "cxc"]);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformId[]>(["ao3", "doujin", "waterwriter", "penana", "cxc"]);
+  const [activePlatformFilter, setActivePlatformFilter] = useState<PlatformId | null>(null);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [platformStatuses, setPlatformStatuses] = useState<PlatformStatus[]>([]);
   const [activeView, setActiveView] = useState<"search" | "bookmarks">("search");
@@ -130,6 +130,7 @@ export default function Home() {
   const [bookmarkTarget, setBookmarkTarget] = useState<SearchResult | null>(null);
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
   const [cpMappings, setCpMappings] = useState<CpMapping[]>([]);
+  const [customCpMappings, setCustomCpMappings] = useState<CpMapping[]>([]);
   const [cpManagerOpen, setCpManagerOpen] = useState(false);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [searchWarning, setSearchWarning] = useState<string | null>(null);
@@ -233,18 +234,22 @@ export default function Home() {
   );
 
   const displayedResults = useMemo(
-    () => filterAndSortResults(results, activeQuery || keyword.trim(), {
-      wordCount: wordCountFilter,
-      completion: completionFilter,
-      sort: sortMode,
-    }),
-    [results, activeQuery, keyword, wordCountFilter, completionFilter, sortMode],
+    () => filterAndSortResults(
+      activePlatformFilter
+        ? results.filter((result) => platformMeta(result.platform).id === activePlatformFilter)
+        : results,
+      activeQuery || keyword.trim(),
+      { wordCount: wordCountFilter, completion: completionFilter, sort: sortMode },
+    ),
+    [results, activePlatformFilter, activeQuery, keyword, wordCountFilter, completionFilter, sortMode],
   );
   const isRetryingSinglePlatform = searchMutation.isPending && Boolean(retryingPlatformRef.current);
 
   useEffect(() => {
     setBookmarks(loadBookmarks());
-    setCpMappings(loadCpMappings());
+    const savedCustomMappings = loadCustomCpMappings();
+    setCustomCpMappings(savedCustomMappings);
+    setCpMappings(mergeCpMappings(savedCustomMappings));
     setSearchHistory(loadSearchHistory());
     const preset = loadFilterPreset();
     setWordCountFilter(preset.wordCount);
@@ -271,6 +276,10 @@ export default function Home() {
     });
   };
 
+  const togglePlatformQuickFilter = (platform: PlatformId) => {
+    setActivePlatformFilter((current) => current === platform ? null : platform);
+  };
+
   const runSearch = (forceRefresh: boolean, requestedKeyword?: string, platformOverride?: PlatformId[]) => {
     const trimmedKeyword = (requestedKeyword ?? keyword).trim();
     if (!trimmedKeyword) {
@@ -285,6 +294,7 @@ export default function Home() {
     persistSearchHistory(nextHistory);
     setActiveView("search");
     setSearchWarning(null);
+    if (!retryPlatform) setActivePlatformFilter(null);
     if (!retryPlatform) setPlatformStatuses([]);
     setElapsedMs(0);
     setCompletedElapsedMs(null);
@@ -293,7 +303,7 @@ export default function Home() {
     searchMutation.mutate({
       path: "/search",
       method: "POST",
-      data: { keyword: trimmedKeyword, platforms: platformOverride ?? selectedPlatforms, page: 1, forceRefresh },
+      data: { keyword: trimmedKeyword, platforms: platformOverride ?? selectedPlatforms, page: 1, forceRefresh, customCpMappings },
     });
   };
 
@@ -307,7 +317,7 @@ export default function Home() {
     loadMoreMutation.mutate({
       path: "/search",
       method: "POST",
-      data: { keyword: activeQuery, platforms: selectedPlatforms, page: pagination.nextPage, forceRefresh: false },
+      data: { keyword: activeQuery, platforms: selectedPlatforms, page: pagination.nextPage, forceRefresh: false, customCpMappings },
     });
   };
 
@@ -326,9 +336,10 @@ export default function Home() {
     showInfoToast("已從閱讀清單移除");
   };
 
-  const updateCpMappings = (next: CpMapping[]) => {
-    setCpMappings(next);
-    persistCpMappings(next);
+  const updateCpMappings = (nextCustomMappings: CpMapping[]) => {
+    setCustomCpMappings(nextCustomMappings);
+    setCpMappings(mergeCpMappings(nextCustomMappings));
+    persistCpMappings(nextCustomMappings);
   };
 
   const saveCurrentFilters = () => {
@@ -430,11 +441,11 @@ export default function Home() {
 
         {activeView === "search" && hasSearched && platformStatuses.length > 0 && (
           <section aria-label="平台連線狀態" className="mt-5 border border-[#10151b]/15 bg-white/60 p-4 sm:p-5">
-            <div className="mb-4 flex flex-col gap-1 border-b border-[#10151b]/10 pb-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mb-4 flex flex-col gap-2 border-b border-[#10151b]/10 pb-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="font-mono text-[10px] font-bold uppercase tracking-[0.17em] text-[#58666e]">ADAPTER CONNECTIONS / 本次搜尋來源</div>
-              <span className="font-mono text-[9px] font-bold tracking-[0.12em] text-[#8a969c]">僅重試受阻、冷卻或連線失敗的來源</span>
+              <div className="flex items-center gap-3"><span className="font-mono text-[9px] font-bold tracking-[0.12em] text-[#8a969c]">點選卡片快速篩選；僅重試受阻來源</span><Button type="button" variant="ghost" size="sm" aria-pressed={!activePlatformFilter} onClick={() => setActivePlatformFilter(null)} className={`h-7 rounded-none border px-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] ${activePlatformFilter ? "border-[#10151b]/15 bg-white/60 text-[#66757d] hover:bg-[#d9f8f5]" : "border-[#45b9b2] bg-[#d9f8f5] text-[#197b75]"}`}>ALL / 全部</Button></div>
             </div>
-            <div className="grid gap-2 lg:grid-cols-6">
+            <div className="grid gap-2 lg:grid-cols-5">
               {platformStatuses.map((status) => {
                 const isSuccess = status.status === "success";
                 const isCooldown = status.status === "cooldown";
@@ -447,12 +458,22 @@ export default function Home() {
                       ? "border-[#efb4c4] bg-[#fff0f4] text-[#913a59]"
                       : "border-[#cfd6d8] bg-[#f4f6f5] text-[#65737a]";
                 const stateLabel = isSuccess ? "已連線" : isCooldown ? "冷卻限制中" : isBlocked ? "觸發人機保護" : status.status === "error" ? "連線逾時" : "無公開結果";
+                const isActiveFilter = activePlatformFilter === status.platformId;
                 return (
-                  <div key={status.platformId} className={`min-w-0 border p-3 ${tone}`}>
+                  <div
+                    key={status.platformId}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`篩選 ${status.label} 平台結果`}
+                    aria-pressed={isActiveFilter}
+                    onClick={() => togglePlatformQuickFilter(status.platformId as PlatformId)}
+                    onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); togglePlatformQuickFilter(status.platformId as PlatformId); } }}
+                    className={`min-w-0 cursor-pointer border p-3 transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#45b9b2] ${tone} ${isActiveFilter ? "border-2 border-[#10151b] shadow-[4px_4px_0_#10151b]" : ""}`}
+                  >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="font-mono text-[10px] font-bold uppercase tracking-[0.14em]">{status.label}</div>
-                        <div className="mt-1 font-mono text-[9px] font-bold tracking-[0.1em]">{stateLabel}{isSuccess ? ` · ${status.itemCount} 筆` : ""}</div>
+                        <div className="mt-1 font-mono text-[9px] font-bold tracking-[0.1em]">{stateLabel}{isSuccess ? ` · ${status.itemCount} 筆` : ""}{isActiveFilter ? " · FILTER ACTIVE" : ""}</div>
                       </div>
                       {isPlatformRetryable(status) && (
                         <Button
@@ -461,7 +482,7 @@ export default function Home() {
                           size="sm"
                           disabled={searchMutation.isPending}
                           aria-label={`重試 ${status.label}`}
-                          onClick={() => runSearch(true, activeQuery || keyword, [status.platformId as PlatformId])}
+                          onClick={(event) => { event.stopPropagation(); runSearch(true, activeQuery || keyword, [status.platformId as PlatformId]); }}
                           className="h-7 shrink-0 rounded-none border border-current px-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em] hover:bg-white/70"
                         >
                           <RotateCw className={`mr-1 h-3 w-3 ${searchMutation.isPending ? "animate-spin" : ""}`} />重試
@@ -485,7 +506,7 @@ export default function Home() {
               onRemove={removeBookmark}
             />
           ) : <>
-          {!hasSearched && !searchMutation.isPending && <div className="relative overflow-hidden border border-[#10151b]/15 bg-white/60 p-8 sm:p-12"><div className="absolute right-0 top-0 h-24 w-24 border-b border-l border-[#f2a4bc]" /><div className="absolute bottom-0 left-0 h-16 w-16 border-r border-t border-[#72d2cc]" /><div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-center"><div><div className="mb-5 flex h-12 w-12 items-center justify-center border border-[#72d2cc] bg-[#d9f8f5] text-[#197b75]"><Sparkles className="h-5 w-5" /></div><h3 className="text-2xl font-black tracking-[-0.06em]">輸入一組關鍵字，開始建立你的閱讀座標。</h3><p className="mt-3 max-w-xl text-sm leading-6 text-[#64727a]">系統會透過獨立的平台 Adapter 同時查詢 AO3、Lofter、同人誌中心、在水裡寫字與 Penana，並將可驗證作品整理成統一索引。</p></div><div className="grid grid-cols-2 gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#66757d]"><div className="border border-[#10151b]/10 bg-white/70 p-4"><Database className="mb-3 h-4 w-4 text-[#e27d9d]" />SQLITE CACHE</div><div className="border border-[#10151b]/10 bg-white/70 p-4"><BookOpen className="mb-3 h-4 w-4 text-[#45b9b2]" />UNIFIED META</div></div></div></div>}
+          {!hasSearched && !searchMutation.isPending && <div className="relative overflow-hidden border border-[#10151b]/15 bg-white/60 p-8 sm:p-12"><div className="absolute right-0 top-0 h-24 w-24 border-b border-l border-[#f2a4bc]" /><div className="absolute bottom-0 left-0 h-16 w-16 border-r border-t border-[#72d2cc]" /><div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-center"><div><div className="mb-5 flex h-12 w-12 items-center justify-center border border-[#72d2cc] bg-[#d9f8f5] text-[#197b75]"><Sparkles className="h-5 w-5" /></div><h3 className="text-2xl font-black tracking-[-0.06em]">輸入一組關鍵字，開始建立你的閱讀座標。</h3><p className="mt-3 max-w-xl text-sm leading-6 text-[#64727a]">系統會透過獨立的平台 Adapter 同時查詢 AO3、同人誌中心、在水裡寫字、Penana 與 CxC，並將可驗證作品整理成統一索引。</p></div><div className="grid grid-cols-2 gap-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#66757d]"><div className="border border-[#10151b]/10 bg-white/70 p-4"><Database className="mb-3 h-4 w-4 text-[#e27d9d]" />SQLITE CACHE</div><div className="border border-[#10151b]/10 bg-white/70 p-4"><BookOpen className="mb-3 h-4 w-4 text-[#45b9b2]" />UNIFIED META</div></div></div></div>}
           {hasSearched && results.length === 0 && !searchMutation.isPending && (
             <div className="relative overflow-hidden border border-dashed border-[#10151b]/25 bg-white/45 px-6 py-16 text-center">
               <div className="absolute right-0 top-0 h-16 w-16 border-b border-l border-[#e27d9d]/20" />
@@ -588,7 +609,7 @@ export default function Home() {
           onSave={saveBookmark}
           onRemove={removeBookmark}
         />
-        <CpMappingManagerDialog open={cpManagerOpen} mappings={cpMappings} onOpenChange={setCpManagerOpen} onChange={updateCpMappings} />
+        <CpMappingManagerDialog open={cpManagerOpen} mappings={cpMappings} customMappings={customCpMappings} onOpenChange={setCpManagerOpen} onChange={updateCpMappings} />
       </main>
 
       <footer className="relative z-10 border-t border-[#10151b]/10 bg-[#eff4f2]/80"><div className="mx-auto flex max-w-[1440px] flex-col gap-3 px-5 py-6 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#738188] sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-12"><span>FANFIC // ATLAS — AGGREGATION PROTOCOL</span><span>BUILD 0.1 / ADAPTERS READY</span></div></footer>

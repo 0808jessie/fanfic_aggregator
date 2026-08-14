@@ -34,6 +34,15 @@ class SearchQuery(BaseModel):
     platforms: Optional[list[str]] = None
     page: int = Field(default=1, ge=1)
     forceRefresh: bool = False
+    customCpMappings: list["CustomCpMapping"] = Field(default_factory=list)
+
+
+class CustomCpMapping(BaseModel):
+    """A request-scoped browser-local CP override supplied by the UI."""
+
+    alias: str = Field(min_length=1, max_length=80)
+    ao3Query: str = Field(min_length=1, max_length=320)
+    localQuery: str = Field(min_length=1, max_length=320)
 
 
 class PlatformStatus(BaseModel):
