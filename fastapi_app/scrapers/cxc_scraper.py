@@ -15,6 +15,7 @@ from urllib.parse import quote_plus, urljoin
 from bs4 import BeautifulSoup
 import requests
 
+from constants.cp_tags import get_keyword_for_platform
 from models import ScrapedFanfic
 from scrapers.base_scraper import BaseScraper
 
@@ -99,10 +100,10 @@ class CxCScraper(BaseScraper):
         if not keyword.strip():
             return {"items": [], "total_works": 0, "total_pages": 1}
 
-        # CxC's keyword endpoint accepts the user's literal search term. Unlike
-        # AO3 it does not document multi-term CP expansion semantics, so sending
-        # the translated local query can over-constrain an otherwise valid tag.
-        public_query = keyword.strip()
+        # CxC does not support AO3-style boolean operators or quote syntax.
+        # Known CP aliases have a dedicated literal query; free text is also
+        # normalized defensively before it is sent to the public API/page.
+        public_query = self.clean_cxc_keyword(get_keyword_for_platform(keyword, "cxc"))
         try:
             api_payload = self._fetch_public_api_results(public_query)
             if api_payload is not None:
@@ -111,7 +112,14 @@ class CxCScraper(BaseScraper):
                     item.keyword = keyword
                 total_works = api_payload["total_works"] or len(items)
                 if not items:
-                    self.last_warning = f"[CxC] No verified public result matched '{keyword}'"
+                    return {
+                        "items": [],
+                        "total_works": 0,
+                        "total_pages": 1,
+                        "status": "success",
+                        "count": 0,
+                        "message": "無公開結果",
+                    }
                 print(f"[CxC] 官方公開 API 成功抓取 {len(items)} 筆，公開總數 {total_works}")
                 return {"items": items, "total_works": total_works, "total_pages": 1}
 
@@ -121,7 +129,14 @@ class CxCScraper(BaseScraper):
                 item.keyword = keyword
             total_works = self.extract_total_works(html) or len(items)
             if not items:
-                self.last_warning = f"[CxC] No verified public result matched '{keyword}'"
+                return {
+                    "items": [],
+                    "total_works": 0,
+                    "total_pages": 1,
+                    "status": "success",
+                    "count": 0,
+                    "message": "無公開結果",
+                }
             print(f"[CxC] 成功抓取 {len(items)} 筆，公開總數 {total_works}")
             return {"items": items, "total_works": total_works, "total_pages": 1}
         except _PublicSearchUnavailable as error:
@@ -220,6 +235,9 @@ class CxCScraper(BaseScraper):
                 author = str(store.get("name") or "").strip()
             tags = raw_item.get("hash_tag")
             tag_names = [str(tag).strip() for tag in tags if str(tag).strip()] if isinstance(tags, list) else []
+            intro = str(raw_item.get("intro") or "").strip()
+            if not self.matches_query_fields(keyword, title, author, tag_names, intro):
+                continue
             cover_url = str(raw_item.get("cover_photo") or "").strip()
             results.append(ScrapedFanfic(
                 id=f"cxc:{work_id}",
@@ -228,13 +246,35 @@ class CxCScraper(BaseScraper):
                 platform="CxC 創利市集",
                 url=url,
                 tags=", ".join(dict.fromkeys(tag_names)),
-                summary=str(raw_item.get("intro") or "").strip()[:800],
+                summary=intro[:800],
                 coverUrl=cover_url if cover_url.startswith("https://cxc.today/") else None,
                 scraped_at=datetime.utcnow(),
                 keyword=keyword,
             ))
             seen_urls.add(url)
         return results
+
+    @staticmethod
+    def clean_cxc_keyword(keyword: str) -> str:
+        """Keep CxC queries as literal human-readable terms, never AO3 syntax."""
+        without_quotes = re.sub(r"[\"'“”‘’()]+", " ", keyword)
+        without_boolean = re.sub(r"\b(?:OR|AND)\b", " ", without_quotes, flags=re.IGNORECASE)
+        return re.sub(r"\s+", " ", without_boolean).strip()
+
+    @staticmethod
+    def matches_query_fields(
+        keyword: str,
+        title: str,
+        author: str,
+        tags: list[str],
+        summary: str,
+    ) -> bool:
+        """Match CxC title, creator, custom tags, and intro consistently."""
+        query_terms = [term.casefold() for term in keyword.split() if term]
+        if not query_terms:
+            return True
+        searchable = " ".join((title, author, " ".join(tags), summary)).casefold()
+        return any(term in searchable for term in query_terms)
 
     @staticmethod
     def _safe_positive_int(value: object) -> int:
@@ -337,15 +377,16 @@ class CxCScraper(BaseScraper):
             title_node = card.select_one(".info__title, .info__name, .work-title, .title, h2, h3, h4, [class*='title'], [class*='Title']")
             title = (title_node or anchor).get_text(" ", strip=True)
             card_text = card.get_text(" ", strip=True)
-            if not title or (query_terms and not any(term in f"{title} {card_text}".casefold() for term in query_terms)):
-                continue
             author_node = card.select_one(".info__author, .creator, .author, [class*='creator'], [class*='Creator'], [class*='author']")
+            author = author_node.get_text(" ", strip=True) if author_node else "未知創作者"
             image = card.select_one("img[src]") or anchor.select_one("img[src]")
             tags = [node.get_text(" ", strip=True) for node in card.select(".tag, .tags a, [class*='tag']") if node.get_text(" ", strip=True)]
+            if not title or not self.matches_query_fields(keyword, title, author, tags, card_text):
+                continue
             results.append(ScrapedFanfic(
                 id=f"cxc:{url}",
                 title=title[:240],
-                author=author_node.get_text(" ", strip=True)[:160] if author_node else "未知創作者",
+                author=author[:160],
                 platform="CxC 創利市集",
                 url=url,
                 tags=", ".join(dict.fromkeys(tags)),

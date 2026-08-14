@@ -45,13 +45,15 @@ PLATFORM_LABELS = {
     "waterwriter": "在水裡寫字",
     "penana": "Penana",
 }
-LOCAL_CP_PLATFORM_IDS = frozenset(("cxc", "doujin", "waterwriter"))
+LOCAL_CP_PLATFORM_IDS = frozenset(("doujin", "waterwriter"))
 
 
 def translated_query_for_platform(platform_key: str, keyword: str) -> str:
     """Expose the adapter's CP translation without altering free-text input."""
     if platform_key == "ao3":
         return get_keyword_for_platform(keyword, "ao3")
+    if platform_key == "cxc":
+        return get_keyword_for_platform(keyword, "cxc")
     if platform_key in LOCAL_CP_PLATFORM_IDS:
         return get_keyword_for_platform(keyword, "local")
     return keyword.strip()

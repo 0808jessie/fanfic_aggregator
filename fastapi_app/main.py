@@ -215,7 +215,7 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
         total_works = int(aggregate.get("total_works", 0) or 0)
         total_pages = int(aggregate.get("total_pages", 0) or 0)
         platform_statuses = aggregate.get("platform_statuses", [])
-        any_success = bool(aggregate.get("any_success")) and bool(fresh_results)
+        any_success = bool(aggregate.get("any_success"))
         platform_warnings = [str(message) for message in aggregate.get("warnings", []) if message]
         # A best-effort platform being blocked must not interrupt results from an
         # available source. Diagnostics remain in adapter/server logs and are only
@@ -261,6 +261,23 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
                 loadedThroughPage=loaded_through_page,
                 nextPage=loaded_through_page + 1 if has_more else None,
                 hasMore=has_more,
+                platformStatuses=platform_statuses,
+            )
+
+        # A source that completed normally but found no public work is not a
+        # connection failure. Preserve its platform-level empty status without
+        # creating a stale-cache fallback or a global failed-search envelope.
+        if any_success and not fresh_results:
+            return SearchResponse(
+                items=[],
+                source="live",
+                warning=None,
+                totalWorks=0,
+                totalPages=max(1, total_pages),
+                page=requested_page,
+                loadedThroughPage=requested_page,
+                nextPage=None,
+                hasMore=False,
                 platformStatuses=platform_statuses,
             )
 

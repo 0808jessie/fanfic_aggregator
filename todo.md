@@ -177,3 +177,11 @@
 - [x] 補上常駐平台狀態與 CxC API／DOM 等待的回歸測試，完成安全降級與 UI 驗證
 - [x] 用可公開命中的 CxC 關鍵字完成 live 驗證，證明 Adapter 可回傳真實作品的標題、作者與可信連結；義忍已由官方公開 API 回傳 15 筆作品
 - [x] 儲存本輪 CxC 常駐狀態卡與搜尋修正 checkpoint
+- [x] 稽核並新增 CxC 專屬 CP 純文字查詢，避免 AO3 布林運算式與引號流入 CxC
+- [x] 將 CxC 作品標題、作者、自訂標籤與簡介納入 CP 多欄位相關性比對
+- [x] 區分 CxC 正常零結果與 API／渲染連線錯誤，讓無作品狀態不誤顯示為失敗
+- [x] 補上義忍、佐櫻與五夏等 CP 查詢回歸，完成 CxC 後端 live 驗證
+- [x] 以瀏覽器驗證 CxC 的佐櫻與正常零結果查詢，確認狀態卡分別呈現 success／empty 而非 error
+- [x] 以瀏覽器實際用僅 CxC 單一來源搜尋義忍，確認 ADAPTER CONNECTIONS 顯示 CxC 已連線而非 error，並保存驗證紀錄
+- [x] 修正 CxC 正常零結果仍顯示 DISCOVERY HALTED 的前端空狀態判斷，改為僅顯示來源專屬「無公開結果」
+- [ ] 儲存本輪 CxC CP 查詢轉譯、空結果與多欄位比對 checkpoint，記錄新 version ID 與對應驗證結果

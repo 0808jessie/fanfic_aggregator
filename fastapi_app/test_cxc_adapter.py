@@ -2,10 +2,14 @@ from pathlib import Path
 import sys
 from unittest.mock import MagicMock, patch
 
+from fastapi.testclient import TestClient
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import main
 from scrapers.cxc_scraper import CxCScraper, _PublicSearchUnavailable
+from constants.cp_tags import get_keyword_for_platform
+from models import PlatformStatus
 from scrapers.index import SCRAPERS, classify_platform_status, translated_query_for_platform
 
 
@@ -76,6 +80,113 @@ def test_cxc_prefers_verified_public_api_records_with_creator_work_urls():
     assert item.tags == "原創, 小說"
 
 
+def test_cxc_uses_clean_cp_alias_and_matches_title_tags_or_intro_fields():
+    scraper = CxCScraper()
+    response = MagicMock()
+    response.json.return_value = {
+        "code": 0,
+        "data": {
+            "total": 2,
+            "data": [
+                {
+                    "id": 1,
+                    "name": "未標題短篇",
+                    "partner": ["創作者"],
+                    "hash_tag": ["佐櫻", "火影忍者"],
+                    "intro": "以第七班為舞台的作品。",
+                    "store": {"url_name": "ninja", "name": "忍者書店"},
+                },
+                {
+                    "id": 2,
+                    "name": "無關作品",
+                    "partner": ["其他作者"],
+                    "hash_tag": ["原創"],
+                    "intro": "不含配對描述。",
+                    "store": {"url_name": "other", "name": "其他書店"},
+                },
+            ],
+        },
+    }
+    with patch("scrapers.cxc_scraper.requests.get", return_value=response) as request:
+        payload = scraper.scrape("佐櫻")
+
+    params = dict(request.call_args.kwargs["params"])
+    assert params["keyword"] == "佐櫻"
+    assert payload["total_works"] == 2
+    assert [item.title for item in payload["items"]] == ["未標題短篇"]
+    assert get_keyword_for_platform("佐櫻", "cxc") == "佐櫻"
+    assert CxCScraper.clean_cxc_keyword('"義忍" OR "富岡義勇"') == "義忍 富岡義勇"
+
+
+def test_cxc_rendered_card_keeps_cp_found_only_in_a_custom_tag_or_intro():
+    html = """
+    <div class="cxc-card-grid">
+      <a class="work-card" href="/@ninja/work/77">
+        <div class="cxc-work-card">
+          <div class="info__name">未標題短篇</div>
+          <div class="info__author">創作者</div>
+          <span class="tag">佐櫻</span>
+          <p>第七班的故事。</p>
+        </div>
+      </a>
+    </div>
+    """
+    items = CxCScraper().parse_results(html, "佐櫻")
+    assert len(items) == 1
+    assert items[0].tags == "佐櫻"
+
+
+def test_cxc_explicit_api_zero_results_are_successful_empty_not_error():
+    scraper = CxCScraper()
+    response = MagicMock()
+    response.json.return_value = {"code": 0, "data": {"total": 0, "data": []}}
+    with patch("scrapers.cxc_scraper.requests.get", return_value=response):
+        payload = scraper.scrape("五夏")
+
+    assert payload == {
+        "items": [],
+        "total_works": 0,
+        "total_pages": 1,
+        "status": "success",
+        "count": 0,
+        "message": "無公開結果",
+    }
+    assert scraper.last_warning is None
+    assert classify_platform_status(0, scraper.last_warning) == "empty"
+
+
+def test_search_api_preserves_completed_cxc_zero_result_as_live_empty():
+    aggregate = {
+        "items": [],
+        "any_success": True,
+        "total_works": 0,
+        "total_pages": 1,
+        "warnings": [],
+        "platform_statuses": [
+            PlatformStatus(
+                platformId="cxc",
+                label="CxC 創利市集",
+                status="empty",
+                itemCount=0,
+                translatedQuery="佐櫻不存在測試CP",
+            )
+        ],
+    }
+    with patch("main.parallel_search_platforms", return_value=aggregate):
+        response = TestClient(main.app).post(
+            "/search",
+            json={"keyword": "佐櫻不存在測試CP", "platforms": ["cxc"], "forceRefresh": True},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["source"] == "live"
+    assert body["warning"] is None
+    assert body["items"] == []
+    assert body["platformStatuses"][0]["status"] == "empty"
+
+
 def test_cxc_adapter_marks_unfinished_render_as_retryable_error_without_placeholder_data():
     scraper = CxCScraper()
     with patch.object(scraper, "_fetch_public_api_results", return_value=None), patch.object(
@@ -102,7 +213,7 @@ def test_cxc_only_treats_an_explicit_no_result_page_as_empty():
 def test_cxc_is_registered_translated_and_limited_to_trusted_work_urls():
     assert "cxc" in SCRAPERS
     assert main.canonical_platforms(["cxc"]) == ["cxc"]
-    assert translated_query_for_platform("cxc", "義忍") == "義忍 富岡義勇 胡蝶忍"
+    assert translated_query_for_platform("cxc", "義忍") == "義忍"
     assert CxCScraper.is_real_work_url("https://cxc.today/@mori/work/9001")
     assert CxCScraper.is_real_work_url("https://cxc.today/works/giyushino-summer")
     assert not CxCScraper.is_real_work_url("https://cxc.today/zh/search?keyword=%E7%BE%A9%E5%BF%8D")

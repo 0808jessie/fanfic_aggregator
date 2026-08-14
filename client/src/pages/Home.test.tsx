@@ -11,6 +11,7 @@ const mockState = vi.hoisted(() => ({
   responseWarning: null as string | null,
   responsePlatformStatuses: [] as unknown[],
   retryPayload: null as Record<string, unknown> | null,
+  primaryPayload: null as Record<string, unknown> | null,
 }));
 
 vi.mock("sonner", () => ({
@@ -37,7 +38,7 @@ vi.mock("@/lib/trpc", async () => {
                 const payload = retryingWaterwriter && mockState.retryPayload
                   ? mockState.retryPayload
                   : hookId === 0
-                  ? {
+                  ? mockState.primaryPayload ?? {
                       items: [{ title: "PAGE ONE", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/9001", tags: "富岡義勇/胡蝶忍, Post-Canon", relationships: ["富岡義勇/胡蝶忍"], characters: ["富岡義勇", "胡蝶忍"], summary: "", scraped_at: "2026-01-01T00:00:00Z" }],
                       totalWorks: 60,
                       totalPages: 3,
@@ -82,6 +83,7 @@ beforeEach(() => {
   mockState.responseWarning = null;
   mockState.responsePlatformStatuses = [];
   mockState.retryPayload = null;
+  mockState.primaryPayload = null;
 });
 
 describe("Home pagination interactions", () => {
@@ -159,6 +161,30 @@ describe("Home pagination interactions", () => {
     expect(screen.getAllByText("連線逾時").length).toBeGreaterThan(0);
     expect(screen.getAllByText("本次未收到來源回應，請單獨重試。").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "重試 CxC 創利市集" })).toBeTruthy();
+  });
+
+  it("renders a completed CxC zero-result search as source-specific empty state, not a global failure", async () => {
+    mockState.primaryPayload = {
+      items: [],
+      totalWorks: 0,
+      totalPages: 1,
+      page: 1,
+      loadedThroughPage: 1,
+      nextPage: null,
+      hasMore: false,
+      warning: null,
+      platformStatuses: [{ platformId: "cxc", label: "CxC 創利市集", status: "empty", itemCount: 0, translatedQuery: "佐櫻不存在測試CP" }],
+    };
+    render(<Home />);
+
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "佐櫻不存在測試CP" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+
+    await waitFor(() => expect(screen.getByText("NO VERIFIED STORIES")).toBeTruthy());
+    expect(screen.getByText("CxC 創利市集")).toBeTruthy();
+    expect(screen.getByText("無公開結果")).toBeTruthy();
+    expect(screen.queryByText("DISCOVERY HALTED")).toBeNull();
+    expect(screen.queryByText("目前無法取得外部作品索引。")).toBeNull();
   });
 
   it("merges a successfully retried platform without discarding other platform results", async () => {

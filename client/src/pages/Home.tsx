@@ -490,23 +490,22 @@ export default function Home() {
             <div className="relative overflow-hidden border border-dashed border-[#10151b]/25 bg-white/45 px-6 py-16 text-center">
               <div className="absolute right-0 top-0 h-16 w-16 border-b border-l border-[#e27d9d]/20" />
               <div className="mx-auto max-w-md">
-                <div className="mb-6 inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#fff5f7] text-[#e27d9d]">
-                  <X className="h-6 w-6" />
+                <div className="mb-6 inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#eff8f6] text-[#197b75]">
+                  <Search className="h-6 w-6" />
                 </div>
-                <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-[#e27d9d]">DISCOVERY HALTED</div>
-                <h3 className="mt-4 text-xl font-black tracking-tight">目前無法取得外部作品索引。</h3>
+                <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-[#197b75]">NO VERIFIED STORIES</div>
+                <h3 className="mt-4 text-xl font-black tracking-tight">此查詢暫無可驗證的公開作品。</h3>
                 <p className="mt-4 text-sm leading-relaxed text-[#66757d]">
-                  這可能是因為 AO3 / Lofter 伺服器目前有連線限制或防火牆阻擋，導致無法即時抓取。
-                  <br /><br />
-                  <span className="font-mono text-[10px] font-bold uppercase text-[#10151b]/40">Diagnostic / {searchWarning || "外部平台連線逾時或受阻，沒有可驗證作品。"}</span>
+                  可嘗試改用作品名、角色全名或不同 CP 別名。各來源的成功、無結果與可重試狀態，請查看上方 <span className="font-mono text-[10px] font-bold uppercase text-[#10151b]/55">ADAPTER CONNECTIONS</span>。
                 </p>
+                {platformStatuses.some(isPlatformRetryable) && <p className="mt-3 font-mono text-[10px] font-bold tracking-[0.08em] text-[#8b3e59]">受阻來源可由上方狀態卡單獨重試。</p>}
                 <Button 
                   type="button"
                   variant="outline" 
                   onClick={() => setHasSearched(false)}
                   className="mt-8 h-10 border-[#10151b]/10 font-mono text-[10px] font-bold uppercase tracking-widest"
                 >
-                  RETURN TO BASE
+                  NEW SEARCH
                 </Button>
               </div>
             </div>
