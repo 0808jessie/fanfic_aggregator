@@ -261,4 +261,8 @@
 - [x] 為 AO3 實作十秒專屬來源期限與過長布林查詢的原詞回退，保留成人偏好標頭
 - [x] 強化 Penana 現代瀏覽器請求標頭與 403／驗證頁來源級 blocked 狀態，不使用自動化規避
 - [x] 驗證 AO3／Penana 單一來源重試、Unix socket 代理與其他三個來源隔離；Python 71/71、Vitest 43/43、TypeScript 通過
-- [ ] 儲存本輪 AO3／Penana 最後調優 checkpoint
+- [x] 儲存本輪 AO3／Penana 最後調優 checkpoint（339081d6）
+- [x] 稽核 Penana 現行搜尋 URL、請求標頭、HTML 卡片解析與來源級 403 測試
+- [x] 改用最簡化公開搜尋 URL 與八秒有界 HTTP 請求，維持可驗證作品解析與安全 blocked 降級
+- [x] 驗證 Penana 單一來源「義忍」搜尋、403／空結果狀態、Unix socket 代理與完整回歸；Python 71/71、Vitest 43/43、TypeScript 通過
+- [ ] 儲存本輪 Penana 簡化公開搜尋 checkpoint

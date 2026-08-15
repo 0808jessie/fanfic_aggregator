@@ -20,9 +20,11 @@ class PenanaScraper(BaseScraper):
     detail_enrichment_limit = 3
     search_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
         "Referer": "https://www.penana.com/",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
         # Compatibility hints sent by an ordinary Chromium navigation. They do
         # not attempt to solve or bypass a verification challenge; 403 pages
         # remain a source-level blocked state.
@@ -31,7 +33,8 @@ class PenanaScraper(BaseScraper):
         "Sec-CH-UA-Platform": '"Windows"',
         "Sec-Fetch-Dest": "document",
         "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-User": "?1",
     }
 
     def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False) -> dict[str, object]:
@@ -63,9 +66,12 @@ class PenanaScraper(BaseScraper):
         try:
             response = requests.get(
                 f"{self.base_url}/search",
-                params={"t": "story", "genre": "all", "filter": "", "rating_multiple": "0,1,2", "search": keyword},
+                # Keep the public search request small. Extra Finder filters
+                # are optional UI state and are not required to retrieve
+                # server-rendered story cards.
+                params={"t": "story", "search": keyword},
                 headers=self.search_headers,
-                timeout=(3, 6),
+                timeout=(3, 8),
             )
             if response.status_code in (403, 520, 521, 522, 525):
                 retry_after = response.headers.get("Retry-After") if getattr(response, "headers", None) else None
