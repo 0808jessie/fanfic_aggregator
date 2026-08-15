@@ -69,6 +69,7 @@ const PLATFORMS = [
   { id: "waterwriter", label: "在水裡寫字", detail: "SLASHTW.SPACE", tone: "amber" },
   { id: "penana", label: "PENANA", detail: "PENANA.COM", tone: "teal" },
   { id: "cxc", label: "CxC 創利市集", detail: "CXC.TODAY", tone: "violet" },
+  { id: "pixiv", label: "Pixiv", detail: "PIXIV.NET", tone: "rose" },
 ] as const;
 
 type PlatformId = (typeof PLATFORMS)[number]["id"];
@@ -131,7 +132,8 @@ export default function Home() {
   const [keyword, setKeyword] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
   const [searchMode, setSearchMode] = useState<"keyword" | "author">("keyword");
-  const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformId[]>(["ao3", "doujin", "waterwriter", "penana", "cxc"]);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformId[]>(["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"]);
+  const [selectedLanguage, setSelectedLanguage] = useState<"all" | "zh" | "en" | "ja">("all");
   const [activePlatformFilter, setActivePlatformFilter] = useState<PlatformId | null>(null);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [platformStatuses, setPlatformStatuses] = useState<PlatformStatus[]>([]);
@@ -323,7 +325,7 @@ export default function Home() {
     searchMutation.mutate({
       path: "/search",
       method: "POST",
-      data: { keyword: trimmedKeyword, mode: requestedMode, platforms: platformOverride ?? selectedPlatforms, page: 1, forceRefresh, customCpMappings },
+      data: { keyword: trimmedKeyword, mode: requestedMode, platforms: platformOverride ?? selectedPlatforms, page: 1, forceRefresh, customCpMappings, language: selectedLanguage },
     });
   };
 
@@ -343,7 +345,7 @@ export default function Home() {
     loadMoreMutation.mutate({
       path: "/search",
       method: "POST",
-      data: { keyword: activeQuery, mode: searchMode, platforms: selectedPlatforms, page: pagination.nextPage, forceRefresh: false, customCpMappings },
+      data: { keyword: activeQuery, mode: searchMode, platforms: selectedPlatforms, page: pagination.nextPage, forceRefresh: false, customCpMappings, language: selectedLanguage },
     });
   };
 
@@ -441,6 +443,22 @@ export default function Home() {
               <div>
                 <div className="mb-2 flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#61707a]"><Filter className="h-3.5 w-3.5" /> SOURCE ADAPTERS</div>
                 <div className="flex flex-wrap gap-2">{PLATFORMS.map((platform) => { const active = selectedPlatforms.includes(platform.id); return <label key={platform.id} className={`group flex cursor-pointer items-center gap-2 border px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.13em] transition-colors ${active ? platform.tone === "cyan" ? "border-[#5acbc4] bg-[#d9f8f5] text-[#126762]" : "border-[#ec9db8] bg-[#ffe3eb] text-[#8b3e59]" : "border-[#10151b]/15 bg-white/50 text-[#86929a]"}`}><Checkbox checked={active} onCheckedChange={() => togglePlatform(platform.id)} aria-label={`搜尋 ${platform.label}`} className="rounded-none border-[#10151b]/30 data-[state=checked]:border-[#10151b] data-[state=checked]:bg-[#10151b] data-[state=checked]:text-white" />{platform.label}</label>; })}</div>
+              </div>
+              <div className="grid gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#61707a]">語言篩選
+                <div className="flex h-10 items-center border border-[#10151b]/15 bg-white p-1">
+                  {(["all", "zh", "en", "ja"] as const).map((lang) => (
+                    <button
+                      key={lang}
+                      type="button"
+                      onClick={() => setSelectedLanguage(lang)}
+                      className={`h-8 flex-1 font-mono text-[10px] font-bold uppercase tracking-[0.12em] transition-colors ${
+                        selectedLanguage === lang ? "bg-[#111826] text-white" : "text-[#61707a] hover:bg-[#f0ece1]"
+                      }`}
+                    >
+                      {lang === "all" ? "全部" : lang === "zh" ? "中文" : lang === "en" ? "英文" : "日文"}
+                    </button>
+                  ))}
+                </div>
               </div>
               <label className="grid gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#61707a]">字數區間
                 <select value={wordCountFilter} onChange={(event) => setWordCountFilter(event.target.value as WordCountFilter)} className="h-10 border border-[#10151b]/15 bg-white px-3 text-[#10151b] outline-none focus:border-[#45b9b2]">

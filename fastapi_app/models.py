@@ -32,6 +32,7 @@ class ScrapedFanfic(BaseModel):
 class SearchQuery(BaseModel):
     keyword: str = Field(min_length=1, max_length=120)
     mode: Literal["keyword", "author"] = "keyword"
+    language: Optional[Literal["all", "zh", "en", "ja"]] = "all"
     platforms: Optional[list[str]] = None
     platform: Optional[str] = Field(default=None, min_length=1, max_length=40)
     page: int = Field(default=1, ge=1)

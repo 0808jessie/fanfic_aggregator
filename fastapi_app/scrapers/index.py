@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from threading import Lock
 from time import monotonic, perf_counter
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 try:
     from constants.cp_tags import get_keyword_for_platform
@@ -13,6 +13,7 @@ try:
     from scrapers.doujin_scraper import DoujinScraper
     from scrapers.lofter_scraper import LofterScraper
     from scrapers.penana_scraper import PenanaScraper
+    from scrapers.pixiv_scraper import PixivScraper
     from scrapers.waterwriter_scraper import WaterWriterScraper
 except ModuleNotFoundError:  # Supports ``fastapi_app.*`` package-style imports in tests.
     import sys
@@ -29,6 +30,7 @@ except ModuleNotFoundError:  # Supports ``fastapi_app.*`` package-style imports 
     from scrapers.doujin_scraper import DoujinScraper
     from scrapers.lofter_scraper import LofterScraper
     from scrapers.penana_scraper import PenanaScraper
+    from scrapers.pixiv_scraper import PixivScraper
     from scrapers.waterwriter_scraper import WaterWriterScraper
 
 
@@ -38,6 +40,7 @@ SCRAPERS: dict[str, Callable[[], object]] = {
     "doujin": DoujinScraper,
     "waterwriter": WaterWriterScraper,
     "penana": PenanaScraper,
+    "pixiv": PixivScraper,
 }
 
 PLATFORM_LABELS = {
@@ -46,6 +49,7 @@ PLATFORM_LABELS = {
     "doujin": "同人誌中心",
     "waterwriter": "在水裡寫字",
     "penana": "Penana",
+    "pixiv": "Pixiv",
 }
 LOCAL_CP_PLATFORM_IDS = frozenset(("doujin", "waterwriter"))
 # Live search is HTTP-only. End each source task promptly so slow upstreams
@@ -132,9 +136,12 @@ def _source_cache_key(
     page: int,
     custom_cp_map: dict[str, Any] | None,
     mode: str,
+    language: Optional[str] = None,
 ) -> tuple[str, str, int]:
     """Key cache entries by the source's effective platform-specific query."""
     translated = translated_query_for_platform(platform_key, keyword, custom_cp_map, mode)
+    if language and language != "all":
+        return platform_key, f"{mode}:lang={language}:{translated}", page
     return platform_key, f"{mode}:{translated}", page
 
 
@@ -178,6 +185,7 @@ def search_single_platform(
     force_refresh: bool = False,
     custom_cp_map: dict[str, Any] | None = None,
     mode: str = "keyword",
+    language: Optional[str] = None,
 ) -> tuple[str, list[ScrapedFanfic], int, int, PlatformStatus]:
     """Execute one adapter safely and return a UI-ready status for that source."""
     started_at = perf_counter()
@@ -186,7 +194,7 @@ def search_single_platform(
         warning = f"Platform '{platform_key}' is not supported."
         return platform_key, [], 0, 0, make_platform_status(platform_key, keyword, 0, warning, custom_cp_map, mode)
 
-    cache_key = _source_cache_key(platform_key, keyword, page, custom_cp_map, mode)
+    cache_key = _source_cache_key(platform_key, keyword, page, custom_cp_map, mode, language=language)
     if force_refresh:
         with _SOURCE_CACHE_LOCK:
             _SOURCE_CACHE.pop(cache_key, None)
@@ -210,6 +218,8 @@ def search_single_platform(
             scrape_kwargs["custom_cp_map"] = custom_cp_map
         if mode == "author":
             scrape_kwargs["mode"] = mode
+        if language:
+            scrape_kwargs["language"] = language
         payload = adapter.scrape(keyword, **scrape_kwargs)
         items: list[ScrapedFanfic] = []
         total_works = 0
@@ -228,9 +238,26 @@ def search_single_platform(
 
         if mode == "author":
             items = [item for item in items if _matches_author_query(item.author, keyword)]
-            # General public listing pages cannot declare a creator-only total.
             total_works = 0
             total_pages = 1
+
+        if language and language != "all" and platform_key != "ao3":
+            filtered_items = []
+            for item in items:
+                text_blob = (item.title + " " + item.summary).casefold()
+                if language == "zh":
+                    if any("\u4e00" <= c <= "\u9fff" for c in text_blob):
+                        filtered_items.append(item)
+                elif language == "ja":
+                    if any("\u3040" <= c <= "\u30ff" or "\u4e00" <= c <= "\u9fff" for c in text_blob):
+                        filtered_items.append(item)
+                elif language == "en":
+                    if not any("\u4e00" <= c <= "\u9fff" or "\u3040" <= c <= "\u30ff" for c in text_blob):
+                        filtered_items.append(item)
+                else:
+                    filtered_items.append(item)
+            items = filtered_items
+
         for item in items:
             if not item.id:
                 item.id = f"{platform_key}:{item.url}"
@@ -258,6 +285,7 @@ async def parallel_search_platforms_async(
     custom_cp_map: dict[str, Any] | None = None,
     timeout_seconds: float = ADAPTER_TIMEOUT_SECONDS,
     mode: str = "keyword",
+    language: Optional[str] = None,
 ) -> dict[str, Any]:
     """Run each source in an independently timed asyncio task.
 
@@ -289,6 +317,7 @@ async def parallel_search_platforms_async(
             force_refresh,
             custom_cp_map,
             mode,
+            language,
         )
         try:
             platform_timeout = PLATFORM_TIMEOUT_SECONDS.get(platform_key, timeout_seconds)

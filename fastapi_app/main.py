@@ -190,6 +190,7 @@ def list_platforms() -> list[dict[str, str]]:
         {"id": "doujin", "label": "同人誌中心", "status": "best-effort"},
         {"id": "waterwriter", "label": "在水裡寫字", "status": "best-effort"},
         {"id": "penana", "label": "Penana", "status": "best-effort"},
+        {"id": "pixiv", "label": "Pixiv", "status": "best-effort"},
     ]
 
 
@@ -218,7 +219,8 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
         # invalidation still works. Author searches receive a separate prefix to
         # prevent a creator query from sharing keyword/CP result entries.
         cache_prefix = "author:" if mode == "author" else ""
-        base_cache_key = f"{cache_prefix}{keyword}:{'-'.join(sorted(platforms))}:page={requested_page}"
+        lang_suffix = f":lang={query.language}" if query.language and query.language != "all" else ""
+        base_cache_key = f"{cache_prefix}{keyword}:{'-'.join(sorted(platforms))}{lang_suffix}:page={requested_page}"
         cache_key = (
             f"{cache_prefix}{keyword}:{'-'.join(sorted(platforms))}:cp={custom_cp_mapping_fingerprint(custom_cp_mappings)}:page={requested_page}"
             if custom_cp_map
@@ -266,6 +268,8 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
             aggregate_kwargs["custom_cp_map"] = custom_cp_map
         if mode == "author":
             aggregate_kwargs["mode"] = mode
+        if query.language and query.language != "all":
+            aggregate_kwargs["language"] = query.language
         aggregate = parallel_search_platforms(platforms, keyword, requested_page, **aggregate_kwargs)
         print(
             f"[Search Aggregate Done in ms] {round((perf_counter() - request_started_at) * 1000)} "
