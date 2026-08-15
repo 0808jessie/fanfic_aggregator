@@ -50,10 +50,14 @@ PLATFORM_LABELS = {
 LOCAL_CP_PLATFORM_IDS = frozenset(("doujin", "waterwriter"))
 # Live search is HTTP-only. End each source task promptly so slow upstreams
 # return their own state instead of holding the full cross-platform response.
-ADAPTER_TIMEOUT_SECONDS = 6.5
-# AO3 is a geographically remote public archive. It receives a slightly longer
-# source-only window without delaying the remaining four adapters.
-PLATFORM_TIMEOUT_SECONDS: dict[str, float] = {"ao3": 10.0}
+ADAPTER_TIMEOUT_SECONDS = 15.0
+PLATFORM_TIMEOUT_SECONDS: dict[str, float] = {
+    "ao3": 20.0,
+    "penana": 18.0,
+    "cxc": 15.0,
+    "doujin": 15.0,
+    "waterwriter": 15.0,
+}
 SOURCE_CACHE_TTL_SECONDS = 600.0
 _SOURCE_CACHE: dict[tuple[str, str, int], tuple[float, list[ScrapedFanfic], int, int, str | None]] = {}
 _SOURCE_CACHE_LOCK = Lock()
