@@ -293,4 +293,4 @@
 - [x] 執行單獨 Pixiv 診斷 (test_search.py 鬼滅 --platform pixiv --timeout 35) 並驗證回應狀態
 - [x] 執行全平台測試確認同人誌、水裡寫字、CxC 維持 success，並推送至 GitHub main
 
-- [ ] 清理 venv 內超過 GitHub 100 MB 限制的 Playwright 二進位檔與 Git 歷史，重新推送 origin/main
+- [x] 清理 venv 內超過 GitHub 100 MB 限制的 Playwright 二進位檔與 Git 歷史，重新推送 origin/main
