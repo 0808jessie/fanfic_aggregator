@@ -9,4 +9,10 @@ describe("FastAPI supervisor launch config", () => {
     expect(config.cwd).toBe("/tmp/fanfic-atlas/fastapi_app");
     expect(config.args).toEqual(["-m", "uvicorn", "main:app", "--uds", FASTAPI_SOCKET_PATH]);
   });
+
+  it("allows production to resolve Python from the container PATH", () => {
+    const config = fastapiLaunchConfig("/tmp/fanfic-atlas");
+
+    expect(config.command).toBe("python3");
+  });
 });

@@ -265,4 +265,9 @@
 - [x] 稽核 Penana 現行搜尋 URL、請求標頭、HTML 卡片解析與來源級 403 測試
 - [x] 改用最簡化公開搜尋 URL 與八秒有界 HTTP 請求，維持可驗證作品解析與安全 blocked 降級
 - [x] 驗證 Penana 單一來源「義忍」搜尋、403／空結果狀態、Unix socket 代理與完整回歸；Python 71/71、Vitest 43/43、TypeScript 通過
-- [ ] 儲存本輪 Penana 簡化公開搜尋 checkpoint
+- [x] 儲存本輪 Penana 簡化公開搜尋 checkpoint（ea5ece05）
+- [x] 稽核部署日誌、FastAPI sidecar 啟動程式與生產映像需求
+- [x] 配置同時具備 Node、Python 與 FastAPI 依賴的生產容器，避免 `python3 ENOENT`
+- [x] 補強 FastAPI 子程序 error 事件處理，避免 sidecar 無法啟動時使 Node 3000 程序崩潰
+- [x] 驗證本地受控啟動、完整回歸與生產就緒；Python 72/72、Vitest 43/43、TypeScript 通過
+- [ ] 儲存本輪生產 Python runtime 與 sidecar 啟動修復 checkpoint

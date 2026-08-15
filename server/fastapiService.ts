@@ -83,6 +83,14 @@ export async function startManagedFastapi(): Promise<() => void> {
 
   const managedChild = child;
   if (!managedChild) return () => undefined;
+  let spawnFailure: Error | undefined;
+  // `spawn()` reports a missing executable asynchronously. Listening for this
+  // event keeps the Node frontend alive so its 3000 health probe can succeed
+  // and the proxy can return a source-level diagnostic instead of crashing.
+  managedChild.once("error", error => {
+    spawnFailure = error;
+    console.error("[FastAPI Supervisor] FastAPI process could not start:", error);
+  });
   managedChild.stdout?.on("data", chunk => console.log(`[FastAPI] ${String(chunk).trimEnd()}`));
   managedChild.stderr?.on("data", chunk => console.error(`[FastAPI] ${String(chunk).trimEnd()}`));
   managedChild.once("exit", (code, signal) => {
@@ -96,7 +104,8 @@ export async function startManagedFastapi(): Promise<() => void> {
 
   const healthy = await waitForFastapiHealth();
   if (!healthy) {
-    console.error("[FastAPI Supervisor] FastAPI did not become healthy within 5 seconds");
+    const detail = spawnFailure ? ` (${spawnFailure.message})` : "";
+    console.error(`[FastAPI Supervisor] FastAPI did not become healthy within 5 seconds${detail}`);
   } else {
     console.log(`[FastAPI Supervisor] FastAPI ready at ${FASTAPI_SOCKET_PATH}`);
   }
