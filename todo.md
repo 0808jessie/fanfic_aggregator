@@ -248,4 +248,9 @@
 - [x] 移除即時搜尋的 browser／Playwright 路徑，將五平台統一為 6 秒有界純 HTTP／HTML 或公開 API 解析與來源級降級
 - [x] 建立可執行的五平台 CLI 搜尋診斷，輸出平台、狀態、耗時與官方／可驗證筆數
 - [x] 驗證未知關鍵字、單一平台重試、完整回歸與純 HTTP 診斷輸出；Python 71/71、Vitest 42/42、TypeScript 通過
-- [ ] 儲存本輪純 HTTP 搜尋重構與 CLI 診斷 checkpoint
+- [x] 儲存本輪純 HTTP 搜尋重構與 CLI 診斷 checkpoint（238051dd）
+- [x] 稽核 FastAPI 程序、啟動日誌、8000 埠與 tRPC 代理設定
+- [x] 修復 FastAPI 啟動或前端代理連線故障，確保服務可持續提供健康端點
+- [x] 讓 Node 開發服務受控啟動並結束 FastAPI 子程序，避免重啟後 8000 埠未監聽
+- [x] 以健康檢查、直接搜尋與 tRPC 代理驗證前後端連線；Python 71/71、Vitest 43/43、TypeScript 通過
+- [ ] 儲存本輪 FastAPI 服務恢復與受控啟動 checkpoint

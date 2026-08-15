@@ -8,6 +8,7 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { startManagedFastapi } from "../fastapiService";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -29,6 +30,16 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+  const stopFastapi = await startManagedFastapi();
+  let hasStoppedFastapi = false;
+  const stopManagedFastapi = () => {
+    if (hasStoppedFastapi) return;
+    hasStoppedFastapi = true;
+    stopFastapi();
+  };
+  process.once("SIGINT", stopManagedFastapi);
+  process.once("SIGTERM", stopManagedFastapi);
+
   const app = express();
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads
