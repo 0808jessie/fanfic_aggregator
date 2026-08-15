@@ -21,7 +21,7 @@ if str(APP_ROOT) not in sys.path:
 from scrapers.index import ADAPTER_TIMEOUT_SECONDS, PLATFORM_LABELS, SCRAPERS, parallel_search_platforms
 
 
-def diagnose_platform(platform_key: str, keyword: str) -> tuple[str, str, int, int, str]:
+def diagnose_platform(platform_key: str, keyword: str, timeout_seconds: float) -> tuple[str, str, int, int, str]:
     """Execute exactly one source and normalize output for human inspection."""
     started_at = perf_counter()
     payload = parallel_search_platforms(
@@ -29,7 +29,7 @@ def diagnose_platform(platform_key: str, keyword: str) -> tuple[str, str, int, i
         keyword,
         page=1,
         force_refresh=True,
-        timeout_seconds=ADAPTER_TIMEOUT_SECONDS,
+        timeout_seconds=timeout_seconds,
     )
     status = payload["platform_statuses"][0]
     elapsed_ms = round((perf_counter() - started_at) * 1000)
@@ -41,17 +41,23 @@ def diagnose_platform(platform_key: str, keyword: str) -> tuple[str, str, int, i
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Fanfic Atlas five-platform pure HTTP diagnostic")
-    parser.add_argument("keyword", nargs="?", default="蛇戀", help="Keyword to send to every enabled platform")
+    parser = argparse.ArgumentParser(description="Fanfic Atlas pure HTTP diagnostic")
+    parser.add_argument("keyword", nargs="?", default="蛇戀", help="Keyword to send to platform(s)")
+    parser.add_argument("--platform", default=None, help="Diagnose a single specific platform key (e.g. pixiv)")
+    parser.add_argument("--timeout", type=float, default=ADAPTER_TIMEOUT_SECONDS, help="Custom timeout override in seconds")
     args = parser.parse_args()
     keyword = args.keyword.strip()
     if not keyword:
         parser.error("keyword cannot be empty")
 
-    print(f"Fanfic Atlas source diagnostic | keyword={keyword}")
+    target_platforms = [args.platform] if args.platform else list(SCRAPERS.keys())
+    timeout_val = args.timeout
+
+    print(f"Fanfic Atlas source diagnostic | keyword={keyword} | platforms={target_platforms} | timeout={timeout_val}s")
     print("platform\tstatus\telapsed_ms\tverified_count\tmessage")
-    with ThreadPoolExecutor(max_workers=len(SCRAPERS), thread_name_prefix="fanfic-diagnose") as executor:
-        futures = {executor.submit(diagnose_platform, platform, keyword): platform for platform in SCRAPERS}
+    
+    with ThreadPoolExecutor(max_workers=max(1, len(target_platforms)), thread_name_prefix="fanfic-diagnose") as executor:
+        futures = {executor.submit(diagnose_platform, platform, keyword, timeout_val): platform for platform in target_platforms}
         rows = {}
         for future in as_completed(futures):
             platform = futures[future]
@@ -60,7 +66,7 @@ def main() -> int:
             except Exception as error:  # pragma: no cover - defensive CLI boundary
                 rows[platform] = (platform, "error", 0, 0, str(error))
 
-    for platform in SCRAPERS:
+    for platform in target_platforms:
         platform_key, state, elapsed_ms, count, message = rows[platform]
         label = PLATFORM_LABELS.get(platform_key, platform_key)
         print(f"{label}\t{state}\t{elapsed_ms}\t{count}\t{message or '-'}")

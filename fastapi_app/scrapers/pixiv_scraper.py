@@ -51,7 +51,7 @@ class PixivScraper(BaseScraper):
                 url,
                 headers=self.search_headers,
                 impersonate="chrome124",
-                timeout=15.0,
+                timeout=30.0,
             )
             if response.status_code in (403, 429, 502, 503, 525):
                 self.last_warning = f"[Pixiv] Public search protected or unavailable (HTTP {response.status_code})"

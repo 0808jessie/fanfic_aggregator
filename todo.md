@@ -289,3 +289,6 @@
 - [x] 新增可切換的關鍵字／作者模式 UI，調整 placeholder 並維持作者卡片導航與單一來源重試
 - [x] 在 FastAPI、tRPC 與各來源 adapter 傳遞 mode 參數，實作可驗證的作者查詢／安全原詞降級
 - [x] 補齊作者模式單元與回歸測試，完成五來源驗證並推送至 GitHub main
+- [x] 獨立放寬 Pixiv 請求 timeout 至 30.0 秒並加入非阻塞來源級診斷與隔離篩選器
+- [x] 執行單獨 Pixiv 診斷 (test_search.py 鬼滅 --platform pixiv --timeout 35) 並驗證回應狀態
+- [x] 執行全平台測試確認同人誌、水裡寫字、CxC 維持 success，並推送至 GitHub main
