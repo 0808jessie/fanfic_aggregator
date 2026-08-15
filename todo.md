@@ -295,8 +295,8 @@
 
 - [x] 清理 venv 內超過 GitHub 100 MB 限制的 Playwright 二進位檔與 Git 歷史，重新推送 origin/main
 
-- [ ] 記錄固定不變的平台檔案雜湊（doujin, waterwriter, cxc）
-- [ ] 優化 ao3_scraper.py（放寬 timeout 至 30s，強化 curl_cffi 偽裝）
-- [ ] 優化 penana_scraper.py（放寬 timeout 至 30s，強化 curl_cffi 偽裝）
-- [ ] 優化 pixiv_scraper.py 與檢查前端白名單（pixiv.net 與合約欄位）
-- [ ] 執行獨立三平台診斷測試（AO3, Penana, Pixiv）並回報結果
+- [x] 記錄固定不變的平台檔案雜湊（doujin, waterwriter, cxc）
+- [x] 優化 ao3_scraper.py（放寬 timeout 至 30s，強化 curl_cffi 偽裝）
+- [x] 優化 penana_scraper.py（放寬 timeout 至 30s，強化 curl_cffi 偽裝）
+- [x] 優化 pixiv_scraper.py 與檢查前端白名單（pixiv.net 與合約欄位）
+- [x] 執行獨立三平台診斷測試（AO3, Penana, Pixiv）並回報結果
