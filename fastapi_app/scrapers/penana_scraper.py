@@ -69,7 +69,7 @@ class PenanaScraper(BaseScraper):
                 params={"t": "story", "search": keyword},
                 headers=self.search_headers,
                 impersonate="chrome124",
-                timeout=12,
+                timeout=30.0,
             )
             if response.status_code in (403, 520, 521, 522, 525):
                 retry_after = response.headers.get("Retry-After") if getattr(response, "headers", None) else None
