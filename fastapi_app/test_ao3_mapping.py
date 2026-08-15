@@ -109,9 +109,9 @@ def test_ao3_adult_content_cookie_and_open_search_parameters_are_explicit():
     assert AO3Scraper.static_cookies == {"view_adult": "true", "accepted_tos": "2018"}
     assert AO3Scraper.static_headers["Cookie"] == "view_adult=true; accepted_tos=2018"
     assert "Chrome/124" in AO3Scraper.static_headers["User-Agent"]
-    assert AO3Scraper.static_connect_timeout_seconds == 5
-    assert AO3Scraper.static_read_timeout_seconds == 10
-    assert AO3Scraper.static_search_budget_seconds == 10
+    assert AO3Scraper.static_connect_timeout_seconds == 8
+    assert AO3Scraper.static_read_timeout_seconds == 25
+    assert AO3Scraper.static_search_budget_seconds == 25
 
 
 def test_ao3_total_works_reads_only_explicit_result_heading():
@@ -146,7 +146,7 @@ def test_ao3_static_html_path_parses_cards_and_official_heading_without_browser(
     response.raise_for_status.return_value = None
     scraper = AO3Scraper()
 
-    with patch("scrapers.ao3_scraper.requests.get", return_value=response) as get:
+    with patch("scrapers.ao3_scraper.curl_requests.get", return_value=response) as get:
         payload = scraper.scrape("花", force_refresh=True)
 
     assert payload["total_works"] == 51428
@@ -164,7 +164,7 @@ def test_ao3_boolean_translation_falls_back_to_the_original_keyword():
     response.raise_for_status.return_value = None
 
     with patch("scrapers.ao3_scraper.get_keyword_for_platform", return_value=long_boolean_query), patch(
-        "scrapers.ao3_scraper.requests.get", return_value=response
+        "scrapers.ao3_scraper.curl_requests.get", return_value=response
     ) as get:
         scraper.scrape("蛇戀", force_refresh=True)
 
@@ -176,7 +176,7 @@ def test_ao3_static_protection_returns_bounded_warning_without_browser_fallback(
     blocked_response.raise_for_status.return_value = None
     scraper = AO3Scraper()
 
-    with patch("scrapers.ao3_scraper.requests.get", return_value=blocked_response) as get, patch("scrapers.ao3_scraper.time.sleep") as sleep:
+    with patch("scrapers.ao3_scraper.curl_requests.get", return_value=blocked_response) as get, patch("scrapers.ao3_scraper.time.sleep") as sleep:
         payload = scraper.scrape("鬼滅", force_refresh=True)
 
     assert payload["items"] == []
@@ -195,7 +195,7 @@ def test_ao3_retries_one_temporary_525_then_parses_a_recovered_public_response()
     recovered_response = MagicMock(status_code=200, text=static_html)
     recovered_response.raise_for_status.return_value = None
 
-    with patch("scrapers.ao3_scraper.requests.get", side_effect=[blocked_response, recovered_response]) as get, patch("scrapers.ao3_scraper.time.sleep") as sleep:
+    with patch("scrapers.ao3_scraper.curl_requests.get", side_effect=[blocked_response, recovered_response]) as get, patch("scrapers.ao3_scraper.time.sleep") as sleep:
         payload = scraper.scrape("花", force_refresh=True)
 
     assert payload["items"][0].title == "Recovered Work"

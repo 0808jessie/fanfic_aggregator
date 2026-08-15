@@ -251,7 +251,7 @@ def test_penana_detail_metadata_uses_labelled_word_count_and_explicit_status_onl
 
 
 def test_penana_uses_ordinary_public_finder_headers_without_browser_fallback():
-    with patch("scrapers.penana_scraper.requests.get", return_value=PublicFinderResponse()) as request:
+    with patch("scrapers.penana_scraper.curl_requests.get", return_value=PublicFinderResponse()) as request:
         html = PenanaScraper()._fetch_public_search_html("fanfiction")
 
     assert html == PENANA_RESULTS
@@ -265,23 +265,23 @@ def test_penana_uses_ordinary_public_finder_headers_without_browser_fallback():
     assert headers["Sec-Fetch-User"] == "?1"
     assert headers["Upgrade-Insecure-Requests"] == "1"
     assert request.call_args.kwargs["params"] == {"t": "story", "search": "fanfiction"}
-    assert request.call_args.kwargs["timeout"] == (3, 8)
+    assert request.call_args.kwargs["timeout"] == 15
 
 
 def test_penana_http_timeout_returns_source_warning_without_browser_navigation():
     scraper = PenanaScraper()
-    with patch("scrapers.penana_scraper.requests.get", side_effect=requests.Timeout("slow public finder")):
+    with patch("scrapers.penana_scraper.curl_requests.get", side_effect=requests.Timeout("slow public finder")):
         payload = scraper.scrape("義忍")
 
     assert payload == {"items": [], "total_works": 0, "total_pages": 1}
-    assert "HTTP request unavailable" in (scraper.last_warning or "")
+    assert "Request unavailable or parse failed safely" in (scraper.last_warning or "")
 
 
 def test_penana_cloudflare_403_returns_a_blocked_source_warning_without_browser_navigation():
     blocked_response = MagicMock(status_code=403, text="<html>Cloudflare</html>")
     scraper = PenanaScraper()
 
-    with patch("scrapers.penana_scraper.requests.get", return_value=blocked_response):
+    with patch("scrapers.penana_scraper.curl_requests.get", return_value=blocked_response):
         payload = scraper.scrape("義忍")
 
     assert payload == {"items": [], "total_works": 0, "total_pages": 1}
@@ -293,7 +293,7 @@ def test_penana_verification_html_returns_a_blocked_source_warning_without_brows
     verification_response.raise_for_status.return_value = None
     scraper = PenanaScraper()
 
-    with patch("scrapers.penana_scraper.requests.get", return_value=verification_response):
+    with patch("scrapers.penana_scraper.curl_requests.get", return_value=verification_response):
         payload = scraper.scrape("義忍")
 
     assert payload == {"items": [], "total_works": 0, "total_pages": 1}

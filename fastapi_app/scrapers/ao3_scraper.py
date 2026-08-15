@@ -6,8 +6,8 @@ import urllib.parse
 from time import monotonic
 from typing import Any
 
-import requests
 from bs4 import BeautifulSoup
+from curl_cffi import requests as curl_requests
 
 from scrapers.base_scraper import BaseScraper
 from models import ScrapedFanfic
@@ -53,9 +53,9 @@ class AO3Scraper(BaseScraper):
         "Cookie": "view_adult=true; accepted_tos=2018",
     }
     static_cookies = {"view_adult": "true", "accepted_tos": "2018"}
-    static_connect_timeout_seconds = 5
-    static_read_timeout_seconds = 10
-    static_search_budget_seconds = 10
+    static_connect_timeout_seconds = 8
+    static_read_timeout_seconds = 25
+    static_search_budget_seconds = 25
     max_boolean_query_length = 220
 
     def __init__(self):
@@ -117,11 +117,12 @@ class AO3Scraper(BaseScraper):
                 print("[AO3 Static] Shared HTTP budget exhausted; returning bounded source warning")
                 return None
             try:
-                response = requests.get(
+                response = curl_requests.get(
                     url,
                     headers=self.static_headers,
                     cookies=self.static_cookies,
-                    timeout=(self.static_connect_timeout_seconds, self.static_read_timeout_seconds),
+                    impersonate="chrome124",
+                    timeout=25.0,
                 )
                 remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 4.0
                 if response.status_code in (503, 525) and attempt == 0 and remaining_budget > 0.6:
