@@ -23,6 +23,15 @@ class PenanaScraper(BaseScraper):
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
         "Referer": "https://www.penana.com/",
+        # Compatibility hints sent by an ordinary Chromium navigation. They do
+        # not attempt to solve or bypass a verification challenge; 403 pages
+        # remain a source-level blocked state.
+        "Sec-CH-UA": '"Chromium";v="124", "Not.A/Brand";v="24"',
+        "Sec-CH-UA-Mobile": "?0",
+        "Sec-CH-UA-Platform": '"Windows"',
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
     }
 
     def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False) -> dict[str, object]:
@@ -59,7 +68,9 @@ class PenanaScraper(BaseScraper):
                 timeout=(3, 6),
             )
             if response.status_code in (403, 520, 521, 522, 525):
-                self.last_warning = f"[Penana] 觸發人機保護（HTTP {response.status_code}）"
+                retry_after = response.headers.get("Retry-After") if getattr(response, "headers", None) else None
+                retry_hint = f"；建議 {retry_after} 秒後單獨重試" if retry_after and retry_after.isdigit() else ""
+                self.last_warning = f"[Penana] 觸發人機保護（HTTP {response.status_code}）{retry_hint}"
                 return None
             if response.status_code in (429, 503):
                 self.last_warning = f"[Penana] Public Finder 暫時不可用（HTTP {response.status_code}）"

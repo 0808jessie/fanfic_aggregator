@@ -51,6 +51,9 @@ LOCAL_CP_PLATFORM_IDS = frozenset(("doujin", "waterwriter"))
 # Live search is HTTP-only. End each source task promptly so slow upstreams
 # return their own state instead of holding the full cross-platform response.
 ADAPTER_TIMEOUT_SECONDS = 6.5
+# AO3 is a geographically remote public archive. It receives a slightly longer
+# source-only window without delaying the remaining four adapters.
+PLATFORM_TIMEOUT_SECONDS: dict[str, float] = {"ao3": 10.0}
 SOURCE_CACHE_TTL_SECONDS = 600.0
 _SOURCE_CACHE: dict[tuple[str, str, int], tuple[float, list[ScrapedFanfic], int, int, str | None]] = {}
 _SOURCE_CACHE_LOCK = Lock()
@@ -256,9 +259,11 @@ async def parallel_search_platforms_async(
             custom_cp_map,
         )
         try:
-            return await asyncio.wait_for(task, timeout=max(0.1, timeout_seconds))
+            platform_timeout = PLATFORM_TIMEOUT_SECONDS.get(platform_key, timeout_seconds)
+            return await asyncio.wait_for(task, timeout=max(0.1, platform_timeout))
         except asyncio.TimeoutError:
-            warning = f"[{PLATFORM_LABELS.get(platform_key, platform_key)}] 連線逾時（超過 {timeout_seconds:g} 秒）"
+            platform_timeout = PLATFORM_TIMEOUT_SECONDS.get(platform_key, timeout_seconds)
+            warning = f"[{PLATFORM_LABELS.get(platform_key, platform_key)}] 連線逾時（超過 {platform_timeout:g} 秒）"
             print(f"[AdapterIndex] {warning}")
             return platform_key, [], 0, 1, make_platform_status(platform_key, keyword, 0, warning, custom_cp_map)
         except Exception as error:

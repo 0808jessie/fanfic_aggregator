@@ -256,4 +256,9 @@
 - [x] 儲存本輪 FastAPI 服務恢復與受控啟動 checkpoint（570870a5）
 - [x] 驗證 Node 前端預覽固定使用 3000 埠、FastAPI 改為內部 socket，修正預覽路由衝突
 - [x] 將受控 FastAPI 改為內部 Unix socket 通訊並讓 tRPC 代理走該 socket，避免 WebDev 將後端識別為預覽服務
-- [ ] 儲存本輪 FastAPI Unix socket 與前端預覽修復 checkpoint
+- [x] 儲存本輪 FastAPI Unix socket 與前端預覽修復 checkpoint（e5638245）
+- [x] 稽核 AO3 與 Penana 的 timeout、請求標頭、CP／原詞查詢與來源級狀態測試
+- [x] 為 AO3 實作十秒專屬來源期限與過長布林查詢的原詞回退，保留成人偏好標頭
+- [x] 強化 Penana 現代瀏覽器請求標頭與 403／驗證頁來源級 blocked 狀態，不使用自動化規避
+- [x] 驗證 AO3／Penana 單一來源重試、Unix socket 代理與其他三個來源隔離；Python 71/71、Vitest 43/43、TypeScript 通過
+- [ ] 儲存本輪 AO3／Penana 最後調優 checkpoint

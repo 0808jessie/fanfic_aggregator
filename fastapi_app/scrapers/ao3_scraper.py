@@ -53,9 +53,10 @@ class AO3Scraper(BaseScraper):
         "Cookie": "view_adult=true; accepted_tos=2018",
     }
     static_cookies = {"view_adult": "true", "accepted_tos": "2018"}
-    static_connect_timeout_seconds = 3
-    static_read_timeout_seconds = 6
-    static_search_budget_seconds = 6
+    static_connect_timeout_seconds = 5
+    static_read_timeout_seconds = 10
+    static_search_budget_seconds = 10
+    max_boolean_query_length = 220
 
     def __init__(self):
         super().__init__()
@@ -107,7 +108,7 @@ class AO3Scraper(BaseScraper):
         return None
 
     def _fetch_static_search_html(self, keyword: str, page: int) -> str | None:
-        """Fetch AO3 HTML once with a bounded six-second public HTTP budget."""
+        """Fetch AO3 HTML once with a bounded ten-second public HTTP budget."""
         url = self.build_search_url(keyword, page)
         for _attempt in range(1):
             remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 4.0
@@ -207,7 +208,16 @@ class AO3Scraper(BaseScraper):
         if not trimmed_kw:
             return {"items": [], "total_works": 0, "total_pages": 1}
 
-        ao3_query = get_keyword_for_platform(trimmed_kw, "ao3", custom_cp_map)
+        translated_query = get_keyword_for_platform(trimmed_kw, "ao3", custom_cp_map)
+        # AO3 accepts free-text search, but long boolean expansions can be
+        # disproportionately slow or rejected at the public edge. Preserve a
+        # short mapped tag; otherwise fall back to the user's literal query.
+        boolean_markers = (" OR ", " AND ", '"')
+        if len(translated_query) > self.max_boolean_query_length and any(marker in translated_query for marker in boolean_markers):
+            ao3_query = trimmed_kw
+            print("[AO3 Static] Long boolean query fell back to the original keyword")
+        else:
+            ao3_query = translated_query
 
         cache_key = f"{trimmed_kw}:page={page}"
         # 強制更新會跳過 Adapter cache；一般 CP 則由 API 的高可信度 TTL 管理。

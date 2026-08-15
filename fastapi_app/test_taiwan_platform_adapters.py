@@ -258,6 +258,9 @@ def test_penana_uses_ordinary_public_finder_headers_without_browser_fallback():
     headers = request.call_args.kwargs["headers"]
     assert headers["Referer"] == "https://www.penana.com/"
     assert "Windows NT 10.0" in headers["User-Agent"]
+    assert headers["Sec-CH-UA-Mobile"] == "?0"
+    assert headers["Sec-CH-UA-Platform"] == '"Windows"'
+    assert headers["Sec-Fetch-Mode"] == "navigate"
     assert request.call_args.kwargs["timeout"] == (3, 6)
 
 
