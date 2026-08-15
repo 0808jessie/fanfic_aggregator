@@ -253,4 +253,7 @@
 - [x] 修復 FastAPI 啟動或前端代理連線故障，確保服務可持續提供健康端點
 - [x] 讓 Node 開發服務受控啟動並結束 FastAPI 子程序，避免重啟後 8000 埠未監聽
 - [x] 以健康檢查、直接搜尋與 tRPC 代理驗證前後端連線；Python 71/71、Vitest 43/43、TypeScript 通過
-- [ ] 儲存本輪 FastAPI 服務恢復與受控啟動 checkpoint
+- [x] 儲存本輪 FastAPI 服務恢復與受控啟動 checkpoint（570870a5）
+- [x] 驗證 Node 前端預覽固定使用 3000 埠、FastAPI 改為內部 socket，修正預覽路由衝突
+- [x] 將受控 FastAPI 改為內部 Unix socket 通訊並讓 tRPC 代理走該 socket，避免 WebDev 將後端識別為預覽服務
+- [ ] 儲存本輪 FastAPI Unix socket 與前端預覽修復 checkpoint

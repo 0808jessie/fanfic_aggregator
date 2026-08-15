@@ -1,15 +1,26 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import net from "node:net";
+import fs from "node:fs";
+import http from "node:http";
 import path from "node:path";
 
-const FASTAPI_PORT = 8000;
-const FASTAPI_HEALTH_URL = `http://127.0.0.1:${FASTAPI_PORT}/fastapi-status`;
+export const FASTAPI_SOCKET_PATH =
+  process.env.FASTAPI_SOCKET_PATH || path.join(process.cwd(), ".manus-fastapi.sock");
 
-function isPortAvailable(port: number): Promise<boolean> {
+function requestFastapiHealth(): Promise<boolean> {
   return new Promise(resolve => {
-    const server = net.createServer();
-    server.once("error", () => resolve(false));
-    server.listen(port, "127.0.0.1", () => server.close(() => resolve(true)));
+    const request = http.request(
+      { socketPath: FASTAPI_SOCKET_PATH, path: "/fastapi-status", method: "GET", timeout: 300 },
+      response => {
+        response.resume();
+        resolve(response.statusCode === 200);
+      },
+    );
+    request.once("error", () => resolve(false));
+    request.once("timeout", () => {
+      request.destroy();
+      resolve(false);
+    });
+    request.end();
   });
 }
 
@@ -18,7 +29,9 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 export function fastapiLaunchConfig(projectRoot: string = process.cwd()) {
   return {
     command: process.env.FASTAPI_PYTHON_BIN || "python3",
-    args: ["-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", String(FASTAPI_PORT)],
+    // FastAPI is internal only. A Unix socket prevents the preview service from
+    // mistaking this sidecar for the public Node frontend on port 3000.
+    args: ["-m", "uvicorn", "main:app", "--uds", FASTAPI_SOCKET_PATH],
     cwd: path.join(projectRoot, "fastapi_app"),
   };
 }
@@ -26,8 +39,7 @@ export function fastapiLaunchConfig(projectRoot: string = process.cwd()) {
 async function waitForFastapiHealth(): Promise<boolean> {
   for (let attempt = 0; attempt < 25; attempt += 1) {
     try {
-      const response = await fetch(FASTAPI_HEALTH_URL, { signal: AbortSignal.timeout(300) });
-      if (response.ok) return true;
+      if (await requestFastapiHealth()) return true;
     } catch {
       // Uvicorn is still importing the app or the service could not start.
     }
@@ -43,14 +55,17 @@ async function waitForFastapiHealth(): Promise<boolean> {
  * otherwise the Node server owns the spawned child and terminates it on exit.
  */
 export async function startManagedFastapi(): Promise<() => void> {
-  if (!(await isPortAvailable(FASTAPI_PORT))) {
-    const healthy = await waitForFastapiHealth();
-    console.log(
-      healthy
-        ? `[FastAPI Supervisor] Reusing healthy service on port ${FASTAPI_PORT}`
-        : `[FastAPI Supervisor] Port ${FASTAPI_PORT} is occupied but health check failed`,
-    );
+  if (await waitForFastapiHealth()) {
+    console.log(`[FastAPI Supervisor] Reusing healthy internal service at ${FASTAPI_SOCKET_PATH}`);
     return () => undefined;
+  }
+
+  // A dead process can leave the filesystem entry behind. Remove only after
+  // health verification has failed so a healthy sibling is never disturbed.
+  try {
+    fs.rmSync(FASTAPI_SOCKET_PATH, { force: true });
+  } catch (error) {
+    console.error("[FastAPI Supervisor] Failed to clear stale socket:", error);
   }
 
   const config = fastapiLaunchConfig();
@@ -72,13 +87,18 @@ export async function startManagedFastapi(): Promise<() => void> {
   managedChild.stderr?.on("data", chunk => console.error(`[FastAPI] ${String(chunk).trimEnd()}`));
   managedChild.once("exit", (code, signal) => {
     console.error(`[FastAPI Supervisor] FastAPI exited (code=${code}, signal=${signal})`);
+    try {
+      fs.rmSync(FASTAPI_SOCKET_PATH, { force: true });
+    } catch {
+      // Socket cleanup is best-effort during process shutdown.
+    }
   });
 
   const healthy = await waitForFastapiHealth();
   if (!healthy) {
     console.error("[FastAPI Supervisor] FastAPI did not become healthy within 5 seconds");
   } else {
-    console.log(`[FastAPI Supervisor] FastAPI ready on port ${FASTAPI_PORT}`);
+    console.log(`[FastAPI Supervisor] FastAPI ready at ${FASTAPI_SOCKET_PATH}`);
   }
 
   return () => {

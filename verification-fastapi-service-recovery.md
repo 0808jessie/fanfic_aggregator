@@ -6,16 +6,18 @@
 
 現已新增 `server/fastapiService.ts` 監督器，Node/tRPC 服務啟動時會：
 
-1. 檢查 8000 埠是否已有健康的 `/fastapi-status` 回應；
-2. 若服務不存在，從 `fastapi_app/` 以 `python3 -m uvicorn main:app --host 0.0.0.0 --port 8000` 啟動；
+1. 透過專案內部 `.manus-fastapi.sock` 檢查 `/fastapi-status`；
+2. 若服務不存在，從 `fastapi_app/` 以 `python3 -m uvicorn main:app --uds .manus-fastapi.sock` 啟動；
 3. 最多等待 5 秒健康檢查，並在 Node 結束時終止其擁有的子程序。
+
+FastAPI 不再監聽任何公開 TCP 埠；`fastapiTrpcRouter` 以 Axios 的 `socketPath` 呼叫此 Unix socket。因此 WebDev 只會偵測並預覽 Node 前端的 3000 埠，不會再將 FastAPI 404 頁誤當成網站首頁。
 
 ## 實測
 
 | 驗證 | 結果 |
 | --- | --- |
-| 停止既有 8000 程序後重啟 Node 開發服務 | 監督器成功啟動 FastAPI，Python 程序監聽 `0.0.0.0:8000`。 |
-| `GET /fastapi-status` | 回傳 `{"status":"ok","service":"fastapi-search","version":"0.1.4"}`。 |
+| 停止既有後端後重啟 Node 開發服務 | 監督器成功建立 `.manus-fastapi.sock`，只保留 Node 的 3000 公開監聽。 |
+| FastAPI health | 透過 tRPC 代理回傳 `{"status":"ok","service":"fastapi-search","version":"0.1.4"}`。 |
 | 直接 `POST /search`（CxC／蛇戀） | 回傳已驗證作品 JSON。 |
 | tRPC `fastapi.proxy` → `/fastapi-status` | 回傳 200。 |
 | tRPC `fastapi.proxy` → `/search`（CxC／蛇戀） | 回傳 `success: true`、`platformId: cxc`、`status: success` 與真實作品。 |
