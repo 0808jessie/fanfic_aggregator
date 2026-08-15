@@ -7,7 +7,7 @@ import re
 from urllib.parse import quote, urljoin
 
 from bs4 import BeautifulSoup
-import requests
+from curl_cffi import requests as curl_requests
 
 from models import ScrapedFanfic
 from scrapers.base_scraper import BaseScraper
@@ -62,16 +62,14 @@ class PenanaScraper(BaseScraper):
             return {"items": [], "total_works": 0, "total_pages": 1}
 
     def _fetch_public_search_html(self, keyword: str) -> str | None:
-        """Fetch the ordinary public Finder document with a bounded HTTP request."""
+        """Fetch the ordinary public Finder document with curl_cffi chrome124 impersonation."""
         try:
-            response = requests.get(
+            response = curl_requests.get(
                 f"{self.base_url}/search",
-                # Keep the public search request small. Extra Finder filters
-                # are optional UI state and are not required to retrieve
-                # server-rendered story cards.
                 params={"t": "story", "search": keyword},
                 headers=self.search_headers,
-                timeout=(3, 8),
+                impersonate="chrome124",
+                timeout=15,
             )
             if response.status_code in (403, 520, 521, 522, 525):
                 retry_after = response.headers.get("Retry-After") if getattr(response, "headers", None) else None
