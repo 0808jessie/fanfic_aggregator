@@ -281,4 +281,7 @@
 - [x] 強化兩個來源受上游防護時的官方連結、快取與單一來源重試體驗
 - [x] 驗證五來源搜尋、AO3／Penana 單獨重試與完整回歸；Python 72/72、Vitest 44/44、TypeScript 通過
 - [x] 為 AO3 525 blocked 狀態加入官方 AO3 搜尋新分頁連結，與既有 Penana 降級一致
-- [ ] 儲存本輪 AO3／Penana 來源防護降級 checkpoint
+- [x] 儲存本輪 AO3／Penana 來源防護降級 checkpoint（14008058）
+- [ ] 確認本機 Git 工作樹、目前分支與 GitHub 目標倉庫存取權限
+- [ ] 設定 origin 為 0808jessie/fanfic_aggregator、建立完整專案提交並推送 main
+- [ ] 驗證 GitHub 遠端 main 分支與提交 SHA，回報推送結果
