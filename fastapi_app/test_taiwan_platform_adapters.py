@@ -265,7 +265,7 @@ def test_penana_uses_ordinary_public_finder_headers_without_browser_fallback():
     assert headers["Sec-Fetch-User"] == "?1"
     assert headers["Upgrade-Insecure-Requests"] == "1"
     assert request.call_args.kwargs["params"] == {"t": "story", "search": "fanfiction"}
-    assert request.call_args.kwargs["timeout"] == 15
+    assert request.call_args.kwargs["timeout"] == 12
 
 
 def test_penana_http_timeout_returns_source_warning_without_browser_navigation():
@@ -274,7 +274,7 @@ def test_penana_http_timeout_returns_source_warning_without_browser_navigation()
         payload = scraper.scrape("義忍")
 
     assert payload == {"items": [], "total_works": 0, "total_pages": 1}
-    assert "Request unavailable or parse failed safely" in (scraper.last_warning or "")
+    assert "Public Finder HTTP request unavailable" in (scraper.last_warning or "")
 
 
 def test_penana_cloudflare_403_returns_a_blocked_source_warning_without_browser_navigation():
