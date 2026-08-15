@@ -270,7 +270,7 @@ class CxCScraper(BaseScraper):
     def _fetch_public_search_html(self, keyword: str) -> str | None:
         """Read CxC's public keyword page without a rendered browser fallback."""
         try:
-            response = requests.get(self.build_search_url(keyword), headers=self.headers, timeout=(3, 6))
+            response = requests.get(self.build_search_url(keyword), headers=self.headers, timeout=(5, 12))
             if response.status_code in (403, 429, 503, 520, 521, 522, 525):
                 self._public_page_warning = f"Request blocked (HTTP {response.status})"
                 return None

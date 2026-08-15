@@ -171,7 +171,7 @@ def test_taiwan_static_adapters_use_relaxed_http_timeout_and_single_primary_keyw
 
     assert payload["items"]
     assert "srchtxt=%E7%BE%A9%E5%BF%8D" in water_request.call_args.args[0]
-    assert water_request.call_args.kwargs["timeout"] == (3, 6)
+    assert water_request.call_args.kwargs["timeout"] == (5, 12)
 
     class DoujinResponse:
         status_code = 200
@@ -185,7 +185,7 @@ def test_taiwan_static_adapters_use_relaxed_http_timeout_and_single_primary_keyw
 
     assert payload["total_works"] == 1
     assert "keyword=%E7%BE%A9%E5%BF%8D" in doujin_request.call_args.args[0]
-    assert doujin_request.call_args.kwargs["timeout"] == (3, 6)
+    assert doujin_request.call_args.kwargs["timeout"] == (5, 12)
 
 
 def test_taiwan_adapters_use_verified_static_html_without_browser_fallback():

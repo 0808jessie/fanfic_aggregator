@@ -90,12 +90,12 @@ class DoujinScraper(BaseScraper):
         return {"items": [], "total_works": 0, "total_pages": 1}
 
     def _fetch_static_search_html(self, keyword: str, page_number: int = 1) -> str | None:
-        """Read only the native server-rendered listing with a six-second read budget."""
+        """Read only the native server-rendered listing with a generous read budget."""
         try:
             response = requests.get(
                 self.build_search_url(keyword, page_number),
                 headers=self.headers,
-                timeout=(3, 6),
+                timeout=(5, 12),
             )
             if response.status_code in (403, 429, 503, 520, 521, 522, 525):
                 self._static_unavailable_warning = f"Request blocked (HTTP {response.status}), skipping cleanly"
