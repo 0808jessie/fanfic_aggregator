@@ -56,6 +56,7 @@ class DoujinScraper(BaseScraper):
         page: int = 1,
         force_refresh: bool = False,
         custom_cp_map: dict[str, CPTagConfig] | None = None,
+        mode: str = "keyword",
     ) -> dict[str, object]:
         self.last_warning = None
         self._static_unavailable_warning: str | None = None
@@ -65,7 +66,7 @@ class DoujinScraper(BaseScraper):
         try:
             # The native catalogue treats whitespace as restrictive AND input.
             # Use the original first term rather than the longer CP expansion.
-            search_keyword = keyword.strip().split()[0]
+            search_keyword = keyword.strip() if mode == "author" else keyword.strip().split()[0]
             html = self._fetch_static_search_html(search_keyword, page)
             if html is None:
                 raise _PublicListingUnavailable(

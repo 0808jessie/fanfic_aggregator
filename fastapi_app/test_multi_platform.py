@@ -72,6 +72,26 @@ def test_unknown_cp_aliases_fall_back_to_the_original_keyword_for_every_platform
         assert adapter_index.translated_query_for_platform("cxc", keyword) == keyword
 
 
+def test_author_mode_uses_raw_queries_and_isolated_cache_keys():
+    assert adapter_index.translated_query_for_platform("ao3", "Mizuki Studio", mode="author") == "Mizuki Studio"
+    assert adapter_index._source_cache_key("ao3", "Mizuki Studio", 1, None, "author") == (
+        "ao3",
+        "author:Mizuki Studio",
+        1,
+    )
+    assert adapter_index._source_cache_key("ao3", "Mizuki Studio", 1, None, "keyword") == (
+        "ao3",
+        "keyword:Mizuki Studio",
+        1,
+    )
+
+
+def test_author_mode_filters_results_to_verified_creator_field():
+    assert adapter_index._matches_author_query("Mizuki Studio", "mizuki") is True
+    assert adapter_index._matches_author_query("Mizuki Studio", "Mizuki Studio") is True
+    assert adapter_index._matches_author_query("Another Creator", "mizuki") is False
+
+
 class FakeCxCSuccess:
     def __init__(self):
         self.last_warning = None

@@ -144,7 +144,7 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "義忍", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc"], page: 1, forceRefresh: false, customCpMappings: [] },
+      data: { keyword: "義忍", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
     await waitFor(() => expect(screen.getByLabelText("平台連線狀態")).toBeTruthy());
     expect(screen.getByText("冷卻限制中")).toBeTruthy();
@@ -153,7 +153,7 @@ describe("Home pagination interactions", () => {
     expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "義忍", platforms: ["waterwriter"], page: 1, forceRefresh: true, customCpMappings: [] },
+      data: { keyword: "義忍", mode: "keyword", platforms: ["waterwriter"], page: 1, forceRefresh: true, customCpMappings: [] },
     });
   });
 
@@ -178,7 +178,7 @@ describe("Home pagination interactions", () => {
     expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "義忍", platforms: ["ao3"], page: 1, forceRefresh: true, customCpMappings: [] },
+      data: { keyword: "義忍", mode: "keyword", platforms: ["ao3"], page: 1, forceRefresh: true, customCpMappings: [] },
     });
 
     await waitFor(() => expect((screen.getByRole("button", { name: "重試 Penana" }) as HTMLButtonElement).disabled).toBe(false));
@@ -186,7 +186,7 @@ describe("Home pagination interactions", () => {
     expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "義忍", platforms: ["penana"], page: 1, forceRefresh: true, customCpMappings: [] },
+      data: { keyword: "義忍", mode: "keyword", platforms: ["penana"], page: 1, forceRefresh: true, customCpMappings: [] },
     });
   });
 
@@ -204,6 +204,23 @@ describe("Home pagination interactions", () => {
     expect(screen.getAllByText("連線逾時").length).toBeGreaterThan(0);
     expect(screen.getAllByText("本次未收到來源回應，請單獨重試。").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "重試 CxC 創利市集" })).toBeTruthy();
+  });
+
+  it("switches to author mode and sends the author search contract", async () => {
+    render(<Home />);
+
+    fireEvent.click(screen.getByRole("button", { name: "作者" }));
+    expect(screen.getByLabelText("搜尋同人作品").getAttribute("placeholder")).toBe("輸入作者暱稱、繪師或社團名...");
+
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "Mizuki Studio" } });
+    expect(screen.getByText("AUTHOR MODE / 搜尋作者：Mizuki Studio")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+
+    await waitFor(() => expect(mockState.lastVariables).toEqual({
+      path: "/search",
+      method: "POST",
+      data: { keyword: "Mizuki Studio", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc"], page: 1, forceRefresh: false, customCpMappings: [] },
+    }));
   });
 
   it("renders a completed CxC zero-result search as source-specific empty state, not a global failure", async () => {
@@ -277,7 +294,7 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "花", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc"], page: 1, forceRefresh: false, customCpMappings: [] },
+      data: { keyword: "花", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
   });
 
@@ -336,7 +353,7 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "Atlas Creator", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc"], page: 1, forceRefresh: false, customCpMappings: [] },
+      data: { keyword: "Atlas Creator", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
     expect(screen.getByText(/AUTHOR MODE \/ 搜尋作者：Atlas Creator/)).toBeTruthy();
   });
