@@ -18,6 +18,13 @@ export type SearchResult = {
   warning?: string;
 };
 
+function normalizeTags(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.filter((tag): tag is string => typeof tag === "string").map((tag) => tag.trim()).filter(Boolean).join(", ");
+  }
+  return typeof value === "string" ? value : "";
+}
+
 export type PlatformStatusKind = "success" | "blocked" | "cooldown" | "empty" | "error";
 
 export type PlatformStatus = {
@@ -49,13 +56,20 @@ export function isDisplayableResult(value: unknown): value is SearchResult {
   if (["example.com", "example.org", "localhost", "127.0.0.1"].some((blocked) => normalizedUrl.includes(blocked))) return false;
 
   const platform = result.platform.toLowerCase();
-  if (platform.includes("ao3")) return normalizedUrl.includes("archiveofourown.org");
-  if (platform.includes("cxc")) return normalizedUrl.includes("cxc.today");
-  if (platform.includes("lofter")) return normalizedUrl.includes("lofter.com");
-  if (platform.includes("同人誌中心") || platform.includes("doujin")) return normalizedUrl.includes("doujin.com.tw");
-  if (platform.includes("在水裡寫字") || platform.includes("waterwriter")) return normalizedUrl.includes("slashtw.space");
-  if (platform.includes("penana")) return normalizedUrl.includes("penana.com");
-  if (platform.includes("pixiv")) return normalizedUrl.includes("pixiv.net");
+  let hostname = "";
+  try {
+    hostname = new URL(normalizedUrl).hostname;
+  } catch {
+    return false;
+  }
+  const hasAllowedHost = (...hosts: string[]) => hosts.some((host) => hostname === host || hostname.endsWith(`.${host}`));
+  if (platform.includes("ao3")) return hasAllowedHost("archiveofourown.org");
+  if (platform.includes("cxc")) return hasAllowedHost("cxc.today");
+  if (platform.includes("lofter")) return hasAllowedHost("lofter.com");
+  if (platform.includes("同人誌中心") || platform.includes("doujin")) return hasAllowedHost("doujin.com.tw");
+  if (platform.includes("在水裡寫字") || platform.includes("waterwriter")) return hasAllowedHost("slashtw.space");
+  if (platform.includes("penana")) return hasAllowedHost("penana.com");
+  if (platform.includes("pixiv")) return hasAllowedHost("pixiv.net", "www.pixiv.net");
   return false;
 }
 
@@ -71,7 +85,19 @@ export function normalizeResults(payload: unknown): SearchResult[] {
       : [];
 
   if (!Array.isArray(candidates)) return [];
-  return candidates.filter(isDisplayableResult) as SearchResult[];
+  return candidates.flatMap((candidate) => {
+    if (!isDisplayableResult(candidate)) return [];
+    const result = candidate as SearchResult & { tags?: unknown; updated_at?: unknown };
+    const normalized: SearchResult = {
+      ...result,
+      tags: normalizeTags(result.tags),
+      scraped_at: result.scraped_at || (typeof result.updated_at === "string" ? result.updated_at : new Date(0).toISOString()),
+    };
+    if (!normalized.updatedAt && typeof result.updated_at === "string") {
+      normalized.updatedAt = result.updated_at;
+    }
+    return [normalized];
+  });
 }
 
 export function appendUniqueResults(current: SearchResult[], incoming: SearchResult[]): SearchResult[] {

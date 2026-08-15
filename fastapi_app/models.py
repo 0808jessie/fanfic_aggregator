@@ -12,15 +12,16 @@ class ScrapedFanfic(BaseModel):
     id: str = ""
     title: str = "Untitled work"
     author: str = "Unknown author"
-    platform: Literal["AO3", "CxC 創利市集", "Lofter", "同人誌中心", "在水裡寫字", "Penana", "晉江", "其他"] = "AO3"
+    platform: Literal["AO3", "CxC 創利市集", "Lofter", "同人誌中心", "在水裡寫字", "Penana", "pixiv", "晉江", "其他"] = "AO3"
     url: str
-    tags: str = ""
+    tags: str | list[str] = ""
     relationships: list[str] = Field(default_factory=list)
     characters: list[str] = Field(default_factory=list)
     summary: str = ""
     coverUrl: Optional[str] = None
     wordCount: Optional[str] = None
     updatedAt: Optional[str] = None
+    updated_at: Optional[str] = None
     isComplete: Optional[bool] = None
     relevanceScore: int = 0
     scraped_at: datetime = Field(default_factory=datetime.utcnow)

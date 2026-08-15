@@ -24,7 +24,8 @@ def _cp_match_terms(keyword: str) -> set[str]:
 
 
 def _tag_values(item: ScrapedFanfic) -> list[str]:
-    values = [*item.relationships, *(item.tags or "").split(",")]
+    raw_tags = item.tags if isinstance(item.tags, list) else (item.tags or "").split(",")
+    values = [*item.relationships, *raw_tags]
     return [_normalize(value) for value in values if _normalize(value)]
 
 

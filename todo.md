@@ -300,3 +300,8 @@
 - [x] 優化 penana_scraper.py（放寬 timeout 至 30s，強化 curl_cffi 偽裝）
 - [x] 優化 pixiv_scraper.py 與檢查前端白名單（pixiv.net 與合約欄位）
 - [x] 執行獨立三平台診斷測試（AO3, Penana, Pixiv）並回報結果
+
+- [x] 建立固定平台檔案雜湊基線，確保 doujin、waterwriter、cxc 不被修改
+- [x] 對齊 Pixiv scraper 輸出、API 正規化、前端白名單與作品卡片欄位合約
+- [x] 執行 AO3、Penana 真實 HTTP 診斷並保留狀態碼與回應開頭
+- [x] 實測首頁搜尋鬼滅，驗證 Pixiv 卡片顯示標題與作者

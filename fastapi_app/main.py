@@ -116,6 +116,7 @@ def is_real_platform_url(url: str, platform: str | None = None) -> bool:
             "同人誌中心": ("doujin.com.tw",),
             "在水裡寫字": ("slashtw.space",),
             "penana": ("penana.com",),
+            "pixiv": ("pixiv.net",),
         }
         hosts = allowed_hosts.get(platform.lower())
         if hosts and not any(host in normalized_url for host in hosts):
@@ -130,7 +131,9 @@ def save_fanfic_to_db(db: Session, fanfic: ScrapedFanfic) -> None:
         return
     try:
         record = db.query(Fanfic).filter(Fanfic.url == fanfic.url).first()
-        values = fanfic.model_dump(exclude={"id", "source", "warning", "coverUrl", "wordCount", "updatedAt", "relationships", "characters", "isComplete", "relevanceScore"})
+        values = fanfic.model_dump(exclude={"id", "source", "warning", "coverUrl", "wordCount", "updatedAt", "updated_at", "relationships", "characters", "isComplete", "relevanceScore"})
+        if isinstance(values.get("tags"), list):
+            values["tags"] = ", ".join(values["tags"])
         if record is None:
             db.add(Fanfic(**values))
         else:
@@ -290,7 +293,10 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
         combined_warning = None if any_success else ("；".join(platform_warnings) if platform_warnings else None)
 
         for result in fresh_results:
-            result.source = "live"
+            # Preserve a platform-provided source identifier (for example,
+            # ``pixiv``) so the frontend can align source and platform filters.
+            if not result.source or result.source == "live":
+                result.source = "live"
             result.warning = combined_warning
 
         # 3. 若即時抓取成功且有真實結果，寫入資料庫與記憶體快取。

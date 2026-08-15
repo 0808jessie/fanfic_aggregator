@@ -80,7 +80,7 @@ class PenanaScraper(BaseScraper):
                 self.last_warning = f"[Penana] Public Finder 暫時不可用（HTTP {response.status_code}）"
                 return None
             response.raise_for_status()
-            if self._is_verification_page(response.text):
+            if self._is_blocked_challenge_html(response.text):
                 self.last_warning = "[Penana] 觸發人機保護（驗證頁）"
                 return None
             return response.text
@@ -160,7 +160,28 @@ class PenanaScraper(BaseScraper):
     @staticmethod
     def _is_verification_page(html: str) -> bool:
         page_text = html.casefold()
-        return any(marker in page_text for marker in ("cf-chl", "cdn-cgi", "just a moment", "cloudflare"))
+        # A normal Penana document references Cloudflare static resources and
+        # can contain the words ``cloudflare`` / ``cdn-cgi``. Those strings are
+        # not proof of a challenge page. Block only challenge-specific markers.
+        return any(marker in page_text for marker in (
+            "cf-chl-",
+            "cdn-cgi/challenge-platform",
+            "just a moment...",
+            "verifying you are human",
+            "checking your browser before accessing",
+        ))
+
+    @classmethod
+    def _is_blocked_challenge_html(cls, html: str) -> bool:
+        """Treat challenge markers as blocking only when no public result card exists.
+
+        Penana can include Cloudflare challenge references in normal documents;
+        an HTML response that also exposes Finder story cards remains usable.
+        """
+        if not cls._is_verification_page(html):
+            return False
+        soup = BeautifulSoup(html, "html.parser")
+        return soup.select_one(".newXbox.p0.storydata a.newBookTitle[href^='/story/']") is None
 
     @staticmethod
     def parse_detail_metadata(html: str) -> dict[str, str | bool | None]:

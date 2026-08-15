@@ -120,6 +120,30 @@ describe("search result safety contract", () => {
     })).toBe(true);
   });
 
+  it("保留 pixiv.net 的合法作品，並將 tags 陣列轉為卡片可渲染字串", () => {
+    const items = normalizeResults({
+      items: [{
+        id: "pixiv:123",
+        title: "鬼滅之刃：雪夜短篇",
+        author: "測試作者",
+        url: "https://www.pixiv.net/novel/show.php?id=123",
+        summary: "公開摘要",
+        platform: "pixiv",
+        source: "pixiv",
+        tags: ["鬼滅之刃", "義忍"],
+        updated_at: "2026-08-16T00:00:00+00:00",
+      }],
+    });
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      platform: "pixiv",
+      source: "pixiv",
+      tags: "鬼滅之刃, 義忍",
+      updatedAt: "2026-08-16T00:00:00+00:00",
+    });
+  });
+
   it("sorts local results by backend relevance before update date and word count", () => {
     const lowerScore = { ...verifiedAo3Result, title: "義忍標題", url: "https://archiveofourown.org/works/2", relevanceScore: 50, wordCount: "20,000" };
     const higherScore = { ...verifiedAo3Result, title: "關係標籤命中", url: "https://archiveofourown.org/works/3", relevanceScore: 100, wordCount: "1,000" };
