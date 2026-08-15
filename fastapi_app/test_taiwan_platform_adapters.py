@@ -153,9 +153,9 @@ def test_taiwan_adapters_pass_chinese_cp_query_to_public_search_pages():
     assert fetch_waterwriter.call_args.args == ("義忍",)
 
     doujin = DoujinScraper()
-    with patch.object(doujin, "_fetch_static_search_html", return_value=None), patch.object(doujin, "_render_public_search_html", return_value="") as render_doujin:
+    with patch.object(doujin, "_fetch_static_search_html", return_value='<main><div class="listing-header">共 0 本</div></main>') as fetch_doujin:
         doujin.scrape("義忍")
-    assert render_doujin.call_args.args == ("義忍", 1)
+    assert fetch_doujin.call_args.args == ("義忍", 1)
 
 
 def test_taiwan_static_adapters_use_relaxed_http_timeout_and_single_primary_keyword():
@@ -171,7 +171,7 @@ def test_taiwan_static_adapters_use_relaxed_http_timeout_and_single_primary_keyw
 
     assert payload["items"]
     assert "srchtxt=%E7%BE%A9%E5%BF%8D" in water_request.call_args.args[0]
-    assert water_request.call_args.kwargs["timeout"] == (5, 10)
+    assert water_request.call_args.kwargs["timeout"] == (3, 6)
 
     class DoujinResponse:
         status_code = 200
@@ -185,10 +185,10 @@ def test_taiwan_static_adapters_use_relaxed_http_timeout_and_single_primary_keyw
 
     assert payload["total_works"] == 1
     assert "keyword=%E7%BE%A9%E5%BF%8D" in doujin_request.call_args.args[0]
-    assert doujin_request.call_args.kwargs["timeout"] == (5, 10)
+    assert doujin_request.call_args.kwargs["timeout"] == (3, 6)
 
 
-def test_taiwan_adapters_prefer_verified_static_html_before_browser_fallback():
+def test_taiwan_adapters_use_verified_static_html_without_browser_fallback():
     waterwriter_html = WATERWRITER_RESULTS + '<div id="ct">共檢索到 25 篇主題</div>'
     waterwriter = WaterWriterScraper()
     with patch.object(waterwriter, "_fetch_static_search_html", return_value=waterwriter_html):
@@ -199,11 +199,11 @@ def test_taiwan_adapters_prefer_verified_static_html_before_browser_fallback():
 
     doujin_html = '<main><div class="listing-header">共 4 本</div></main>'
     doujin = DoujinScraper()
-    with patch.object(doujin, "_fetch_static_search_html", return_value=doujin_html), patch.object(doujin, "_render_public_search_html") as render_doujin:
+    with patch.object(doujin, "_fetch_static_search_html", return_value=doujin_html) as fetch_doujin:
         doujin_payload = doujin.scrape("義忍")
 
     assert doujin_payload["total_works"] == 4
-    render_doujin.assert_not_called()
+    fetch_doujin.assert_called_once_with("義忍", 1)
 
 
 def test_waterwriter_keeps_each_rendered_discuz_row_title_and_summary_separate():
@@ -258,7 +258,7 @@ def test_penana_uses_ordinary_public_finder_headers_without_browser_fallback():
     headers = request.call_args.kwargs["headers"]
     assert headers["Referer"] == "https://www.penana.com/"
     assert "Windows NT 10.0" in headers["User-Agent"]
-    assert request.call_args.kwargs["timeout"] == (5, 10)
+    assert request.call_args.kwargs["timeout"] == (3, 6)
 
 
 def test_penana_http_timeout_returns_source_warning_without_browser_navigation():

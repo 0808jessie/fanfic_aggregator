@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from datetime import datetime
 import re
-import time
 from urllib.parse import quote_plus, urljoin
 
 from bs4 import BeautifulSoup
@@ -18,7 +17,6 @@ import requests
 from constants.cp_tags import CPTagConfig, get_keyword_for_platform
 from models import ScrapedFanfic
 from scrapers.base_scraper import BaseScraper
-from scrapers.browser_runtime import PLAYWRIGHT_AVAILABLE, configure_fast_page, sync_playwright
 
 
 class _PublicSearchUnavailable(RuntimeError):
@@ -29,7 +27,7 @@ class CxCScraper(BaseScraper):
     """Read verified public CxC work cards from the rendered keyword page."""
 
     base_url = "https://cxc.today"
-    search_url = f"{base_url}/zh/explore"
+    search_url = f"{base_url}/zh/search"
     public_api_url = "https://api.cxc.today/book"
     # CxC's public frontend uses this non-user, server-side device identifier
     # for anonymous catalogue requests. It is disclosed in its shipped client
@@ -58,38 +56,7 @@ class CxCScraper(BaseScraper):
 
     @classmethod
     def build_search_url(cls, keyword: str) -> str:
-        # This is the public route CxC's own header search navigates to. The
-        # older /zh/search URL only loads the search shell in anonymous pages.
-        # CxC's own router preserves blank filters as bare keys rather than
-        # ``key=``. Keeping that exact shape prevents its query normalizer from
-        # interpreting blank flags as incompatible filter values.
-        query = "&".join((
-            "page=1",
-            "per_page=24",
-            "is_new",
-            "sort_by=updated_at",
-            f"keyword={quote_plus(keyword)}",
-            "work_category",
-            "is_adult=0",
-            "has_free",
-            "has_subscriber_price",
-            "is_file",
-            "lang=",
-            "work_length",
-            "work_duration",
-            "target_audience",
-            "comic_type",
-            "is_original",
-            "is_completed",
-            "is_vip_only",
-            "word_count=0",
-            "is_by_work",
-            "is_by_section",
-            "is_by_volume",
-            "is_ai",
-            "tutorial_type",
-        ))
-        return f"{cls.search_url}?{query}"
+        return f"{cls.search_url}?keyword={quote_plus(keyword)}"
 
     def scrape(
         self,
@@ -100,6 +67,7 @@ class CxCScraper(BaseScraper):
     ) -> dict[str, object]:
         self.last_warning = None
         self._api_transport_warning: str | None = None
+        self._public_page_warning: str | None = None
         if not keyword.strip():
             return {"items": [], "total_works": 0, "total_pages": 1}
 
@@ -126,9 +94,18 @@ class CxCScraper(BaseScraper):
                 print(f"[CxC] 官方公開 API 成功抓取 {len(items)} 筆，公開總數 {total_works}")
                 return {"items": items, "total_works": total_works, "total_pages": 1}
 
+            # Do not spend a second six-second request after a transport timeout.
+            # A malformed but reachable API may still use the static page below;
+            # a network/protection failure becomes a fast source-level state.
             if self._api_transport_warning:
                 raise _PublicSearchUnavailable(self._api_transport_warning)
-            html = self._render_public_search_html(public_query)
+            html = self._fetch_public_search_html(public_query)
+            if html is None:
+                raise _PublicSearchUnavailable(
+                    self._api_transport_warning
+                    or self._public_page_warning
+                    or "No verified public search result was available"
+                )
             items = self.parse_results(html, public_query)
             for item in items:
                 item.keyword = keyword
@@ -148,7 +125,7 @@ class CxCScraper(BaseScraper):
             self.last_warning = f"[CxC] {error}"
             print(self.last_warning)
         except Exception as error:
-            self.last_warning = f"[CxC] 連線逾時或等待渲染逾時：{error}"
+            self.last_warning = f"[CxC] 公開 HTTP 解析失敗：{error}"
             print(self.last_warning)
         return {
             "items": [],
@@ -162,9 +139,9 @@ class CxCScraper(BaseScraper):
     def _fetch_public_api_results(self, keyword: str) -> dict[str, object] | None:
         """Read CxC's public work list API when its anonymous catalogue is available.
 
-        The endpoint is used by CxC's own explore page. Returning ``None``
-        leaves browser rendering as a bounded fallback; malformed or nonzero
-        responses never become fabricated works.
+        The endpoint is used by CxC's public catalogue. A malformed response
+        never becomes fabricated work data; the public search HTML is inspected
+        separately, still without starting a browser.
         """
         params: list[tuple[str, str | int]] = [
             ("page", 1),
@@ -197,7 +174,7 @@ class CxCScraper(BaseScraper):
                 self.public_api_url,
                 params=params,
                 headers=self.public_api_headers,
-                timeout=(5, 10),
+                timeout=(3, 6),
             )
             response.raise_for_status()
             payload = response.json()
@@ -209,7 +186,7 @@ class CxCScraper(BaseScraper):
         data = payload.get("data") if isinstance(payload, dict) else None
         raw_items = data.get("data") if isinstance(data, dict) else None
         if payload.get("code") != 0 or not isinstance(raw_items, list):
-            print("[CxC] 公開 API 回應不含可驗證作品資料，改以公開頁渲染")
+            print("[CxC] 公開 API 回應不含可驗證作品資料，改以公開 HTML 搜尋頁解析")
             return None
 
         return {
@@ -289,91 +266,27 @@ class CxCScraper(BaseScraper):
         except (TypeError, ValueError):
             return 0
 
-    def _render_public_search_html(self, keyword: str) -> str:
-        if not PLAYWRIGHT_AVAILABLE:
-            raise _PublicSearchUnavailable("連線逾時或等待渲染逾時（Playwright 不可用）")
+    def _fetch_public_search_html(self, keyword: str) -> str | None:
+        """Read CxC's public keyword page without a rendered browser fallback."""
+        try:
+            response = requests.get(self.build_search_url(keyword), headers=self.headers, timeout=(3, 6))
+            if response.status_code in (403, 429, 503, 520, 521, 522, 525):
+                self._public_page_warning = f"Request blocked (HTTP {response.status})"
+                return None
+            response.raise_for_status()
+            html = response.text
+        except requests.RequestException as error:
+            self._public_page_warning = f"公開搜尋頁連線不可用：{error}"
+            return None
 
-        with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-            )
-            context = None
-            try:
-                context = browser.new_context(
-                    user_agent=self.user_agent,
-                    locale="zh-TW",
-                    viewport={"width": 1280, "height": 900},
-                    extra_http_headers={
-                        "Accept-Language": self.headers["Accept-Language"],
-                        "Referer": self.headers["Referer"],
-                    },
-                )
-                page_obj = context.new_page()
-                configure_fast_page(page_obj)
-                render_deadline = time.monotonic() + 10
-                api_response_seen = False
-
-                def record_public_api_response(response) -> None:
-                    nonlocal api_response_seen
-                    if "/api/" in response.url and response.status == 200:
-                        api_response_seen = True
-
-                # Register before navigation so API and DOM readiness are observed
-                # in the same six-second bounded window.
-                page_obj.on("response", record_public_api_response)
-                try:
-                    # The document can commit while analytics or client chunks
-                    # keep DOMContentLoaded pending. Commit is enough to begin
-                    # the bounded public API/card observation below.
-                    response = page_obj.goto(self.build_search_url(keyword), timeout=7_000, wait_until="commit")
-                except Exception as error:
-                    raise _PublicSearchUnavailable("連線逾時或等待渲染逾時") from error
-                if response and response.status in (403, 429, 503, 520, 521, 522, 525):
-                    raise _PublicSearchUnavailable(f"Request blocked (HTTP {response.status})")
-
-                deadline = render_deadline
-                card_found = False
-                while time.monotonic() < deadline:
-                    if page_obj.locator(self.rendered_work_selector).count() > 0:
-                        card_found = True
-                        break
-                    if api_response_seen:
-                        # A successful public API response can be followed by a
-                        # short DOM commit; keep the remaining bounded window.
-                        page_obj.wait_for_timeout(250)
-                    else:
-                        page_obj.wait_for_timeout(150)
-
-                if api_response_seen and not card_found:
-                    remaining = max(250, int((deadline - time.monotonic()) * 1000))
-                    try:
-                        page_obj.wait_for_selector(self.rendered_work_selector, timeout=remaining)
-                        card_found = True
-                    except Exception:
-                        pass
-
-                html = page_obj.content()
-                soup = BeautifulSoup(html, "html.parser")
-                if self.has_public_render_error(html):
-                    raise _PublicSearchUnavailable("連線逾時或等待渲染逾時（CxC 公開頁回報錯誤）")
-                has_work_link = bool(soup.select(self.work_link_selector))
-                has_loading = bool(soup.select_one(".hourglass_loading.show, .q-spinner, [class*='loading'], [class*='Loading']"))
-                if not has_work_link and self.has_explicit_empty_result(html):
-                    return html
-                if not has_work_link and (has_loading or not api_response_seen):
-                    raise _PublicSearchUnavailable("連線逾時或等待渲染逾時（未完成渲染）")
-                if not has_work_link:
-                    raise _PublicSearchUnavailable("連線逾時或等待渲染逾時（未產生可信作品卡）")
-                return html
-            finally:
-                try:
-                    page_obj.close()
-                except Exception:
-                    pass
-                if context is not None:
-                    context.close()
-                browser.close()
+        soup = BeautifulSoup(html, "html.parser")
+        if self.has_public_render_error(html):
+            self._public_page_warning = "公開搜尋頁回報錯誤"
+            return None
+        if soup.select(self.work_link_selector) or self.has_explicit_empty_result(html):
+            return html
+        self._public_page_warning = "公開搜尋頁未提供可驗證的靜態作品卡"
+        return None
 
     def parse_results(self, html: str, keyword: str) -> list[ScrapedFanfic]:
         soup = BeautifulSoup(html, "html.parser")

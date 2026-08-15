@@ -53,11 +53,9 @@ class AO3Scraper(BaseScraper):
         "Cookie": "view_adult=true; accepted_tos=2018",
     }
     static_cookies = {"view_adult": "true", "accepted_tos": "2018"}
-    retryable_static_statuses = frozenset((503, 525))
-    static_retry_delay_seconds = 1
-    static_connect_timeout_seconds = 5
-    static_read_timeout_seconds = 10
-    static_search_budget_seconds = 17
+    static_connect_timeout_seconds = 3
+    static_read_timeout_seconds = 6
+    static_search_budget_seconds = 6
 
     def __init__(self):
         super().__init__()
@@ -109,14 +107,9 @@ class AO3Scraper(BaseScraper):
         return None
 
     def _fetch_static_search_html(self, keyword: str, page: int) -> str | None:
-        """Fetch AO3 HTML with one bounded retry for transient public-edge errors.
-
-        The retry applies only to temporary 503/525 responses and transport-level
-        failures. Protection pages and non-retryable HTTP statuses remain source-
-        scoped warnings; this adapter never opens a browser fallback.
-        """
+        """Fetch AO3 HTML once with a bounded six-second public HTTP budget."""
         url = self.build_search_url(keyword, page)
-        for attempt in range(2):
+        for _attempt in range(1):
             remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 4.0
             if remaining_budget <= 0:
                 self._static_terminal_warning = "AO3 靜態搜尋連線逾時或不可用"
@@ -130,18 +123,6 @@ class AO3Scraper(BaseScraper):
                     timeout=(self.static_connect_timeout_seconds, self.static_read_timeout_seconds),
                 )
                 remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 4.0
-                if (
-                    response.status_code in self.retryable_static_statuses
-                    and attempt == 0
-                    and remaining_budget >= (
-                        self.static_retry_delay_seconds
-                        + self.static_connect_timeout_seconds
-                        + self.static_read_timeout_seconds
-                    )
-                ):
-                    print(f"[AO3 Static] HTTP {response.status_code}; retrying once after 1s")
-                    time.sleep(self.static_retry_delay_seconds)
-                    continue
                 if response.status_code in (403, 429, 503, 520, 521, 522, 525):
                     self._static_terminal_warning = f"AO3 靜態搜尋暫時不可用（HTTP {response.status_code}）"
                     print(f"[AO3 Static] HTTP {response.status_code}; returning bounded source warning")
@@ -155,15 +136,6 @@ class AO3Scraper(BaseScraper):
                     return None
                 return html
             except requests.RequestException as error:
-                remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 4.0
-                if attempt == 0 and remaining_budget >= (
-                    self.static_retry_delay_seconds
-                    + self.static_connect_timeout_seconds
-                    + self.static_read_timeout_seconds
-                ):
-                    print(f"[AO3 Static] Transient public GET failure; retrying once after 1s: {error}")
-                    time.sleep(self.static_retry_delay_seconds)
-                    continue
                 self._static_terminal_warning = "AO3 靜態搜尋連線逾時或不可用"
                 print(f"[AO3 Static] Public GET unavailable; returning bounded source warning: {error}")
                 return None
@@ -249,7 +221,10 @@ class AO3Scraper(BaseScraper):
                 print(f"[AO3Scraper] Memory cache hit for '{cache_key}'")
                 return cached_payload
 
-        target_pages = [page, page + 1] if page == 1 else [page]
+        # The pure HTTP live-search path makes one bounded request per user page.
+        # Loading a second page is deferred to the existing pagination control so
+        # an otherwise valid first-page response never delays all platforms.
+        target_pages = [page]
         self._static_deadline = monotonic() + self.static_search_budget_seconds
         try:
             static_payload = self._scrape_static_pages(ao3_query, target_pages, page)

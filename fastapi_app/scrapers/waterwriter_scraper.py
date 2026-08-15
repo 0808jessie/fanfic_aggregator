@@ -87,7 +87,7 @@ class WaterWriterScraper(BaseScraper):
             response = requests.get(
                 self.build_search_url(keyword),
                 headers=self.headers,
-                timeout=(5, 10),
+                timeout=(3, 6),
             )
             if response.status_code in (403, 429, 503, 520, 521, 522, 525):
                 raise _PublicPageUnavailable(f"Request blocked (HTTP {response.status_code}), skipping cleanly")

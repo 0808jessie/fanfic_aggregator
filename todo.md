@@ -243,4 +243,9 @@
 - [x] 將 AO3、在水裡寫字、同人誌中心、Penana、CxC 接上非同步公開請求路徑，保留安全防護降級與可信 URL 邊界
 - [x] 補強未知 CP／一般字詞的原詞跨平台搜尋與單一來源重試回歸
 - [x] 驗證不同關鍵字的部分成功回應與完整回歸；Python 71/71、Vitest 42/42、TypeScript 通過
-- [ ] 儲存本輪非同步來源隔離與未知關鍵字重構 checkpoint
+- [x] 儲存本輪非同步來源隔離與未知關鍵字重構 checkpoint（9c944dac）
+- [x] 稽核 CxC、同人誌中心與所有 Adapter 是否仍存在即時 browser fallback，以及封面 no-referrer 契約
+- [x] 移除即時搜尋的 browser／Playwright 路徑，將五平台統一為 6 秒有界純 HTTP／HTML 或公開 API 解析與來源級降級
+- [x] 建立可執行的五平台 CLI 搜尋診斷，輸出平台、狀態、耗時與官方／可驗證筆數
+- [x] 驗證未知關鍵字、單一平台重試、完整回歸與純 HTTP 診斷輸出；Python 71/71、Vitest 42/42、TypeScript 通過
+- [ ] 儲存本輪純 HTTP 搜尋重構與 CLI 診斷 checkpoint

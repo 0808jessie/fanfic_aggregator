@@ -8,7 +8,6 @@ into a result card.
 from __future__ import annotations
 
 import re
-import time
 from datetime import datetime
 from urllib.parse import quote_plus, urljoin
 
@@ -18,7 +17,6 @@ import requests
 from constants.cp_tags import CPTagConfig, get_keyword_for_platform
 from models import ScrapedFanfic
 from scrapers.base_scraper import BaseScraper
-from scrapers.browser_runtime import PLAYWRIGHT_AVAILABLE, configure_fast_page, sync_playwright
 
 
 class _PublicListingUnavailable(RuntimeError):
@@ -70,9 +68,9 @@ class DoujinScraper(BaseScraper):
             search_keyword = keyword.strip().split()[0]
             html = self._fetch_static_search_html(search_keyword, page)
             if html is None:
-                if self._static_unavailable_warning:
-                    raise _PublicListingUnavailable(self._static_unavailable_warning)
-                html = self._render_public_search_html(search_keyword, page)
+                raise _PublicListingUnavailable(
+                    self._static_unavailable_warning or "No verified public listing was available"
+                )
             items = self.parse_results(html, search_keyword)
             total_works = self.extract_total_works(html) or len(items)
             total_pages = self.extract_total_pages(html) or 1
@@ -86,17 +84,17 @@ class DoujinScraper(BaseScraper):
             self.last_warning = f"[同人誌中心] {error}"
             print(self.last_warning)
         except Exception as error:
-            self.last_warning = f"[同人誌中心] Browser render failed safely: {error}"
+            self.last_warning = f"[同人誌中心] 純 HTTP 解析失敗：{error}"
             print(self.last_warning)
         return {"items": [], "total_works": 0, "total_pages": 1}
 
     def _fetch_static_search_html(self, keyword: str, page_number: int = 1) -> str | None:
-        """Read the native server-rendered listing before using browser fallback."""
+        """Read only the native server-rendered listing with a six-second read budget."""
         try:
             response = requests.get(
                 self.build_search_url(keyword, page_number),
                 headers=self.headers,
-                timeout=(5, 10),
+                timeout=(3, 6),
             )
             if response.status_code in (403, 429, 503, 520, 521, 522, 525):
                 self._static_unavailable_warning = f"Request blocked (HTTP {response.status}), skipping cleanly"
@@ -109,6 +107,7 @@ class DoujinScraper(BaseScraper):
                 return None
             soup = BeautifulSoup(html, "html.parser")
             if not soup.select('a[href*="/books/info/"]') and not re.search(r"共\s*\d+\s*本", text):
+                self._static_unavailable_warning = "公開搜尋頁未提供可驗證的靜態書目"
                 return None
             print("[同人誌中心 Static] Parsed native public listing HTML")
             return html
@@ -117,54 +116,6 @@ class DoujinScraper(BaseScraper):
             print(f"[同人誌中心 Static] {self._static_unavailable_warning}")
             return None
 
-    def _render_public_search_html(self, keyword: str, page_number: int = 1) -> str:
-        if not PLAYWRIGHT_AVAILABLE:
-            raise _PublicListingUnavailable("Playwright is unavailable; skipping cleanly")
-
-        with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-            )
-            try:
-                context = browser.new_context(
-                    user_agent=self.user_agent,
-                    locale="zh-TW",
-                    viewport={"width": 1280, "height": 900},
-                    extra_http_headers={"Accept-Language": self.headers["Accept-Language"], "Referer": self.headers["Referer"]},
-                )
-                page = context.new_page()
-                configure_fast_page(page)
-                render_deadline = time.monotonic() + 10
-                response = page.goto(self.build_search_url(keyword, page_number), timeout=7_000, wait_until="domcontentloaded")
-                if response and response.status in (403, 429, 503, 520, 521, 522, 525):
-                    raise _PublicListingUnavailable(f"Request blocked (HTTP {response.status}), skipping cleanly")
-
-                page.wait_for_timeout(min(750, max(0, int((render_deadline - time.monotonic()) * 1000))))
-                remaining_ms = max(100, int((render_deadline - time.monotonic()) * 1000))
-                body_text = page.locator("body").inner_text(timeout=min(1_500, remaining_ms))
-                if self._is_protected_page(body_text):
-                    raise _PublicListingUnavailable("Triggered verification page, skipping cleanly")
-
-                for selector in ('a[href*="/books/info/"]', *self.result_selectors):
-                    remaining_ms = int((render_deadline - time.monotonic()) * 1000)
-                    if remaining_ms <= 0:
-                        break
-                    try:
-                        page.wait_for_selector(selector, timeout=min(750, remaining_ms))
-                        break
-                    except Exception:
-                        continue
-                return page.content()
-            finally:
-                try:
-                    page.close()
-                except Exception:
-                    pass
-                try:
-                    context.close()
-                finally:
-                    browser.close()
 
     @staticmethod
     def _is_protected_page(text: str) -> bool:

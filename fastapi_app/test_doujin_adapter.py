@@ -6,7 +6,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from scrapers.doujin_scraper import DoujinScraper, _PublicListingUnavailable
+from scrapers.doujin_scraper import DoujinScraper
 import main
 from scrapers.index import SCRAPERS
 
@@ -22,7 +22,7 @@ RENDERED_BOOK_RESULTS = """
 
 def test_doujin_adapter_parses_only_matching_verified_book_links():
     scraper = DoujinScraper()
-    with patch.object(scraper, "_fetch_static_search_html", return_value=None), patch.object(scraper, "_render_public_search_html", return_value=RENDERED_BOOK_RESULTS):
+    with patch.object(scraper, "_fetch_static_search_html", return_value=RENDERED_BOOK_RESULTS):
         payload = scraper.scrape("義忍")
 
     headers = scraper.headers
@@ -40,24 +40,21 @@ def test_doujin_adapter_parses_only_matching_verified_book_links():
 
 def test_doujin_adapter_isolates_cloudflare_challenge_without_inventing_results():
     scraper = DoujinScraper()
-    with patch.object(scraper, "_fetch_static_search_html", return_value=None), patch.object(scraper, "_render_public_search_html", side_effect=_PublicListingUnavailable("Triggered verification page, skipping cleanly")):
+    with patch.object(scraper, "_fetch_static_search_html", return_value=None):
         payload = scraper.scrape("義忍")
 
     assert payload["items"] == []
-    assert "Triggered verification page" in (scraper.last_warning or "")
+    assert "No verified public listing" in (scraper.last_warning or "")
     assert DoujinScraper._is_protected_page("Just a moment... Cloudflare captcha")
 
 
 def test_doujin_http_timeout_skips_browser_fallback_and_returns_source_warning():
     scraper = DoujinScraper()
-    with patch("scrapers.doujin_scraper.requests.get", side_effect=requests.Timeout("slow listing")), patch.object(
-        scraper, "_render_public_search_html"
-    ) as render:
+    with patch("scrapers.doujin_scraper.requests.get", side_effect=requests.Timeout("slow listing")):
         payload = scraper.scrape("義忍")
 
     assert payload["items"] == []
     assert "Public HTTP request unavailable" in (scraper.last_warning or "")
-    render.assert_not_called()
 
 
 def test_doujin_platform_is_registered_and_uses_a_trusted_host_boundary():

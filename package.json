@@ -10,6 +10,7 @@
     "check": "tsc --noEmit",
     "format": "prettier --write .",
     "test": "vitest run",
+    "test:search": "cd fastapi_app && python3 scripts/test_search.py",
     "db:push": "drizzle-kit generate && drizzle-kit migrate"
   },
   "dependencies": {

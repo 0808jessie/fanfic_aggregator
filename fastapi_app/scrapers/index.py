@@ -48,11 +48,9 @@ PLATFORM_LABELS = {
     "penana": "Penana",
 }
 LOCAL_CP_PLATFORM_IDS = frozenset(("doujin", "waterwriter"))
-# A platform may legitimately need the 5s connect + 10s read allowance below.
-# Keep the aggregate slightly higher so one valid source is not converted into a
-# timeout before its own HTTP request has finished, while still isolating slow
-# sources from the rest of the response.
-ADAPTER_TIMEOUT_SECONDS = 18.0
+# Live search is HTTP-only. End each source task promptly so slow upstreams
+# return their own state instead of holding the full cross-platform response.
+ADAPTER_TIMEOUT_SECONDS = 6.5
 SOURCE_CACHE_TTL_SECONDS = 600.0
 _SOURCE_CACHE: dict[tuple[str, str, int], tuple[float, list[ScrapedFanfic], int, int, str | None]] = {}
 _SOURCE_CACHE_LOCK = Lock()

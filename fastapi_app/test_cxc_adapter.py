@@ -29,16 +29,15 @@ RENDERED_CXC_RESULTS = """
 """
 
 
-def test_cxc_adapter_parses_verified_public_work_cards_and_falls_back_to_card_count():
+def test_cxc_adapter_parses_verified_static_public_work_cards_and_falls_back_to_card_count():
     scraper = CxCScraper()
     with patch.object(scraper, "_fetch_public_api_results", return_value=None), patch.object(
-        scraper, "_render_public_search_html", return_value=RENDERED_CXC_RESULTS
-    ) as render:
+        scraper, "_fetch_public_search_html", return_value=RENDERED_CXC_RESULTS
+    ) as fetch_html:
         payload = scraper.scrape("義忍")
 
-    assert render.call_args.args == ("義忍",)
-    assert "/zh/explore?" in scraper.build_search_url("義忍")
-    assert "is_new&sort_by=updated_at" in scraper.build_search_url("義忍")
+    assert fetch_html.call_args.args == ("義忍",)
+    assert "/zh/search?" in scraper.build_search_url("義忍")
     assert "keyword=%E7%BE%A9%E5%BF%8D" in scraper.build_search_url("義忍")
     assert payload["total_works"] == 1
     item = payload["items"][0]
@@ -67,20 +66,17 @@ def test_cxc_prefers_verified_public_api_records_with_creator_work_urls():
             }],
         },
     }
-    with patch("scrapers.cxc_scraper.requests.get", return_value=response) as request, patch.object(
-        scraper, "_render_public_search_html"
-    ) as render:
+    with patch("scrapers.cxc_scraper.requests.get", return_value=response) as request:
         payload = scraper.scrape("小說")
 
     assert request.called
-    assert not render.called
     assert payload["total_works"] == 4145
     item = payload["items"][0]
     assert item.title == "《檔案存取中》"
     assert item.author == "碳烤巧克力"
     assert item.url == "https://cxc.today/@grilledchocolate/work/57417"
     assert item.tags == "原創, 小說"
-    assert request.call_args.kwargs["timeout"] == (5, 10)
+    assert request.call_args.kwargs["timeout"] == (3, 6)
 
 
 def test_cxc_uses_clean_cp_alias_and_matches_title_tags_or_intro_fields():
@@ -158,16 +154,16 @@ def test_cxc_explicit_api_zero_results_are_successful_empty_not_error():
     assert classify_platform_status(0, scraper.last_warning) == "empty"
 
 
-def test_cxc_public_api_timeout_skips_browser_fallback_and_returns_source_warning():
+def test_cxc_public_api_timeout_returns_source_warning_without_a_second_http_request():
     scraper = CxCScraper()
     with patch("scrapers.cxc_scraper.requests.get", side_effect=requests.Timeout("slow public API")), patch.object(
-        scraper, "_render_public_search_html"
-    ) as render:
+        scraper, "_fetch_public_search_html", return_value=None
+    ) as fetch_html:
         payload = scraper.scrape("義忍")
 
     assert payload["items"] == []
     assert "公開 API 連線不可用" in (scraper.last_warning or "")
-    render.assert_not_called()
+    fetch_html.assert_not_called()
 
 
 def test_search_api_preserves_completed_cxc_zero_result_as_live_empty():
@@ -202,16 +198,16 @@ def test_search_api_preserves_completed_cxc_zero_result_as_live_empty():
     assert body["platformStatuses"][0]["status"] == "empty"
 
 
-def test_cxc_adapter_marks_unfinished_render_as_retryable_error_without_placeholder_data():
+def test_cxc_adapter_marks_unavailable_static_page_as_retryable_error_without_placeholder_data():
     scraper = CxCScraper()
     with patch.object(scraper, "_fetch_public_api_results", return_value=None), patch.object(
-        scraper, "_render_public_search_html", side_effect=_PublicSearchUnavailable("連線逾時或等待渲染逾時（未完成渲染）")
+        scraper, "_fetch_public_search_html", return_value=None
     ):
         payload = scraper.scrape("義忍")
 
     assert payload["items"] == []
     assert payload["total_works"] == 0
-    assert "連線逾時或等待渲染逾時" in (scraper.last_warning or "")
+    assert "No verified public search result" in (scraper.last_warning or "")
     assert classify_platform_status(0, scraper.last_warning) == "error"
 
 

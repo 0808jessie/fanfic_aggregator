@@ -56,7 +56,7 @@ class PenanaScraper(BaseScraper):
                 f"{self.base_url}/search",
                 params={"t": "story", "genre": "all", "filter": "", "rating_multiple": "0,1,2", "search": keyword},
                 headers=self.search_headers,
-                timeout=(5, 10),
+                timeout=(3, 6),
             )
             if response.status_code in (403, 520, 521, 522, 525):
                 self.last_warning = f"[Penana] 觸發人機保護（HTTP {response.status_code}）"
