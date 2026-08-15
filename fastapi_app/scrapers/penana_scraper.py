@@ -62,14 +62,14 @@ class PenanaScraper(BaseScraper):
             return {"items": [], "total_works": 0, "total_pages": 1}
 
     def _fetch_public_search_html(self, keyword: str) -> str | None:
-        """Fetch the ordinary public Finder document with curl_cffi chrome124 impersonation."""
+        """Fetch the ordinary public Finder document with curl_cffi chrome124 impersonation and safety isolation."""
         try:
             response = curl_requests.get(
                 f"{self.base_url}/search",
                 params={"t": "story", "search": keyword},
                 headers=self.search_headers,
                 impersonate="chrome124",
-                timeout=15,
+                timeout=12,
             )
             if response.status_code in (403, 520, 521, 522, 525):
                 retry_after = response.headers.get("Retry-After") if getattr(response, "headers", None) else None
@@ -84,7 +84,7 @@ class PenanaScraper(BaseScraper):
                 self.last_warning = "[Penana] 觸發人機保護（驗證頁）"
                 return None
             return response.text
-        except requests.RequestException as error:
+        except Exception as error:
             self.last_warning = "[Penana] Public Finder HTTP request unavailable"
             print(f"[Penana] Public Finder fetch unavailable: {error}")
             return None

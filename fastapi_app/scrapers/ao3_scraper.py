@@ -141,7 +141,7 @@ class AO3Scraper(BaseScraper):
                     print("[AO3 Static] Protected response; returning bounded source warning")
                     return None
                 return html
-            except requests.RequestException as error:
+            except (requests.RequestException, Exception) as error:
                 remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 0
                 if attempt == 0 and remaining_budget > 0.6:
                     print(f"[AO3 Static] Public GET failed; retrying once after 600ms: {error}")
