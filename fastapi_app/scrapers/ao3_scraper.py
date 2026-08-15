@@ -110,7 +110,7 @@ class AO3Scraper(BaseScraper):
     def _fetch_static_search_html(self, keyword: str, page: int) -> str | None:
         """Fetch AO3 HTML once with a bounded ten-second public HTTP budget."""
         url = self.build_search_url(keyword, page)
-        for _attempt in range(1):
+        for attempt in range(2):
             remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 4.0
             if remaining_budget <= 0:
                 self._static_terminal_warning = "AO3 靜態搜尋連線逾時或不可用"
@@ -124,6 +124,10 @@ class AO3Scraper(BaseScraper):
                     timeout=(self.static_connect_timeout_seconds, self.static_read_timeout_seconds),
                 )
                 remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 4.0
+                if response.status_code in (503, 525) and attempt == 0 and remaining_budget > 0.6:
+                    print(f"[AO3 Static] HTTP {response.status_code}; retrying once after 600ms")
+                    time.sleep(0.6)
+                    continue
                 if response.status_code in (403, 429, 503, 520, 521, 522, 525):
                     self._static_terminal_warning = f"AO3 靜態搜尋暫時不可用（HTTP {response.status_code}）"
                     print(f"[AO3 Static] HTTP {response.status_code}; returning bounded source warning")
@@ -137,6 +141,11 @@ class AO3Scraper(BaseScraper):
                     return None
                 return html
             except requests.RequestException as error:
+                remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 0
+                if attempt == 0 and remaining_budget > 0.6:
+                    print(f"[AO3 Static] Public GET failed; retrying once after 600ms: {error}")
+                    time.sleep(0.6)
+                    continue
                 self._static_terminal_warning = "AO3 靜態搜尋連線逾時或不可用"
                 print(f"[AO3 Static] Public GET unavailable; returning bounded source warning: {error}")
                 return None
@@ -209,13 +218,14 @@ class AO3Scraper(BaseScraper):
             return {"items": [], "total_works": 0, "total_pages": 1}
 
         translated_query = get_keyword_for_platform(trimmed_kw, "ao3", custom_cp_map)
-        # AO3 accepts free-text search, but long boolean expansions can be
-        # disproportionately slow or rejected at the public edge. Preserve a
-        # short mapped tag; otherwise fall back to the user's literal query.
+        # AO3 accepts free-text search, but relationship aliases contain quoted
+        # boolean expressions that can be slow or rejected at the public edge.
+        # Send a single literal query for immediate search; the mapping remains
+        # available to the vocabulary UI and relevance ranking.
         boolean_markers = (" OR ", " AND ", '"')
-        if len(translated_query) > self.max_boolean_query_length and any(marker in translated_query for marker in boolean_markers):
+        if any(marker in translated_query for marker in boolean_markers):
             ao3_query = trimmed_kw
-            print("[AO3 Static] Long boolean query fell back to the original keyword")
+            print("[AO3 Static] Boolean translation fell back to the original keyword")
         else:
             ao3_query = translated_query
 

@@ -475,6 +475,7 @@ export default function Home() {
                 const isSuccess = status.status === "success";
                 const isCooldown = status.status === "cooldown";
                 const isBlocked = status.status === "blocked";
+                const penanaOfficialSearchUrl = `https://www.penana.com/search?t=story&search=${encodeURIComponent(activeQuery || keyword)}`;
                 const tone = isSuccess
                   ? "border-[#9bded1] bg-[#e9f8f4] text-[#176d61]"
                   : isCooldown
@@ -514,6 +515,18 @@ export default function Home() {
                         </Button>
                       )}
                     </div>
+                    {status.platformId === "penana" && isBlocked && (activeQuery || keyword) && (
+                      <a
+                        href={penanaOfficialSearchUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="在 Penana 官網搜尋"
+                        onClick={(event) => event.stopPropagation()}
+                        className="mt-2 inline-flex items-center gap-1 border border-current px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] hover:bg-white/70"
+                      >
+                        在 Penana 官網搜尋 <ArrowUpRight className="h-3 w-3" />
+                      </a>
+                    )}
                     <div className="mt-2 truncate atlas-mono text-[9px] opacity-70" title={status.translatedQuery}>QUERY / {status.translatedQuery}</div>
                     {status.warning && <div className="mt-1 line-clamp-2 font-mono text-[8px] leading-4 opacity-75" title={status.warning}>{status.warning}</div>}
                   </div>

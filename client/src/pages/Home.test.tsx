@@ -167,6 +167,9 @@ describe("Home pagination interactions", () => {
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "義忍" } });
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "重試 AO3" })).toBeTruthy());
+    expect(screen.getByRole("link", { name: "在 Penana 官網搜尋" }).getAttribute("href")).toBe(
+      "https://www.penana.com/search?t=story&search=%E7%BE%A9%E5%BF%8D",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "重試 AO3" }));
     expect(mockState.lastVariables).toEqual({

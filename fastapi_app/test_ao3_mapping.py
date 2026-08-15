@@ -149,9 +149,9 @@ def test_ao3_static_html_path_parses_cards_and_official_heading_without_browser(
     assert get.call_args.kwargs["cookies"] == {"view_adult": "true", "accepted_tos": "2018"}
 
 
-def test_ao3_long_boolean_translation_falls_back_to_the_original_keyword():
+def test_ao3_boolean_translation_falls_back_to_the_original_keyword():
     scraper = AO3Scraper()
-    long_boolean_query = ' OR '.join(f'"Relationship {index}"' for index in range(30))
+    long_boolean_query = '"Tomioka Giyuu/Kochou Shinobu" OR "義忍"'
     response = MagicMock(status_code=200, text='<h2 class="heading">0 Works Found</h2>')
     response.raise_for_status.return_value = None
 
@@ -168,25 +168,28 @@ def test_ao3_static_protection_returns_bounded_warning_without_browser_fallback(
     blocked_response.raise_for_status.return_value = None
     scraper = AO3Scraper()
 
-    with patch("scrapers.ao3_scraper.requests.get", return_value=blocked_response) as get:
+    with patch("scrapers.ao3_scraper.requests.get", return_value=blocked_response) as get, patch("scrapers.ao3_scraper.time.sleep") as sleep:
         payload = scraper.scrape("鬼滅", force_refresh=True)
 
     assert payload["items"] == []
     assert "HTTP 525" in (scraper.last_warning or "")
-    assert get.call_count == 1
+    assert get.call_count == 2
+    sleep.assert_called_once_with(0.6)
 
 
-def test_ao3_uses_a_single_public_http_attempt_without_browser_fallback():
+def test_ao3_retries_one_temporary_525_then_parses_a_recovered_public_response():
     blocked_response = MagicMock(status_code=525, text="")
     static_html = """
     <h2 class="heading">1 - 20 of 21 Works</h2>
     <li class="work blurb"><h4 class="heading"><a href="/works/21">Recovered Work</a><a rel="author">Author</a></h4></li>
     """
     scraper = AO3Scraper()
+    recovered_response = MagicMock(status_code=200, text=static_html)
+    recovered_response.raise_for_status.return_value = None
 
-    with patch("scrapers.ao3_scraper.requests.get", return_value=blocked_response) as get:
+    with patch("scrapers.ao3_scraper.requests.get", side_effect=[blocked_response, recovered_response]) as get, patch("scrapers.ao3_scraper.time.sleep") as sleep:
         payload = scraper.scrape("花", force_refresh=True)
 
-    assert payload["items"] == []
-    assert "HTTP 525" in (scraper.last_warning or "")
-    assert get.call_count == 1
+    assert payload["items"][0].title == "Recovered Work"
+    assert get.call_count == 2
+    sleep.assert_called_once_with(0.6)

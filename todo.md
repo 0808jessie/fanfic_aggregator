@@ -270,4 +270,9 @@
 - [x] 配置同時具備 Node、Python 與 FastAPI 依賴的生產容器，避免 `python3 ENOENT`
 - [x] 補強 FastAPI 子程序 error 事件處理，避免 sidecar 無法啟動時使 Node 3000 程序崩潰
 - [x] 驗證本地受控啟動、完整回歸與生產就緒；Python 72/72、Vitest 43/43、TypeScript 通過
-- [ ] 儲存本輪生產 Python runtime 與 sidecar 啟動修復 checkpoint
+- [x] 儲存本輪生產 Python runtime 與 sidecar 啟動修復 checkpoint（98a00e8d）
+- [x] 稽核 AO3 轉譯查詢、525／503 重試與 Penana blocked 狀態卡現有元件／測試
+- [x] 將 AO3 即時搜尋固定為使用者單一原詞並加入 600ms 有界單次暫時錯誤重試
+- [x] 為 Penana blocked 狀態提供官方站內搜尋的新分頁連結，不使用公開代理或人機保護規避
+- [x] 驗證 AO3／Penana 單一來源重試、其他來源隔離與完整回歸；Python 72/72、Vitest 44/44、TypeScript 通過
+- [ ] 儲存本輪 AO3 重試與 Penana 官方搜尋降級 checkpoint
