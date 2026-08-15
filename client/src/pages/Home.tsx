@@ -475,7 +475,18 @@ export default function Home() {
                 const isSuccess = status.status === "success";
                 const isCooldown = status.status === "cooldown";
                 const isBlocked = status.status === "blocked";
-                const penanaOfficialSearchUrl = `https://www.penana.com/search?t=story&search=${encodeURIComponent(activeQuery || keyword)}`;
+                const currentQuery = activeQuery || keyword;
+                const officialSearch = status.platformId === "ao3"
+                  ? {
+                      href: `https://archiveofourown.org/works/search?commit=Search&work_search%5Bquery%5D=${encodeURIComponent(currentQuery)}`,
+                      label: "在 AO3 官網搜尋",
+                    }
+                  : status.platformId === "penana"
+                    ? {
+                        href: `https://www.penana.com/search?t=story&search=${encodeURIComponent(currentQuery)}`,
+                        label: "在 Penana 官網搜尋",
+                      }
+                    : null;
                 const tone = isSuccess
                   ? "border-[#9bded1] bg-[#e9f8f4] text-[#176d61]"
                   : isCooldown
@@ -515,16 +526,16 @@ export default function Home() {
                         </Button>
                       )}
                     </div>
-                    {status.platformId === "penana" && isBlocked && (activeQuery || keyword) && (
+                    {isBlocked && officialSearch && currentQuery && (
                       <a
-                        href={penanaOfficialSearchUrl}
+                        href={officialSearch.href}
                         target="_blank"
                         rel="noreferrer"
-                        aria-label="在 Penana 官網搜尋"
+                        aria-label={officialSearch.label}
                         onClick={(event) => event.stopPropagation()}
                         className="mt-2 inline-flex items-center gap-1 border border-current px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] hover:bg-white/70"
                       >
-                        在 Penana 官網搜尋 <ArrowUpRight className="h-3 w-3" />
+                        {officialSearch.label} <ArrowUpRight className="h-3 w-3" />
                       </a>
                     )}
                     <div className="mt-2 truncate atlas-mono text-[9px] opacity-70" title={status.translatedQuery}>QUERY / {status.translatedQuery}</div>

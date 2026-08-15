@@ -275,4 +275,10 @@
 - [x] 將 AO3 即時搜尋固定為使用者單一原詞並加入 600ms 有界單次暫時錯誤重試
 - [x] 為 Penana blocked 狀態提供官方站內搜尋的新分頁連結，不使用公開代理或人機保護規避
 - [x] 驗證 AO3／Penana 單一來源重試、其他來源隔離與完整回歸；Python 72/72、Vitest 44/44、TypeScript 通過
-- [ ] 儲存本輪 AO3 重試與 Penana 官方搜尋降級 checkpoint
+- [x] 儲存本輪 AO3 重試與 Penana 官方搜尋降級 checkpoint（b237c974）
+- [x] 量測 AO3／Penana 公開搜尋端點、tRPC 代理、來源狀態與最近服務日誌
+- [x] 修正可重現的 AO3／Penana URL、標頭、解析、快取或重試缺陷；維持合規公開請求邊界
+- [x] 強化兩個來源受上游防護時的官方連結、快取與單一來源重試體驗
+- [x] 驗證五來源搜尋、AO3／Penana 單獨重試與完整回歸；Python 72/72、Vitest 44/44、TypeScript 通過
+- [x] 為 AO3 525 blocked 狀態加入官方 AO3 搜尋新分頁連結，與既有 Penana 降級一致
+- [ ] 儲存本輪 AO3／Penana 來源防護降級 checkpoint
