@@ -64,8 +64,11 @@ def translated_query_for_platform(
     platform_key: str,
     keyword: str,
     custom_cp_map: dict[str, Any] | None = None,
+    mode: str = "keyword",
 ) -> str:
     """Expose a request's active CP translation without altering free-text input."""
+    if mode == "author":
+        return keyword.strip()
     if platform_key == "ao3":
         return get_keyword_for_platform(keyword, "ao3", custom_cp_map)
     if platform_key == "cxc":
@@ -107,6 +110,7 @@ def make_platform_status(
     item_count: int,
     warning: str | None,
     custom_cp_map: dict[str, Any] | None = None,
+    mode: str = "keyword",
 ) -> PlatformStatus:
     return PlatformStatus(
         platformId=platform_key,
@@ -114,13 +118,27 @@ def make_platform_status(
         status=classify_platform_status(item_count, warning),
         itemCount=item_count,
         warning=warning,
-        translatedQuery=translated_query_for_platform(platform_key, keyword, custom_cp_map),
+        translatedQuery=translated_query_for_platform(platform_key, keyword, custom_cp_map, mode),
     )
 
 
-def _source_cache_key(platform_key: str, keyword: str, page: int, custom_cp_map: dict[str, Any] | None) -> tuple[str, str, int]:
+def _source_cache_key(
+    platform_key: str,
+    keyword: str,
+    page: int,
+    custom_cp_map: dict[str, Any] | None,
+    mode: str,
+) -> tuple[str, str, int]:
     """Key cache entries by the source's effective platform-specific query."""
-    return platform_key, translated_query_for_platform(platform_key, keyword, custom_cp_map), page
+    translated = translated_query_for_platform(platform_key, keyword, custom_cp_map, mode)
+    return platform_key, f"{mode}:{translated}", page
+
+
+def _matches_author_query(author: str, query: str) -> bool:
+    """Keep author-mode records only when their verified creator field matches."""
+    normalized_author = " ".join(author.casefold().split())
+    terms = [term.casefold() for term in query.split() if term]
+    return bool(normalized_author and terms and all(term in normalized_author for term in terms))
 
 
 def _read_source_cache(cache_key: tuple[str, str, int]) -> tuple[list[ScrapedFanfic], int, int, str | None] | None:
@@ -155,15 +173,16 @@ def search_single_platform(
     page: int = 1,
     force_refresh: bool = False,
     custom_cp_map: dict[str, Any] | None = None,
+    mode: str = "keyword",
 ) -> tuple[str, list[ScrapedFanfic], int, int, PlatformStatus]:
     """Execute one adapter safely and return a UI-ready status for that source."""
     started_at = perf_counter()
     adapter_cls = SCRAPERS.get(platform_key)
     if not adapter_cls:
         warning = f"Platform '{platform_key}' is not supported."
-        return platform_key, [], 0, 0, make_platform_status(platform_key, keyword, 0, warning, custom_cp_map)
+        return platform_key, [], 0, 0, make_platform_status(platform_key, keyword, 0, warning, custom_cp_map, mode)
 
-    cache_key = _source_cache_key(platform_key, keyword, page, custom_cp_map)
+    cache_key = _source_cache_key(platform_key, keyword, page, custom_cp_map, mode)
     if force_refresh:
         with _SOURCE_CACHE_LOCK:
             _SOURCE_CACHE.pop(cache_key, None)
@@ -172,7 +191,7 @@ def search_single_platform(
         if cached_payload is not None:
             items, total_works, total_pages, warning = cached_payload
             status_count = total_works if total_works > 0 else len(items)
-            status = make_platform_status(platform_key, keyword, status_count, warning, custom_cp_map)
+            status = make_platform_status(platform_key, keyword, status_count, warning, custom_cp_map, mode)
             status.fromCache = True
             duration_ms = round((perf_counter() - started_at) * 1000)
             print(f"[{PLATFORM_LABELS.get(platform_key, platform_key)} Cache Hit in ms] {duration_ms}")
@@ -185,6 +204,8 @@ def search_single_platform(
             scrape_kwargs["force_refresh"] = True
         if custom_cp_map:
             scrape_kwargs["custom_cp_map"] = custom_cp_map
+        if mode == "author":
+            scrape_kwargs["mode"] = mode
         payload = adapter.scrape(keyword, **scrape_kwargs)
         items: list[ScrapedFanfic] = []
         total_works = 0
@@ -201,6 +222,11 @@ def search_single_platform(
             total_works = 0
             total_pages = 1
 
+        if mode == "author":
+            items = [item for item in items if _matches_author_query(item.author, keyword)]
+            # General public listing pages cannot declare a creator-only total.
+            total_works = 0
+            total_pages = 1
         for item in items:
             if not item.id:
                 item.id = f"{platform_key}:{item.url}"
@@ -211,13 +237,13 @@ def search_single_platform(
         duration_ms = round((perf_counter() - started_at) * 1000)
         print(f"[{PLATFORM_LABELS.get(platform_key, platform_key)} Done in ms] {duration_ms}")
         return platform_key, items, total_works, total_pages, make_platform_status(
-            platform_key, keyword, status_count, warning, custom_cp_map
+            platform_key, keyword, status_count, warning, custom_cp_map, mode
         )
     except Exception as error:
         warning = f"Platform '{platform_key}' scrape failed: {error}"
         duration_ms = round((perf_counter() - started_at) * 1000)
         print(f"[AdapterIndex] {warning} ({duration_ms}ms)")
-        return platform_key, [], 0, 0, make_platform_status(platform_key, keyword, 0, warning, custom_cp_map)
+        return platform_key, [], 0, 0, make_platform_status(platform_key, keyword, 0, warning, custom_cp_map, mode)
 
 
 async def parallel_search_platforms_async(
@@ -227,6 +253,7 @@ async def parallel_search_platforms_async(
     force_refresh: bool = False,
     custom_cp_map: dict[str, Any] | None = None,
     timeout_seconds: float = ADAPTER_TIMEOUT_SECONDS,
+    mode: str = "keyword",
 ) -> dict[str, Any]:
     """Run each source in an independently timed asyncio task.
 
@@ -257,6 +284,7 @@ async def parallel_search_platforms_async(
             page,
             force_refresh,
             custom_cp_map,
+            mode,
         )
         try:
             platform_timeout = PLATFORM_TIMEOUT_SECONDS.get(platform_key, timeout_seconds)
@@ -265,11 +293,11 @@ async def parallel_search_platforms_async(
             platform_timeout = PLATFORM_TIMEOUT_SECONDS.get(platform_key, timeout_seconds)
             warning = f"[{PLATFORM_LABELS.get(platform_key, platform_key)}] 連線逾時（超過 {platform_timeout:g} 秒）"
             print(f"[AdapterIndex] {warning}")
-            return platform_key, [], 0, 1, make_platform_status(platform_key, keyword, 0, warning, custom_cp_map)
+            return platform_key, [], 0, 1, make_platform_status(platform_key, keyword, 0, warning, custom_cp_map, mode)
         except Exception as error:
             warning = f"[{PLATFORM_LABELS.get(platform_key, platform_key)}] scrape failed: {error}"
             print(f"[AdapterIndex] {warning}")
-            return platform_key, [], 0, 1, make_platform_status(platform_key, keyword, 0, warning, custom_cp_map)
+            return platform_key, [], 0, 1, make_platform_status(platform_key, keyword, 0, warning, custom_cp_map, mode)
 
     try:
         source_payloads = await asyncio.gather(*(run_platform(platform) for platform in platforms))
@@ -312,6 +340,7 @@ def parallel_search_platforms(
     force_refresh: bool = False,
     custom_cp_map: dict[str, Any] | None = None,
     timeout_seconds: float = ADAPTER_TIMEOUT_SECONDS,
+    mode: str = "keyword",
 ) -> dict[str, Any]:
     """Synchronous compatibility wrapper for the FastAPI and test contracts."""
     return asyncio.run(
@@ -322,5 +351,6 @@ def parallel_search_platforms(
             force_refresh,
             custom_cp_map,
             timeout_seconds,
+            mode,
         )
     )

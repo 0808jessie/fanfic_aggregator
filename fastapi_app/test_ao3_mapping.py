@@ -87,6 +87,14 @@ def test_native_ao3_query_url_uses_official_first_page_shape_and_explicit_pagina
     assert later_page.endswith("&page=3")
 
 
+def test_ao3_author_mode_uses_the_official_creator_search_field():
+    author_search = AO3Scraper.build_search_url("Mizuki Studio", mode="author")
+
+    assert "work_search%5Bcreators_text%5D=Mizuki+Studio" in author_search
+    assert "work_search%5Bquery%5D=" not in author_search
+    assert "commit=Search" in author_search
+
+
 def test_ao3_adult_content_cookie_and_open_search_parameters_are_explicit():
     assert AO3Scraper.adult_content_cookie == {
         "name": "view_adult",

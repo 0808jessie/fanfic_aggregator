@@ -281,4 +281,11 @@
 - [x] 強化兩個來源受上游防護時的官方連結、快取與單一來源重試體驗
 - [x] 驗證五來源搜尋、AO3／Penana 單獨重試與完整回歸；Python 72/72、Vitest 44/44、TypeScript 通過
 - [x] 為 AO3 525 blocked 狀態加入官方 AO3 搜尋新分頁連結，與既有 Penana 降級一致
-- [ ] 儲存本輪 AO3／Penana 來源防護降級 checkpoint
+- [x] 儲存本輪 AO3／Penana 來源防護降級 checkpoint（14008058）
+- [x] 確認本機 Git 工作樹、目前分支與 GitHub 目標倉庫存取權限
+- [x] 使用已驗證的 user_github 遠端建立乾淨專案快照並推送至 0808jessie/fanfic_aggregator main
+- [x] 驗證 GitHub 遠端 main 分支與提交 SHA，回報推送結果
+- [x] 稽核既有作者導航、搜尋 UI、FastAPI／tRPC payload 與平台 Adapter 的作者查詢行為
+- [x] 新增可切換的關鍵字／作者模式 UI，調整 placeholder 並維持作者卡片導航與單一來源重試
+- [x] 在 FastAPI、tRPC 與各來源 adapter 傳遞 mode 參數，實作可驗證的作者查詢／安全原詞降級
+- [x] 補齊作者模式單元與回歸測試，完成五來源驗證並推送至 GitHub main

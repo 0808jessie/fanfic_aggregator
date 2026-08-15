@@ -41,9 +41,14 @@ class WaterWriterScraper(BaseScraper):
     result_selectors = ("#threadlist", ".threadlist", ".pbw", "dt.xs0")
 
     @classmethod
-    def build_search_url(cls, keyword: str) -> str:
+    def build_search_url(cls, keyword: str, mode: str = "keyword") -> str:
         """Build the public Discuz quick-search URL without hidden form state."""
-        return f"{cls.search_url}?{urlencode({'srchtxt': keyword, 'searchsubmit': 'yes', 'srchfid': 'all'})}"
+        parameters = {"searchsubmit": "yes"}
+        if mode == "author":
+            parameters["srchuname"] = keyword
+        else:
+            parameters.update({"srchtxt": keyword, "srchfid": "all"})
+        return f"{cls.search_url}?{urlencode(parameters)}"
 
     def scrape(
         self,
@@ -51,6 +56,7 @@ class WaterWriterScraper(BaseScraper):
         page: int = 1,
         force_refresh: bool = False,
         custom_cp_map: dict[str, CPTagConfig] | None = None,
+        mode: str = "keyword",
     ) -> dict[str, object]:
         self.last_warning = None
         if not keyword.strip():
@@ -61,8 +67,12 @@ class WaterWriterScraper(BaseScraper):
             # search. Send the user's primary literal term instead of a mapped
             # multi-name CP expansion, while retaining the original query on
             # returned records for relevance and history.
-            search_keyword = keyword.strip().split()[0]
-            html = self._fetch_static_search_html(search_keyword)
+            search_keyword = keyword.strip() if mode == "author" else keyword.strip().split()[0]
+            html = (
+                self._fetch_static_search_html(search_keyword, "author")
+                if mode == "author"
+                else self._fetch_static_search_html(search_keyword)
+            )
             if html is None:
                 return {"items": [], "total_works": 0, "total_pages": 1}
             items = self.parse_results(html, search_keyword)
@@ -81,11 +91,11 @@ class WaterWriterScraper(BaseScraper):
             print(self.last_warning)
         return {"items": [], "total_works": 0, "total_pages": 1}
 
-    def _fetch_static_search_html(self, keyword: str) -> str | None:
+    def _fetch_static_search_html(self, keyword: str, mode: str = "keyword") -> str | None:
         """Use Discuz's server-rendered public search HTML with a bounded GET."""
         try:
             response = requests.get(
-                self.build_search_url(keyword),
+                self.build_search_url(keyword, mode),
                 headers=self.headers,
                 timeout=(3, 6),
             )

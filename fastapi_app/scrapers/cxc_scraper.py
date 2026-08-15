@@ -64,6 +64,7 @@ class CxCScraper(BaseScraper):
         page: int = 1,
         force_refresh: bool = False,
         custom_cp_map: dict[str, CPTagConfig] | None = None,
+        mode: str = "keyword",
     ) -> dict[str, object]:
         self.last_warning = None
         self._api_transport_warning: str | None = None
@@ -74,7 +75,7 @@ class CxCScraper(BaseScraper):
         # CxC does not support AO3-style boolean operators or quote syntax.
         # Known CP aliases have a dedicated literal query; free text is also
         # normalized defensively before it is sent to the public API/page.
-        public_query = self.clean_cxc_keyword(get_keyword_for_platform(keyword, "cxc", custom_cp_map))
+        public_query = keyword.strip() if mode == "author" else self.clean_cxc_keyword(get_keyword_for_platform(keyword, "cxc", custom_cp_map))
         try:
             api_payload = self._fetch_public_api_results(public_query)
             if api_payload is not None:

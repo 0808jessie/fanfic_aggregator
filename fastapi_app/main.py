@@ -196,6 +196,7 @@ def list_platforms() -> list[dict[str, str]]:
 @app.post("/search", response_model=SearchResponse)
 def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchResponse:
     keyword = query.keyword.strip()
+    mode = query.mode
     if not keyword:
         raise HTTPException(status_code=422, detail="keyword cannot be empty")
 
@@ -205,7 +206,7 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
         raise HTTPException(status_code=400, detail="No supported platform was selected")
 
     request_started_at = perf_counter()
-    print(f"[Search Start] keyword={keyword!r} requestedPlatforms={query.platforms!r}")
+    print(f"[Search Start] mode={mode!r} keyword={keyword!r} requestedPlatforms={query.platforms!r}")
     try:
         requested_page = query.page
         raw_custom_cp_payload = query.customCpMappings
@@ -213,9 +214,13 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
             raw_custom_cp_payload = query.customCpMap
         custom_cp_mappings = normalize_custom_cp_mappings(raw_custom_cp_payload)
         custom_cp_map = build_custom_cp_map(custom_cp_mappings)
-        base_cache_key = f"{keyword}:{'-'.join(sorted(platforms))}:page={requested_page}"
+        # Preserve the established keyword-mode cache key so existing CP cache
+        # invalidation still works. Author searches receive a separate prefix to
+        # prevent a creator query from sharing keyword/CP result entries.
+        cache_prefix = "author:" if mode == "author" else ""
+        base_cache_key = f"{cache_prefix}{keyword}:{'-'.join(sorted(platforms))}:page={requested_page}"
         cache_key = (
-            f"{keyword}:{'-'.join(sorted(platforms))}:cp={custom_cp_mapping_fingerprint(custom_cp_mappings)}:page={requested_page}"
+            f"{cache_prefix}{keyword}:{'-'.join(sorted(platforms))}:cp={custom_cp_mapping_fingerprint(custom_cp_mappings)}:page={requested_page}"
             if custom_cp_map
             else base_cache_key
         )
@@ -251,19 +256,17 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
             if cache_key in _MEMORY_CACHE:
                 del _MEMORY_CACHE[cache_key]
 
-        # 2. 透過 Adapter registry 平行查詢所有已選平台
+        # 2. 透過 Adapter registry 平行查詢所有已選平台。Keyword mode
+        # deliberately preserves the long-standing adapter call shape so custom
+        # adapters and legacy tests remain compatible.
+        aggregate_kwargs: dict[str, Any] = {}
+        if query.forceRefresh:
+            aggregate_kwargs["force_refresh"] = True
         if custom_cp_map:
-            aggregate = (
-                parallel_search_platforms(platforms, keyword, requested_page, force_refresh=True, custom_cp_map=custom_cp_map)
-                if query.forceRefresh
-                else parallel_search_platforms(platforms, keyword, requested_page, custom_cp_map=custom_cp_map)
-            )
-        else:
-            aggregate = (
-                parallel_search_platforms(platforms, keyword, requested_page, force_refresh=True)
-                if query.forceRefresh
-                else parallel_search_platforms(platforms, keyword, requested_page)
-            )
+            aggregate_kwargs["custom_cp_map"] = custom_cp_map
+        if mode == "author":
+            aggregate_kwargs["mode"] = mode
+        aggregate = parallel_search_platforms(platforms, keyword, requested_page, **aggregate_kwargs)
         print(
             f"[Search Aggregate Done in ms] {round((perf_counter() - request_started_at) * 1000)} "
             f"platforms={platforms!r} verifiedItems={len(aggregate.get('items', []))}"
@@ -344,7 +347,7 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
 
         # 4. 若即時抓取為 0 筆或失敗，絕對不寫入快取，且對 CP 映射關鍵字不使用 stale SQLite cache 避免污染
         stale_cached = None
-        if not query.forceRefresh and keyword not in CP_TAG_MAP and not custom_cp_map:
+        if mode == "keyword" and not query.forceRefresh and keyword not in CP_TAG_MAP and not custom_cp_map:
             stale_cached = get_cached_results(db, keyword, platforms, ignore_ttl=True, source_label="fallback-cache")
         if stale_cached:
             print(f"[SearchAPI] External failed, falling back to stale cache for '{keyword}'")

@@ -37,7 +37,7 @@ class PenanaScraper(BaseScraper):
         "Sec-Fetch-User": "?1",
     }
 
-    def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False) -> dict[str, object]:
+    def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False, mode: str = "keyword") -> dict[str, object]:
         self.last_warning = None
         trimmed_keyword = keyword.strip()
         if not trimmed_keyword:

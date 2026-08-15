@@ -295,10 +295,10 @@ export default function Home() {
     const cleanAuthor = author.trim();
     setKeyword(cleanAuthor);
     setSearchMode("author");
-    runSearch(false, cleanAuthor);
+    runSearch(false, cleanAuthor, undefined, "author");
   };
 
-  const runSearch = (forceRefresh: boolean, requestedKeyword?: string, platformOverride?: PlatformId[]) => {
+  const runSearch = (forceRefresh: boolean, requestedKeyword?: string, platformOverride?: PlatformId[], requestedMode: "keyword" | "author" = searchMode) => {
     const trimmedKeyword = (requestedKeyword ?? keyword).trim();
     if (!trimmedKeyword) {
       toast.error("請先輸入搜尋關鍵字");
@@ -323,7 +323,7 @@ export default function Home() {
     searchMutation.mutate({
       path: "/search",
       method: "POST",
-      data: { keyword: trimmedKeyword, platforms: platformOverride ?? selectedPlatforms, page: 1, forceRefresh, customCpMappings },
+      data: { keyword: trimmedKeyword, mode: requestedMode, platforms: platformOverride ?? selectedPlatforms, page: 1, forceRefresh, customCpMappings },
     });
   };
 
@@ -343,7 +343,7 @@ export default function Home() {
     loadMoreMutation.mutate({
       path: "/search",
       method: "POST",
-      data: { keyword: activeQuery, platforms: selectedPlatforms, page: pagination.nextPage, forceRefresh: false, customCpMappings },
+      data: { keyword: activeQuery, mode: searchMode, platforms: selectedPlatforms, page: pagination.nextPage, forceRefresh: false, customCpMappings },
     });
   };
 
@@ -427,7 +427,7 @@ export default function Home() {
 
         <section className="atlas-panel relative mt-5 border-b-2 border-b-[#111826] px-4 py-4 sm:px-6">
           <form onSubmit={submitSearch} className="flex flex-col gap-4 lg:flex-row lg:items-center">
-            <div className="flex flex-1 items-center gap-3"><div className={`flex h-10 w-10 items-center justify-center ${searchMode === "author" ? "bg-[#fff0e9] text-[#e76f51]" : "bg-[#e6efff] text-[#2d70d6]"}`}>{searchMode === "author" ? <UserRound className="h-5 w-5 shrink-0" /> : <Search className="h-5 w-5 shrink-0" />}</div><div className="min-w-0 flex-1"><Input value={keyword} onChange={(event) => { setKeyword(event.target.value); setSearchMode("keyword"); }} placeholder={searchMode === "author" ? "搜尋作者名稱" : "輸入角色、配對、作品名或關鍵字"} className="h-10 border-0 bg-transparent px-0 text-lg font-semibold shadow-none placeholder:text-[#8b929c] focus-visible:ring-0 sm:text-xl" aria-label="搜尋同人作品" />{searchMode === "author" && <div className="atlas-mono mt-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-[#e76f51]">AUTHOR MODE / 搜尋作者：{keyword}</div>}</div></div>
+            <div className="flex flex-1 items-center gap-3"><div className={`flex h-10 w-10 items-center justify-center ${searchMode === "author" ? "bg-[#fff0e9] text-[#e76f51]" : "bg-[#e6efff] text-[#2d70d6]"}`}>{searchMode === "author" ? <UserRound className="h-5 w-5 shrink-0" /> : <Search className="h-5 w-5 shrink-0" />}</div><div className="min-w-0 flex-1"><div className="mb-2 flex w-fit border border-[#111826]/15 bg-white/70 p-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.1em"><Button type="button" variant="ghost" aria-pressed={searchMode === "keyword"} onClick={() => setSearchMode("keyword")} className={`h-6 rounded-none px-2 ${searchMode === "keyword" ? "bg-[#e6efff] text-[#2d70d6]" : "text-[#71808a]"}`}>關鍵字 / CP</Button><Button type="button" variant="ghost" aria-pressed={searchMode === "author"} onClick={() => setSearchMode("author")} className={`h-6 rounded-none px-2 ${searchMode === "author" ? "bg-[#fff0e9] text-[#e76f51]" : "text-[#71808a]"}`}>作者</Button></div><Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder={searchMode === "author" ? "輸入作者暱稱、繪師或社團名..." : "輸入角色、配對、作品名或關鍵字"} className="h-10 border-0 bg-transparent px-0 text-lg font-semibold shadow-none placeholder:text-[#8b929c] focus-visible:ring-0 sm:text-xl" aria-label="搜尋同人作品" />{searchMode === "author" && <div className="atlas-mono mt-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-[#e76f51]">AUTHOR MODE / 搜尋作者：{keyword}</div>}</div></div>
             <div className="flex flex-wrap items-center gap-3">
               <Button type="button" variant="outline" onClick={() => setShowFilters((current) => !current)} className="h-11 border-[#111826]/20 bg-white/80 font-mono text-[10px] font-bold uppercase tracking-[0.14em] hover:border-[#2d70d6] hover:bg-[#e6efff]"><SlidersHorizontal className="mr-2 h-4 w-4" /> FILTERS <ChevronDown className={`ml-2 h-4 w-4 transition-transform ${showFilters ? "rotate-180" : ""}`} /></Button>
               <Button type="button" variant="outline" onClick={() => runSearch(true)} disabled={searchMutation.isPending || !keyword.trim()} aria-label="強制重新抓取" className="h-11 border-[#111826]/20 bg-white/80 font-mono text-[10px] font-bold uppercase tracking-[0.14em] hover:border-[#2d70d6] hover:text-[#2d70d6]"><RotateCw className={`h-4 w-4 ${searchMutation.isPending ? "animate-spin" : ""}`} /><span className="sr-only">強制重新抓取</span></Button>
