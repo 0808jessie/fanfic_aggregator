@@ -315,3 +315,8 @@
 - [x] 補強 sidecar 啟動失敗與提早退出的可觀測錯誤日誌
 - [x] 驗證 externalBin、跨平台 binary 命名與 CI 產物流程一致
 - [x] 執行 cargo check、提交修正、建立 v1.0.7 並推送 GitHub
+
+- [x] 盤點桌面版前端搜尋 API 的 URL 組裝與 production API base fallback
+- [x] 使用 URL 與 URLSearchParams 修正關鍵字、分頁及搜尋參數的安全編碼
+- [x] 加入 Sidecar 健康檢查與前端等待／重試狀態，避免後端就緒前發出搜尋請求
+- [x] 補上 URL 與健康檢查回歸測試，執行前端 build 並發布 v1.0.8

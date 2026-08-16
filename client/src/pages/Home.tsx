@@ -24,6 +24,11 @@ import {
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import {
+  isTauriDesktopRuntime,
+  postSidecarSearch,
+  waitForSidecarReady,
+} from "@/lib/desktopApi";
+import {
   appendUniqueResults,
   extractIsRateLimited,
   extractPlatformStatuses,
@@ -153,6 +158,9 @@ export default function Home() {
   const [sortMode, setSortMode] = useState<ResultSortMode>("relevance");
   const [elapsedMs, setElapsedMs] = useState(0);
   const [completedElapsedMs, setCompletedElapsedMs] = useState<number | null>(null);
+  const [sidecarState, setSidecarState] = useState<"idle" | "starting" | "ready" | "error">("idle");
+  const [desktopSearchPending, setDesktopSearchPending] = useState(false);
+  const [desktopLoadMorePending, setDesktopLoadMorePending] = useState(false);
   const searchStartedAt = useRef<number | null>(null);
   const retryingPlatformRef = useRef<PlatformId | null>(null);
   const [pagination, setPagination] = useState<SearchPagination>({
@@ -164,8 +172,7 @@ export default function Home() {
     hasMore: false,
   });
 
-  const searchMutation = trpc.fastapi.proxy.useMutation({
-    onSuccess: (payload) => {
+  const handleSearchSuccess = (payload: any) => {
       const isLimited = extractIsRateLimited(payload);
       const warningMsg = extractSearchWarning(payload);
       const incoming = normalizeResults(payload);
@@ -200,8 +207,9 @@ export default function Home() {
           description: warningMsg || "AO3 目前流量較高或觸發防護。",
         });
       }
-    },
-    onError: (error) => {
+    };
+
+  const handleSearchError = (error: { message?: string }) => {
       const retryingPlatform = retryingPlatformRef.current;
       setHasSearched(true);
       if (retryingPlatform) {
@@ -222,23 +230,78 @@ export default function Home() {
       toast.error("搜尋服務暫時無法連線", {
         description: error.message || "請確認 FastAPI 服務已啟動。",
       });
-    },
+    };
+
+  const searchMutation = trpc.fastapi.proxy.useMutation({
+    onSuccess: handleSearchSuccess,
+    onError: handleSearchError,
   });
 
-  const loadMoreMutation = trpc.fastapi.proxy.useMutation({
-    onSuccess: (payload) => {
+  const handleLoadMoreSuccess = (payload: any) => {
       const incoming = normalizeResults(payload);
       setResults((current) => appendUniqueResults(current, incoming));
       setPlatformStatuses(extractPlatformStatuses(payload));
       setPagination(extractSearchPagination(payload));
       const warningMsg = extractSearchWarning(payload);
       if (warningMsg) setSearchWarning(warningMsg);
-    },
-    onError: (error) => {
+    };
+
+  const handleLoadMoreError = (error: { message?: string }) => {
       setSearchWarning(error.message || "翻頁載入失敗，請稍後再試。");
       toast.error("翻頁載入失敗", { description: error.message || "請稍後再試。" });
-    },
+    };
+
+  const loadMoreMutation = trpc.fastapi.proxy.useMutation({
+    onSuccess: handleLoadMoreSuccess,
+    onError: handleLoadMoreError,
   });
+
+  const desktopRuntime = isTauriDesktopRuntime();
+  const isSearchPending = searchMutation.isPending || desktopSearchPending;
+  const isLoadMorePending = loadMoreMutation.isPending || desktopLoadMorePending;
+
+  const requestSearch = (request: { path: string; method: "POST"; data: unknown }) => {
+    if (!desktopRuntime) {
+      searchMutation.mutate(request as any);
+      return;
+    }
+
+    setDesktopSearchPending(true);
+    setSidecarState("starting");
+    void (async () => {
+      try {
+        await waitForSidecarReady();
+        setSidecarState("ready");
+        handleSearchSuccess(await postSidecarSearch(request.data));
+      } catch (error) {
+        setSidecarState("error");
+        handleSearchError(error instanceof Error ? error : new Error("搜尋服務暫時無法連線"));
+      } finally {
+        setDesktopSearchPending(false);
+      }
+    })();
+  };
+
+  const requestLoadMore = (request: { path: string; method: "POST"; data: unknown }) => {
+    if (!desktopRuntime) {
+      loadMoreMutation.mutate(request as any);
+      return;
+    }
+
+    setDesktopLoadMorePending(true);
+    void (async () => {
+      try {
+        await waitForSidecarReady();
+        setSidecarState("ready");
+        handleLoadMoreSuccess(await postSidecarSearch(request.data));
+      } catch (error) {
+        setSidecarState("error");
+        handleLoadMoreError(error instanceof Error ? error : new Error("翻頁載入失敗"));
+      } finally {
+        setDesktopLoadMorePending(false);
+      }
+    })();
+  };
 
   const selectedLabels = useMemo(
     () => selectedPlatforms.map((platform) => platform.toUpperCase()).join(" + "),
@@ -270,14 +333,24 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!searchMutation.isPending) return;
+    if (!isSearchPending) return;
     const timer = window.setInterval(() => {
       if (searchStartedAt.current !== null) {
         setElapsedMs(performance.now() - searchStartedAt.current);
       }
     }, 100);
     return () => window.clearInterval(timer);
-  }, [searchMutation.isPending]);
+  }, [isSearchPending]);
+
+  useEffect(() => {
+    if (!desktopRuntime) return;
+    let mounted = true;
+    setSidecarState("starting");
+    void waitForSidecarReady()
+      .then(() => mounted && setSidecarState("ready"))
+      .catch(() => mounted && setSidecarState("error"));
+    return () => { mounted = false; };
+  }, [desktopRuntime]);
 
   const togglePlatform = (platform: PlatformId) => {
     setSelectedPlatforms((current) => {
@@ -322,7 +395,7 @@ export default function Home() {
     if (!retryPlatform) {
       setPagination({ totalWorks: 0, totalPages: 0, page: 1, loadedThroughPage: 0, nextPage: null, hasMore: false });
     }
-    searchMutation.mutate({
+    requestSearch({
       path: "/search",
       method: "POST",
       data: { keyword: trimmedKeyword, mode: requestedMode, platforms: platformOverride ?? selectedPlatforms, page: 1, forceRefresh, customCpMappings, language: selectedLanguage },
@@ -341,8 +414,8 @@ export default function Home() {
   };
 
   const loadMore = () => {
-    if (!pagination.nextPage || loadMoreMutation.isPending || !activeQuery) return;
-    loadMoreMutation.mutate({
+    if (!pagination.nextPage || isLoadMorePending || !activeQuery) return;
+    requestLoadMore({
       path: "/search",
       method: "POST",
       data: { keyword: activeQuery, mode: searchMode, platforms: selectedPlatforms, page: pagination.nextPage, forceRefresh: false, customCpMappings, language: selectedLanguage },
@@ -432,12 +505,13 @@ export default function Home() {
             <div className="flex flex-1 items-center gap-3"><div className={`flex h-10 w-10 items-center justify-center ${searchMode === "author" ? "bg-[#fff0e9] text-[#e76f51]" : "bg-[#e6efff] text-[#2d70d6]"}`}>{searchMode === "author" ? <UserRound className="h-5 w-5 shrink-0" /> : <Search className="h-5 w-5 shrink-0" />}</div><div className="min-w-0 flex-1"><div className="mb-2 flex w-fit border border-[#111826]/15 bg-white/70 p-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.1em"><Button type="button" variant="ghost" aria-pressed={searchMode === "keyword"} onClick={() => setSearchMode("keyword")} className={`h-6 rounded-none px-2 ${searchMode === "keyword" ? "bg-[#e6efff] text-[#2d70d6]" : "text-[#71808a]"}`}>關鍵字 / CP</Button><Button type="button" variant="ghost" aria-pressed={searchMode === "author"} onClick={() => setSearchMode("author")} className={`h-6 rounded-none px-2 ${searchMode === "author" ? "bg-[#fff0e9] text-[#e76f51]" : "text-[#71808a]"}`}>作者</Button></div><Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder={searchMode === "author" ? "輸入作者暱稱、繪師或社團名..." : "輸入角色、配對、作品名或關鍵字"} className="h-10 border-0 bg-transparent px-0 text-lg font-semibold shadow-none placeholder:text-[#8b929c] focus-visible:ring-0 sm:text-xl" aria-label="搜尋同人作品" />{searchMode === "author" && <div className="atlas-mono mt-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-[#e76f51]">AUTHOR MODE / 搜尋作者：{keyword}</div>}</div></div>
             <div className="flex flex-wrap items-center gap-3">
               <Button type="button" variant="outline" onClick={() => setShowFilters((current) => !current)} className="h-11 border-[#111826]/20 bg-white/80 font-mono text-[10px] font-bold uppercase tracking-[0.14em] hover:border-[#2d70d6] hover:bg-[#e6efff]"><SlidersHorizontal className="mr-2 h-4 w-4" /> FILTERS <ChevronDown className={`ml-2 h-4 w-4 transition-transform ${showFilters ? "rotate-180" : ""}`} /></Button>
-              <Button type="button" variant="outline" onClick={() => runSearch(true)} disabled={searchMutation.isPending || !keyword.trim()} aria-label="強制重新抓取" className="h-11 border-[#111826]/20 bg-white/80 font-mono text-[10px] font-bold uppercase tracking-[0.14em] hover:border-[#2d70d6] hover:text-[#2d70d6]"><RotateCw className={`h-4 w-4 ${searchMutation.isPending ? "animate-spin" : ""}`} /><span className="sr-only">強制重新抓取</span></Button>
-              <Button type="submit" disabled={searchMutation.isPending} className="h-11 min-w-36 bg-[#111826] px-6 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white hover:bg-[#2d70d6]">{searchMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Terminal className="mr-2 h-4 w-4" />}{searchMutation.isPending ? "SCANNING" : "RUN SEARCH"}</Button>
+              <Button type="button" variant="outline" onClick={() => runSearch(true)} disabled={isSearchPending || !keyword.trim()} aria-label="強制重新抓取" className="h-11 border-[#111826]/20 bg-white/80 font-mono text-[10px] font-bold uppercase tracking-[0.14em] hover:border-[#2d70d6] hover:text-[#2d70d6]"><RotateCw className={`h-4 w-4 ${isSearchPending ? "animate-spin" : ""}`} /><span className="sr-only">強制重新抓取</span></Button>
+              <Button type="submit" disabled={isSearchPending} className="h-11 min-w-36 bg-[#111826] px-6 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white hover:bg-[#2d70d6]">{isSearchPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Terminal className="mr-2 h-4 w-4" />}{isSearchPending ? "SCANNING" : "RUN SEARCH"}</Button>
             </div>
           </form>
           {searchHistory.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#10151b]/10 pt-3"><span className="mr-1 inline-flex items-center gap-1 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#75838b]"><History className="h-3 w-3" />最近搜尋</span>{searchHistory.map((entry) => <button key={entry} type="button" onClick={() => { setKeyword(entry); setSearchMode("keyword"); runSearch(false, entry); }} className="border border-[#10151b]/12 bg-white/65 px-2.5 py-1.5 font-mono text-[10px] font-bold text-[#52616b] transition-colors hover:border-[#45b9b2] hover:bg-[#d9f8f5] hover:text-[#197b75]">{entry}</button>)}</div>}
-          {searchMutation.isPending && <div className="mt-3 border-t border-[#10151b]/10 pt-3 font-mono text-[10px] font-bold tracking-[0.13em] text-[#197b75]" aria-live="polite">正在掃描 AO3 數據庫...（已耗時 {(elapsedMs / 1000).toFixed(1)} 秒）</div>}
+          {desktopRuntime && sidecarState !== "ready" && <div className={`mt-3 border-t border-[#10151b]/10 pt-3 font-mono text-[10px] font-bold tracking-[0.13em] ${sidecarState === "error" ? "text-[#9b4358]" : "text-[#197b75]"}`} aria-live="polite">{sidecarState === "error" ? "搜尋引擎尚未就緒；系統會在搜尋時再次嘗試連線。" : "正在啟動搜尋引擎..."}</div>}
+          {isSearchPending && <div className="mt-3 border-t border-[#10151b]/10 pt-3 font-mono text-[10px] font-bold tracking-[0.13em] text-[#197b75]" aria-live="polite">{desktopRuntime && sidecarState === "starting" ? "正在等待搜尋引擎就緒..." : `正在掃描 AO3 數據庫...（已耗時 ${(elapsedMs / 1000).toFixed(1)} 秒）`}</div>}
           {showFilters && (
             <div className="mt-4 grid gap-5 border-t border-[#10151b]/10 pt-4 lg:grid-cols-[1.25fr_0.75fr_0.75fr_0.9fr]">
               <div>
