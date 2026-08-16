@@ -128,7 +128,7 @@ class AO3Scraper(BaseScraper):
                     url,
                     headers=self.static_headers,
                     cookies=self.static_cookies,
-                    impersonate="chrome124",
+                    impersonate="chrome120",
                     timeout=30.0,
                 )
                 remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 4.0

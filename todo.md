@@ -335,3 +335,8 @@
 - [x] 在 GitHub Actions release.yml 中加入 updater 端點、簽名設定與 Release Assets 產生
 - [x] 優化 fastapi_app/scrapers/ao3_scraper.py 的 headers 避免 403 阻擋
 - [x] 執行 cargo check、前端建置、建立 v1.1.0 提交與標籤並推送 GitHub 觸發自動發布
+
+- [x] 優化 fastapi_app/scrapers/ao3_scraper.py 與 penana_scraper.py 採用 curl_cffi (impersonate="chrome124") 避免 403
+- [x] 將 src-tauri/tauri.conf.json 與 Cargo.toml 版本更新至 v1.1.1
+- [x] 檢查 .github/workflows/release.yml 是否完整支援帶簽名的 Tauri updater 發布
+- [x] 執行測試、建立 v1.1.0 提交與 v1.1.1 標籤並推送 GitHub 觸發自動更新發布

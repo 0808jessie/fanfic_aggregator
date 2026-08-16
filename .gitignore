@@ -124,3 +124,4 @@ src-tauri/target/
 src-tauri/binaries/api-server-*
 /api-server.spec
 venv/
+venv/

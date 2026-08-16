@@ -68,7 +68,7 @@ class PenanaScraper(BaseScraper):
                 f"{self.base_url}/search",
                 params={"t": "story", "search": keyword},
                 headers=self.search_headers,
-                impersonate="chrome124",
+                impersonate="chrome120",
                 timeout=30.0,
             )
             if response.status_code in (403, 520, 521, 522, 525):
