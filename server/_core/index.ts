@@ -1,6 +1,6 @@
 import "dotenv/config";
 import express from "express";
-import { createServer } from "http";
+import { createServer, request as httpRequest } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
@@ -8,7 +8,46 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { FASTAPI_BASE_URL, startManagedFastapi } from "../fastapiService";
+import {
+  FASTAPI_BASE_URL,
+  FASTAPI_SOCKET_PATH,
+  FASTAPI_USES_UNIX_SOCKET,
+  startManagedFastapi,
+} from "../fastapiService";
+
+function proxyFastapiHealth(): Promise<{ status: number; payload: unknown }> {
+  return new Promise((resolve, reject) => {
+    const target = new URL("/api/health", FASTAPI_BASE_URL);
+    const request = httpRequest(
+      FASTAPI_USES_UNIX_SOCKET
+        ? { socketPath: FASTAPI_SOCKET_PATH, path: "/api/health", method: "GET", timeout: 1_500 }
+        : {
+            hostname: target.hostname,
+            port: target.port || 80,
+            path: `${target.pathname}${target.search}`,
+            method: "GET",
+            timeout: 1_500,
+          },
+      upstream => {
+        const chunks: Buffer[] = [];
+        upstream.on("data", chunk => chunks.push(Buffer.from(chunk)));
+        upstream.once("end", () => {
+          try {
+            resolve({
+              status: upstream.statusCode || 502,
+              payload: JSON.parse(Buffer.concat(chunks).toString("utf8")),
+            });
+          } catch (error) {
+            reject(error);
+          }
+        });
+      },
+    );
+    request.once("error", reject);
+    request.once("timeout", () => request.destroy(new Error("FastAPI health check timed out")));
+    request.end();
+  });
+}
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -51,11 +90,8 @@ async function startServer() {
   // checks receive FastAPI JSON instead of Vite's SPA fallback document.
   app.get("/api/health", async (_request, response) => {
     try {
-      const upstream = await fetch(`${FASTAPI_BASE_URL}/api/health`, {
-        signal: AbortSignal.timeout(1_500),
-      });
-      const payload = await upstream.json();
-      response.status(upstream.status).json(payload);
+      const upstream = await proxyFastapiHealth();
+      response.status(upstream.status).json(upstream.payload);
     } catch (error) {
       console.error("[FastAPI Preview Health] Loopback health proxy failed:", error);
       response.status(503).json({
@@ -87,8 +123,8 @@ async function startServer() {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
   }
 
-  server.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+  server.listen(port, "0.0.0.0", () => {
+    console.log(`Server running on http://0.0.0.0:${port}/`);
   });
 }
 

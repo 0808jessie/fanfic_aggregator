@@ -18,7 +18,18 @@ describe("Tauri updater configuration", () => {
   it("grants the updater installer and process relaunch capabilities", () => {
     const capabilities = JSON.parse(fs.readFileSync(path.join(projectRoot, "src-tauri", "capabilities", "default.json"), "utf8"));
 
-    expect(capabilities.permissions).toEqual(expect.arrayContaining(["updater:default", "process:default"]));
+    expect(capabilities.permissions).toEqual(expect.arrayContaining(["updater:default", "process:default", "opener:default"]));
+  });
+
+  it("registers the opener plugin so desktop source links use the system browser", () => {
+    const cargoManifest = fs.readFileSync(path.join(projectRoot, "src-tauri", "Cargo.toml"), "utf8");
+    const rustEntry = fs.readFileSync(path.join(projectRoot, "src-tauri", "src", "lib.rs"), "utf8");
+    const homePage = fs.readFileSync(path.join(projectRoot, "client", "src", "pages", "Home.tsx"), "utf8");
+
+    expect(cargoManifest).toContain('tauri-plugin-opener = "2"');
+    expect(rustEntry).toContain("tauri_plugin_opener::init()");
+    expect(homePage).toContain('@tauri-apps/plugin-opener');
+    expect(homePage).toContain("openSourceLink");
   });
 
   it("fails CI clearly when the signing secrets are not available", () => {

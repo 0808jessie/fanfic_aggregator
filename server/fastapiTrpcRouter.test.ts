@@ -35,13 +35,13 @@ describe("fastapi.proxy", () => {
     expect(axios.request).toHaveBeenCalledWith(
       expect.objectContaining({
         method: "POST",
-        url: "http://127.0.0.1:8000/search",
+        url: "http://localhost/search",
+        socketPath: expect.stringContaining(".manus-fastapi.sock"),
         data: { keyword: "星光", platforms: ["ao3"] },
         timeout: 20_000,
         headers: { "Content-Type": "application/json" },
       }),
     );
-    expect(vi.mocked(axios.request).mock.calls[0]?.[0]).not.toHaveProperty("socketPath");
   });
 
   it("preserves the explicit empty-result envelope from FastAPI", async () => {

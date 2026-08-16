@@ -353,8 +353,17 @@
 
 - [x] 在沙盒背景啟動 FastAPI 並驗證 /api/health，供網頁預覽測試（HTTP 200）
 
-- [ ] 將預覽端 tRPC／Node 代理從 Unix socket 改為優先轉發至 http://127.0.0.1:8000，並保留可測試的錯誤回應
-- [ ] 驗證 http://127.0.0.1:3000/api/health 與預覽搜尋請求均回傳 FastAPI JSON
-- [ ] 稽核 AO3 AsyncSession、Chrome 120 指紋與 URL 編碼，補齊不規避防護的受控重試回歸測試
-- [ ] 稽核 Tauri updater endpoint、簽名資產與前端啟動檢查，修復可重現設定缺口
-- [ ] 執行完整測試、建立新版本標籤並推送 GitHub 觸發跨平台 Release
+- [x] 將預覽端 tRPC／Node 代理從 Unix socket 改為優先轉發至 http://127.0.0.1:8000，並保留可測試的錯誤回應
+- [x] 驗證 http://127.0.0.1:3000/api/health 與預覽搜尋請求均回傳 FastAPI JSON
+- [x] 稽核 AO3 AsyncSession、Chrome 120 指紋與 URL 編碼，補齊不規避防護的受控重試回歸測試
+- [x] 稽核 Tauri updater endpoint、簽名資產與前端啟動檢查，修復可重現設定缺口
+- [x] 執行完整測試、建立新版本標籤並推送 GitHub 觸發跨平台 Release
+
+- [x] 診斷 Port 3000 前端預覽服務的依賴、編譯與監聽狀態
+- [x] 恢復受管理的前端開發服務及 FastAPI loopback 服務
+- [x] 驗證 3000 與 8000 健康端點皆返回 HTTP 200
+
+- [x] 將 Web 預覽 FastAPI worker 改為 Unix socket，避免 Manus 預覽服務誤選後端 TCP 埠
+- [x] 驗證右側預覽固定使用 Node 3000，並完成 FastAPI 代理與桌面端建置檢查
+- [x] 將作品來源外鏈接上 Tauri opener，並保留網頁預覽的原生新分頁行為
+- [ ] 更新版本、建立發布標籤並推送 GitHub Actions 產出最新桌面安裝檔

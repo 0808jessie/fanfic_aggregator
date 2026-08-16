@@ -447,6 +447,19 @@ export default function Home() {
     toast.success("已更新閱讀清單");
   };
 
+  const openSourceLink = async (event: React.MouseEvent<HTMLAnchorElement>, url: string) => {
+    if (!isTauriDesktopRuntime()) return;
+
+    event.preventDefault();
+    try {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      await openUrl(url);
+    } catch (error) {
+      console.error("[Source Opener] Failed to open an external source:", error);
+      showInfoToast("無法以系統瀏覽器開啟來源，請稍後重試。");
+    }
+  };
+
   const removeBookmark = (url: string) => {
     const next = bookmarks.filter((bookmark) => bookmark.url !== url);
     setBookmarks(next);
@@ -737,7 +750,7 @@ export default function Home() {
                             {characterTags.map((tag) => <span key={`character-${tag}`} className="border border-[#c9bcf2] bg-[#f0ecff] px-2 py-1 font-mono text-[9px] font-semibold text-[#5c4e87]">◇ {tag}</span>)}
                             {tags.map((tag) => <span key={`tag-${tag}`} className="border border-[#10151b]/10 bg-[#f3f6f5] px-2 py-1 font-mono text-[9px] font-semibold text-[#6a777e]">#{tag}</span>)}
                           </div>
-                          <a href={result.url} target="_blank" rel="noreferrer" className="mt-6 inline-flex items-center gap-2 atlas-mono text-[10px] font-medium uppercase tracking-[0.15em] text-[#2d70d6] hover:text-[#e76f51]">
+                          <a href={result.url} target="_blank" rel="noreferrer" onClick={(event) => void openSourceLink(event, result.url)} className="mt-6 inline-flex items-center gap-2 atlas-mono text-[10px] font-medium uppercase tracking-[0.15em] text-[#2d70d6] hover:text-[#e76f51]">
                             READ AT SOURCE <ArrowUpRight className="h-3.5 w-3.5" />
                           </a>
                         </div>
