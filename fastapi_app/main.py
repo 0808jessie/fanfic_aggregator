@@ -202,7 +202,12 @@ def fastapi_status() -> dict[str, str]:
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "fastapi-search", "version": "1.1.1"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.1.2"}
+
+
+@app.get("/api/health")
+def api_health_check():
+    return {"status": "ok", "service": "fastapi-search", "version": "1.1.2"}
 
 
 @app.get("/")

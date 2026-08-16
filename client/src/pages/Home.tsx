@@ -349,6 +349,23 @@ export default function Home() {
     void waitForSidecarReady()
       .then(() => mounted && setSidecarState("ready"))
       .catch(() => mounted && setSidecarState("error"));
+
+    // Check Tauri updater
+    void (async () => {
+      try {
+        const { check } = await import("@tauri-apps/plugin-updater");
+        const { relaunch } = await import("@tauri-apps/plugin-process");
+        const update = await check();
+        if (update?.available) {
+          toast.info(`發現新版本 v${update.version}，正在下載並更新...`, { duration: 8000 });
+          await update.downloadAndInstall();
+          await relaunch();
+        }
+      } catch (err) {
+        console.log("[Updater] Not in Tauri environment or update check skipped:", err);
+      }
+    })();
+
     return () => { mounted = false; };
   }, [desktopRuntime]);
 

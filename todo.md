@@ -340,3 +340,8 @@
 - [x] 將 src-tauri/tauri.conf.json 與 Cargo.toml 版本更新至 v1.1.1
 - [x] 檢查 .github/workflows/release.yml 是否完整支援帶簽名的 Tauri updater 發布
 - [x] 執行測試、建立 v1.1.0 提交與 v1.1.1 標籤並推送 GitHub 觸發自動更新發布
+
+- [x] 修復 FastAPI /health 與 /api/health 路由對應，確保健康檢查 100% 回傳 200 OK
+- [x] 在前端加入 Tauri updater 自動檢查與下載安裝提示 (@tauri-apps/plugin-updater)
+- [x] 將 src-tauri/tauri.conf.json 與 Cargo.toml 版本更新至 v1.1.2
+- [x] 提交並發布 v1.1.2 標籤，推送至 GitHub 觸發自動發布
