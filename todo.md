@@ -1,7 +1,313 @@
-# Fanfic Atlas TODO
+# Example Domain 修正待辦事項
+
+- [x] 階段一：識別 Example Domain 產生的來源（來自 generate_fallback_data 的 example.com 佔位連結）
+- [x] 階段二：移除 FastAPI 的虛構 fallback 資料生成，改為當即時爬蟲與快取皆無時回傳空陣列與具體錯誤提示，避免產生誤導性的 Example Domain 連結
+- [x] 階段三：修正前端 Home.tsx，當無結果或外部來源暫時無法存取時，呈現清晰的狀態提示與引導，不顯示假卡片
+- [x] 階段四：執行測試、驗證搜尋行為並儲存修正版 checkpoint
+- [x] 後端加入平台主機 URL 信任邊界，拒絕 Example Domain、localhost 與跨平台來源
+- [x] 修正 SQLite upsert 僅寫入 ORM 實際欄位，保留 source / warning 為執行期回應欄位
+- [x] 補上 URL 過濾與空結果回退的回歸測試
+- [x] 透過瀏覽器完成 live AO3 結果與 Discovery Halted 空結果的端到端驗證
+- [x] 建立 verification-notes.md，保存本次自動化與預覽驗證紀錄
+
+- [x] AO3 Adapter 支援 page 參數並於 page=1 自動抓取第 1、2 頁
+- [x] 解析 AO3 totalWorks / totalPages，並在 SearchResponse 回傳分頁 metadata
+- [x] 前端顯示真實總作品數，新增 Load More 追加結果與 loading 狀態
+- [x] 為多頁抓取、page-aware cache 與前端追加流程補上回歸測試
+- [x] 完成多頁端到端驗證並儲存新的 checkpoint
+- [x] 新增自動化回歸測試覆蓋 AO3 page=1 兩頁合併、page=3 後續載入與 page-aware memory cache metadata
+- [x] 新增 Home.tsx Load More append / loading 行為測試
+- [x] 在瀏覽器實際操作搜尋與 Load More，確認 totalWorks 顯示與結果追加
+- [x] 多頁功能驗證完成後儲存涵蓋本輪修改的新 checkpoint
+- [x] 新增 Home.tsx/前端層級互動測試，覆蓋 totalWorks 顯示、Load More append/去重與 pending 文案
+- [x] 完成 Home.tsx 互動測試後儲存涵蓋本輪多頁功能的新 checkpoint
+- [x] 在 Home.tsx 元件互動測試中加入重複 URL 回傳，確認既有卡片不會重複渲染
+- [x] 完成 Home.tsx 去重互動測試後建立新的多頁功能 checkpoint
+
+- [x] 建立統一 StoryItem 平台聯集與多平台 Adapter registry
+- [x] 以平行查詢隔離 AO3/Lofter 失敗並合併真實結果與平台 warning
+- [x] 接上前端平台複選、平台 Badge 與搜尋請求 platforms 參數
+- [x] 補上多平台平行搜尋、錯誤隔離與前端平台篩選回歸測試
+- [x] 完成混合平台端到端驗證並儲存新的 checkpoint
+- [x] 將 Lofter Adapter 重構為 /tag/{keyword} 模式，使用行動裝置 UA、10 秒等待與 auto-scroll 觸發動態加載
+- [x] 加入 Lofter 404/Timeout 安全空結果 fallback 與錯誤日誌記錄，確保單一平台失敗不阻斷 AO3
+- [x] 通過 Python 多平台 registry 測試、分頁測試、TypeScript、Vitest 與 production build 驗證
+
+- [x] 建立可擴充的 AO3 CP Tag Mapping，支援義忍、五夏、夏五、勝出與轟出
+- [x] 讓 AO3 依 CP mapping 使用 tag_names 搜尋，未知關鍵字維持 query 搜尋
+- [x] 解析 AO3 relationship 與 character tags，並保留統一 StoryItem metadata
+- [x] 前端以淡粉/淡紫樣式醒目顯示 CP relationship tags
+- [x] 補上 Lofter blocked/offline 與 AO3 CP 搜尋回歸測試並完成端到端驗證
+- [x] 在瀏覽器實際驗證搜尋「義忍」的 UI 流程，確認 mapping、無結果/rate-limit 狀態與舊快取隔離
+- [x] 補一個可重現的 mock AO3 mapped-tag 整合測試，驗證 API 到前端 relationship/character tag 契約
+- [x] 完成上述缺口後建立本輪 CP mapping checkpoint
+- [x] 儲存包含 AO3 CP mapping、relationship/character tag、義忍 UI 驗證與 mock 整合測試的最新 checkpoint，並記錄版本 ID
+- [x] 儲存包含 AO3 CP mapping、relationship/character tag、義忍 UI 驗證與 mock 整合測試的最新 checkpoint，並在交付紀錄中記錄新版本 ID：fbc2fdec
+
+- [x] 將 AO3 CP mapping 參數由 tag_names 改為 relationship_names
+- [x] 將 CP 字典抽至 fastapi_app/constants/cp_tags.py
+- [x] 實作 AO3 CP 搜尋失敗或 0 筆時自動降級至 work_search[query] 的 fallback 機制
+- [x] 補上 CP 降級與常數模組的單元測試與端到端驗證
+
+- [x] 修正 AO3 Playwright `wait_domcontent_loaded=True` 為標準的 `wait_until="domcontentloaded"`，確保導航正確無誤
+- [x] 補上針對 AO3 relationship_names URL 生成與 fallback 機制的整合單元測試
+
+- [x] 新增 AO3 fallback 實際 mock 整合測試，驗證 0 筆時會觸發 `_fallback_query_search`
+- [x] 更新 verification 文件，確保記載 `relationship_names` 與受控降級流程
+
+- [x] 移除硬式 CP map 複寫，改用原生的 `work_search[query]` 傳遞中文/非 ASCII 關鍵字
+- [x] 建立 `fastapi_app/scripts/fix_ao3_search.py` 診斷腳本測試中文 CP 標籤
+- [x] 驗證中文關鍵字搜尋並儲存 checkpoint
+
+- [x] 取得 GitHub Actions 的 Tauri E0423 錯誤上下文並定位 generate_context 巨集呼叫問題
+- [x] 補上 Tauri build.rs、tauri-build 依賴與標準 lib.rs 進入點
+- [x] 產生完整 Tauri icons 圖示集並將 frontendDist 對齊至 dist/public
+- [x] 於本機執行 cargo check 與 pnpm run build 驗證成功
+
+- [x] 檢查並修正 `fastapi_app/main.py` 的匯入路徑，確保 FastAPI 服務正常啟動
+- [x] 執行 FastAPI `/search` 中文關鍵字 API smokeTest，驗證 API 回傳合約
+
+- [x] 補上 package-style 匯入回歸測試，確認根目錄與 fastapi_app 目錄皆可正確匯入
+- [x] 擴充 `test_fastapi_chinese_search.py` 斷言中文搜尋回傳 items 非空及完整 title/author/url 欄位
+
+- [x] 補上真正的 package-style 匯入回歸測試 (`from fastapi_app import main`)
+- [x] 在 `test_fastapi_chinese_search.py` 中強制斷言中文搜尋回傳 `items` 長度大於 0
+
+- [x] 在專案根目錄下執行測試，驗證從根目錄以 package 形式載入 `fastapi_app` 與 `fastapi_app.main` 完全正常
+
+- [x] 在測試中明確斷言 `from fastapi_app import main` 與 `import fastapi_app` 成功載入
+
+- [x] 執行專門針對「義忍」的診斷腳本，對比 AO3 原始回應、URL 構建與解析結果
+- [x] 檢查前端或後端對 `義忍` 是否有特殊字元過濾、mapping 衝突或快取阻擋
+- [x] 修復義忍搜尋並通過完整回歸測試與端到端驗證
+
+- [x] 執行完整的 Python 與 Vitest 回歸測試，確保所有規格 100% 通過
+
+- [x] 執行專案中所有 Python 測試腳本，確認無任何隱含回歸
+
+- [x] 撰寫詳細對比診斷腳本，測試繁體「義忍」與簡體「义忍」在 AO3 實際抓取與解析的差異
+- [x] 檢查前端、tRPC 代理、FastAPI 路由與 AO3 Adapter 對繁體中文字元的編碼與快取 key 處理
+- [x] 修正繁體「義忍」無法正確返回結果的問題並完成回歸驗證
+
+- [x] 執行前端 UI 搜尋「義忍」的整合煙霧測試，確保代理與前端渲染完全正常
+
+- [x] 執行不 mock payload 的真實前端/代理整合煙霧測試，確保代理打到真實 FastAPI 服務
+
+- [x] 撰寫嚴格不吞錯、透過 tRPC 代理打到真實 FastAPI 服務的整合測試，斷言「義忍」回傳非空 items
+
+- [x] 補上透過 tRPC `fastapiTrpcRouter` 呼call的端到端代理單元測試，驗證非 mock 狀態下的路由轉發合約
+
+- [x] 撰寫真實呼叫 tRPC proxy 的單元測試，驗證傳入 `keyword: "義忍"` 時正確呼叫 Axios 並透傳 FastAPI 響應
+
+- [x] 檢查 SQLite 與記憶體快取中所有「義忍」紀錄，識別並清除過期或空結果資料
+- [x] 讓「義忍」搜尋強制略過本機快取與資料庫回退，優先回傳即時 AO3 結果
+- [x] 補上義忍快取污染回歸測試，重啟服務後驗證真實搜尋結果
+
+- [x] 新增義忍專用的全域記憶體快取清除，移除所有含義忍或义忍的快取 key
+- [x] 補上全域記憶體快取清除回歸測試並再次驗證 tRPC 即時 AO3 回應
+
+- [x] 建立 AO3 結果相關度評分與穩定排序（CP/標題/摘要、更新時間與字數）
+- [x] 擴充搜尋契約支援 forceRefresh，並依高／一般／低可信度設定快取 TTL
+- [x] 新增前端即時計時器、搜尋完成耗時與強制重新抓取控制
+- [x] 實作前端字數／完結狀態篩選與相關度／更新時間／字數排序
+- [x] 補上後端與前端回歸測試，驗證義忍相關度排序、快取策略與篩選互動
+- [x] 限制 CP +100 分僅適用於完整配對或別名命中，避免單一角色標籤誤判
+- [x] 補上後端同分時依更新時間與字數排序、單一角色不計 CP 分的回歸測試
+- [x] 補上前端最新更新／字數最多排序與篩選互動的回歸測試
+- [x] 驗證 doujin.com.tw 搜尋頁是否可公開存取、是否具備可解析的作品 metadata，並記錄資料來源限制
+- [x] 新增同人誌中心 Adapter，僅回傳可驗證的同人誌中心作品連結與標準化 metadata
+- [x] 將同人誌中心整合至平台 registry、API 契約與前端平台篩選／Badge
+- [x] 建立 localStorage 閱讀清單資料模型，支援收藏、評分、筆記與自訂標籤
+- [x] 新增作品卡片收藏操作、編輯收藏對話框與「我的閱讀清單」檢視
+- [x] 建立 localStorage CP 詞庫管理功能，支援預設對照載入、新增、編輯與刪除
+- [x] 新增搜尋歷史快速重搜與預設進階篩選條件保存
+- [x] 補上 Adapter、個人化工具與搜尋偏好的單元／元件測試
+- [x] 完成實際搜尋、收藏與詞庫管理介面驗證，並儲存檢查點
+- [x] 稽核首頁已掛載閱讀卡編輯、閱讀清單與 CP 詞庫對話框，並確認卡片收藏控制存在
+- [x] 以互動測試與預覽驗證搜尋、收藏筆記標籤、閱讀清單與 CP 詞庫的完整流程
+- [x] 驗證在水裡寫字與 Penana 的公開搜尋頁、可用資料欄位及防護限制
+- [x] 建立在水裡寫字 Adapter，標準化文章標題、作者、時間、標籤與連結並安全隔離錯誤
+- [x] 建立 Penana Adapter，標準化作品標題、作者、簡介、字數、完結狀態、標籤與連結並安全隔離錯誤
+- [x] 將兩個平台整合至 registry、URL 信任邊界、API 平台列表與前端篩選／Badge
+- [x] 補上 Adapter 解析、HTTP 防護隔離、registry 與混合平台搜尋回歸測試
+- [x] 完成實際混合搜尋驗證、全套回歸測試與檢查點
+- [x] 消除中文 AO3 路由測試對瞬時外部限流的依賴，保留可重現的 API 契約驗證與獨立真實搜尋記錄
+- [x] 更新義忍首頁測試的預設平台請求斷言，涵蓋在水裡寫字與 Penana
+- [x] 補強 Penana Adapter：從可驗證的公開詳細頁提取字數與完結狀態，並對無資料情境採用明確空值降級
+- [x] 補上 Penana 詳細頁 metadata 解析回歸測試與 P0 版本檢查點
+- [x] 儲存 WaterWriter／Penana P0 擴充與 Penana 詳細頁安全降級的最終 checkpoint（6857a4f7）
+- [x] 稽核同人誌中心、在水裡寫字與 Penana 的請求設定、驗證頁偵測及 warning 傳遞路徑
+- [x] 以合規公開頁請求設定強化同人誌中心與在水裡寫字，遇驗證保護時僅記錄後端並安全略過
+- [x] 簡化 Penana 公開搜尋請求，保留真實標題／作者／連結，未知字數與狀態採空值降級
+- [x] 靜音單一平台診斷警示，讓任一平台成功時前端維持正常結果與數量呈現
+- [x] 補上防護隔離、metadata 空值與混合搜尋回歸測試，完成實測與新 checkpoint
+- [x] 更新同人誌中心 Challenge 測試訊息，對齊新的 clean skip 降級契約
+- [x] 儲存台灣平台靜默降級與合規公開請求設定的最終 checkpoint（d230f5f1）
+- [x] 核對 AO3 官方原生搜尋 query URL、無隱藏過濾條件與 heading 總筆數格式
+- [x] 修正 AO3 Adapter 的原生 query 組裝與 totalWorks 解析，保留官網回傳的精準總數
+- [x] 強化同人誌中心公開搜尋 Header 與作品列表解析，受保護時快速靜默降級
+- [x] 強化在水裡寫字的公開搜尋與頻率限制偵測，驗證／冷卻時安全返回空結果
+- [x] 補上 AO3 總筆數、台灣平台隔離及混合搜尋回歸測試
+- [x] 完成實際 AO3／混合搜尋驗證、全套測試與最終 checkpoint
+- [x] 新增 AO3 成功搜尋頁 heading 與 API totalWorks 的可追溯診斷／回歸驗證，確認兩者精確一致
+- [x] 儲存 AO3 原生總筆數與台灣平台公開搜尋修正的最終 checkpoint（4d5c7d80）
+- [x] 稽核在水裡寫字與同人誌中心的既有 Adapter、公開搜尋 DOM 與驗證／冷卻限制
+- [x] 為在水裡寫字新增合規 Playwright 搜尋頁渲染、文章多選擇器解析及冷卻／驗證安全降級
+- [x] 為同人誌中心新增合規 Playwright 搜尋頁渲染、作品多選擇器解析及 timeout／驗證安全降級
+- [x] 在平台 registry 中保留獨立錯誤隔離並記錄後端抓取筆數
+- [x] 補上瀏覽器 DOM 解析、驗證／冷卻隔離與混合搜尋回歸測試
+- [x] 完成實際搜尋驗證、全套測試與最終 checkpoint
+- [x] 恢復在水裡寫字 error.jpg 保護頁偵測，維持既有驗證隔離回歸契約
+- [x] 修正在水裡寫字實測結果的單筆卡片定位，避免所有回傳項目重複第一個標題與摘要
+- [x] 儲存在水裡寫字／同人誌中心瀏覽器渲染、DOM 解析回歸與實測結果的最終 checkpoint（c56b029a）
+- [x] 稽核平台聚合回應、Adapter warning、CP 常數與首頁搜尋狀態的現況
+- [x] 設計並實作每個平台的成功／阻擋／冷卻／無結果狀態契約
+- [x] 建立 AO3／台灣平台相容的多平台 CP 詞庫轉譯器與平台查詢輔助函式
+- [x] 將 AO3、在水裡寫字與同人誌中心接上平台專用 CP 查詢字串
+- [x] 在首頁新增平台連線狀態標籤與失敗來源的單獨重試按鈕
+- [x] 補上 CP 轉譯、平台狀態、單獨重試與 AO3 totalWorks 的回歸測試
+- [x] 以穩定 AO3 OR 查詢完成平台狀態降級驗證，執行全套測試並準備儲存版本
+- [x] AO3 上游恢復後，以義忍重新驗證 AO3 live 成功結果與官方 totalWorks，並保存成功回應證據
+- [x] 稽核並補強單一平台重試後只合併該來源結果、保留其他來源作品與更新狀態列的行為
+- [x] 驗證平台狀態列的來源筆數、CP translatedQuery 與 AO3 官方 totalWorks 呈現一致性
+- [x] 稽核 AO3 成人內容 Cookie、原生全站搜尋 URL 與 h2.heading 總筆數解析
+- [x] 為在水裡寫字加入 srchfid=all 全站搜尋參數並解析 Discuz 主題總數
+- [x] 為同人誌中心解析搜尋頁或分頁元件中的全站作品總數
+- [x] 補上三平台請求參數、總數擷取與前端展示回歸；完成 AO3 與在水裡寫字的公開頁總數比對
+- [x] 實測同人誌中心義忍中文詞組的頁面總數／分頁並對照 Adapter totalWorks；原生頁與 FastAPI 均為精準 4 筆，延伸推薦已排除
+- [x] 補做同人誌中心中文詞組的公開頁分頁驗證，明確記錄是否僅 1 頁並與 FastAPI totalPages 對照
+- [x] 新增同人誌中心原生路由、共 N 本與單頁／多頁分頁資訊的回歸測試
+- [x] 讓所有已註冊 Adapter 在 ADAPTER CONNECTIONS 常駐顯示，補齊未回傳平台的可重試狀態卡
+- [x] 重構 CxC 公開搜尋的 API 與 DOM 並行有界等待、作品卡解析及逾時訊息
+- [x] 補上常駐平台狀態與 CxC API／DOM 等待的回歸測試，完成安全降級與 UI 驗證
+- [x] 用可公開命中的 CxC 關鍵字完成 live 驗證，證明 Adapter 可回傳真實作品的標題、作者與可信連結；義忍已由官方公開 API 回傳 15 筆作品
+- [x] 儲存本輪 CxC 常駐狀態卡與搜尋修正 checkpoint
+- [x] 稽核並新增 CxC 專屬 CP 純文字查詢，避免 AO3 布林運算式與引號流入 CxC
+- [x] 將 CxC 作品標題、作者、自訂標籤與簡介納入 CP 多欄位相關性比對
+- [x] 區分 CxC 正常零結果與 API／渲染連線錯誤，讓無作品狀態不誤顯示為失敗
+- [x] 補上義忍、佐櫻與五夏等 CP 查詢回歸，完成 CxC 後端 live 驗證
+- [x] 以瀏覽器驗證 CxC 的佐櫻與正常零結果查詢，確認狀態卡分別呈現 success／empty 而非 error
+- [x] 以瀏覽器實際用僅 CxC 單一來源搜尋義忍，確認 ADAPTER CONNECTIONS 顯示 CxC 已連線而非 error，並保存驗證紀錄
+- [x] 修正 CxC 正常零結果仍顯示 DISCOVERY HALTED 的前端空狀態判斷，改為僅顯示來源專屬「無公開結果」
+- [x] 儲存本輪 CxC CP 查詢轉譯、空結果與多欄位比對 checkpoint，版本 f07bd83c；Python 52/52、Vitest 34/34、TypeScript 通過
+- [x] 停用 Lofter Adapter，從可選搜尋來源與 ADAPTER CONNECTIONS 移除，並更新六平台既有契約
+- [x] 校正 AO3、在水裡寫字、Penana、同人誌中心的官方總數與分頁資訊解析，避免以首頁卡片數代替總數
+- [x] 完善 Blueprint CP 詞庫管理 Modal，支援新增、刪除、重設與 localStorage 自訂對照合併
+- [x] 讓 ADAPTER CONNECTIONS 平台卡提供可見的單一來源快捷篩選、再次點擊還原全部與 active 狀態
+- [x] 補上停用 Lofter、官方總數、CP 詞庫與平台快捷篩選的回歸測試及公開頁／UI 驗證；Python 54/54、Vitest 35/35、TypeScript 通過
+- [x] 儲存本輪 Adapter 總數校正與前端管理／篩選功能 checkpoint，版本 1fa8b374；Python 54/54、Vitest 35/35、TypeScript 通過
+- [x] 排查所有平台同時連線逾時的搜尋入口、tRPC 代理與 FastAPI Adapter 執行鏈，保存具體阻塞證據：FastAPI 8000 程序未啟動，重置環境亦缺 SQLAlchemy 與 Playwright Chromium
+- [x] 為每個 Adapter 加入 8 秒硬性逾時與來源級 error 空結果，確保單一來源不阻塞整體搜尋
+- [x] 為自訂 CP 詞庫 payload 加入完整容錯解析與安全預設，避免不合法資料中斷搜尋
+- [x] 縮短官方總數解析等待並加入搜尋入口／各來源耗時日誌，避免重複導覽與無界等待
+- [x] 補上逾時、CP payload 容錯、部分成功結果與耗時日誌回歸測試，完成實測驗證；Python 56/56、Vitest 36/36、TypeScript 通過
+- [x] 儲存本輪搜尋逾時緊急修復 checkpoint，版本 b700e83b；Python 56/56、Vitest 36/36、TypeScript 通過
+- [x] 完成 Fanfic Atlas 介面重設計的產品方向與設計系統，定義搜尋、來源可信度與閱讀清單的優先層級；標準審核與 context pack 已驗證
+- [x] 稽核現有搜尋首頁、狀態卡、結果卡與閱讀工具流程，建立可保留功能的資訊架構調整範圍
+- [x] 重構搜尋首頁、平台健康狀態與作品結果卡，建立更聚焦、易掃讀的探索工作區
+- [x] 重設閱讀清單與 CP 詞庫管理的視覺層級、空狀態與操作回饋，保留 LocalStorage 行為
+- [x] 補足介面重設計的元件測試、桌面／手機視覺驗證與既有搜尋回歸；Python 56/56、Vitest 37/37、TypeScript 通過
+- [x] 儲存本輪 Fanfic Atlas 介面重設計 checkpoint，版本 2b09c259；Python 56/56、Vitest 37/37、TypeScript 通過
+- [x] 稽核作品卡作者資料、現有搜尋模式與 CP 跨平台轉譯契約，確認不碰 Adapter 逾時與官方總數邏輯
+- [x] 建立題材／世界觀詞庫與 AO3、本地、CxC 平台查詢轉譯，支援 ABO、哨嚮、Paro、原著向與常見題材別名
+- [x] 在作品卡加入安全的作者導航互動，標示 Author Mode 並以作者名稱觸發跨平台搜尋
+- [x] 擴充 CP 詞庫管理 Modal，加入可瀏覽的預設題材／世界觀對照區，維持自訂 CP LocalStorage 行為
+- [x] 補上題材轉譯、作者無效值防護、作者模式搜尋與既有逾時／總數行為的回歸測試與 UI 驗證；Python 57/57、Vitest 39/39、TypeScript 通過
+- [x] 儲存本輪作者導航與題材詞庫 checkpoint，版本 7a27ca4e；Python 57/57、Vitest 39/39、TypeScript 通過
+- [x] 稽核 Playwright 瀏覽器啟動、頁面關閉、搜尋快取與單一來源重試路徑，確認不影響現有 deadline 與官方總數
+- [x] 建立共用 Playwright browser provider 與資源攔截設定，僅阻擋非必要資源並確保頁面在 finally 中關閉
+- [x] 建立來源級短期記憶體快取與 forceRefresh 略過策略，保留既有回應與快取 TTL 契約
+- [x] 驗證並補強單一平台重試只呼叫指定來源、合併對應結果與更新對應狀態卡的行為
+- [x] 補上資源攔截、browser provider、來源快取與單一來源重試的回歸／效能驗證；Python 61/61、Vitest 39/39、TypeScript 通過；CxC cache hit 10 ms
+- [x] 儲存本輪爬蟲穩定度與速度優化 checkpoint，版本 785baa5c；Python 61/61、Vitest 39/39、TypeScript 通過；CxC cache hit 10 ms
+- [x] 稽核 AO3、在水裡寫字、Penana、同人誌中心的現行取得路徑、前端單一來源重試事件與封面渲染點
+- [x] 為可公開靜態解析的來源建立有界 HTTP／HTML 解析優先路徑，保留瀏覽器或 API 的安全降級、8 秒 deadline 與官方總數
+- [x] 驗證並補強單一平台重試僅呼叫指定來源、停止事件冒泡並局部合併結果／狀態的前端契約
+- [x] 為作品封面加入 no-referrer、lazy loading 與 Blueprint fallback cover，處理 CxC 與同人誌中心的防盜鏈失敗
+- [x] 補上靜態解析、單一重試與封面降級回歸測試，完成效能與 UI 驗證；Python 64/64、Vitest 41/41、TypeScript 通過；AO3 防護降級 3,850 ms
+- [x] 儲存本輪輕量爬蟲、重試與封面修復 checkpoint，版本 920488b3；Python 64/64、Vitest 41/41、TypeScript 通過；AO3 防護降級 3,850 ms
+- [x] 稽核 Penana、AO3 與在水裡寫字仍可能觸發 page.goto 的 browser 降級路徑
+- [x] 將 Penana 改為純 HTTP／HTML 解析，並移除 AO3、在水裡寫字的 browser fallback，保留官方總數與來源級錯誤狀態
+- [x] 補上 HTTP 逾時、403／429／525、防護頁與空結果的純靜態回歸測試，確認不會呼叫 Playwright
+- [x] 重啟 FastAPI，完成完整回歸與實際單一來源快速降級驗證；Python 65/65、Vitest 41/41、TypeScript 通過
+- [x] 儲存本輪純 HTTP 靜態 Adapter 修復 checkpoint（8185a738）
+- [x] 稽核 AO3 HTTP 標頭／成人偏好、525／503 重試與 Penana 防護偵測的現有實作及測試契約
+- [x] 為 AO3 實作單次、有界的 HTTP 525／503／暫時網路錯誤重試，保留成人偏好 Cookie 與官方總數解析
+- [x] 強化 Penana 403／驗證頁偵測、blocked 狀態與安全單一來源重試，避免規避站方人機保護
+- [x] 驗證 AO3／Penana 單一平台重試不觸發全域搜尋，完成完整回歸與實測；Python 67/67、Vitest 42/42、TypeScript 通過
+- [x] 儲存本輪 AO3／Penana 防護與單一平台重試修復 checkpoint（5f2cb63b）
+- [x] 稽核 AO3、在水裡寫字、Penana、同人誌中心、CxC 的 HTTP／瀏覽器 timeout、聚合 deadline 與請求標頭
+- [x] 校準各 Adapter 對外請求與聚合時間預算，避免過短 read timeout 造成來源集體降級
+- [x] 將聚合層共同等待改為每來源獨立 deadline，避免既有慢來源佔用 worker 後連帶判定其他來源逾時
+- [x] 限制 CxC／同人誌中心 browser fallback 的總預算，並在公開 HTTP 已逾時或受保護時不再啟動二次導覽
+- [x] 將在水裡寫字與同人誌中心的 CP 本地搜尋改為單一主關鍵字，保留使用者原詞與官方總數契約
+- [x] 驗證五平台的獨立重試、部分成功隔離與完整回歸；Python 70/70、Vitest 42/42、TypeScript 通過
+- [x] 儲存本輪五平台 timeout 校準與來源隔離 checkpoint（cb33d8b2）
+- [x] 稽核同步 Adapter 與 ThreadPool 聚合的阻塞路徑、外部請求依賴及未知關鍵字回退契約
+- [x] 建立每來源獨立的非同步 HTTP Session、5 秒連線／10 秒讀取與來源級結果封裝
+- [x] 將 AO3、在水裡寫字、同人誌中心、Penana、CxC 接上非同步公開請求路徑，保留安全防護降級與可信 URL 邊界
+- [x] 補強未知 CP／一般字詞的原詞跨平台搜尋與單一來源重試回歸
+- [x] 驗證不同關鍵字的部分成功回應與完整回歸；Python 71/71、Vitest 42/42、TypeScript 通過
+- [x] 儲存本輪非同步來源隔離與未知關鍵字重構 checkpoint（9c944dac）
+- [x] 稽核 CxC、同人誌中心與所有 Adapter 是否仍存在即時 browser fallback，以及封面 no-referrer 契約
+- [x] 移除即時搜尋的 browser／Playwright 路徑，將五平台統一為 6 秒有界純 HTTP／HTML 或公開 API 解析與來源級降級
+- [x] 建立可執行的五平台 CLI 搜尋診斷，輸出平台、狀態、耗時與官方／可驗證筆數
+- [x] 驗證未知關鍵字、單一平台重試、完整回歸與純 HTTP 診斷輸出；Python 71/71、Vitest 42/42、TypeScript 通過
+- [x] 儲存本輪純 HTTP 搜尋重構與 CLI 診斷 checkpoint（238051dd）
+- [x] 稽核 FastAPI 程序、啟動日誌、8000 埠與 tRPC 代理設定
+- [x] 修復 FastAPI 啟動或前端代理連線故障，確保服務可持續提供健康端點
+- [x] 讓 Node 開發服務受控啟動並結束 FastAPI 子程序，避免重啟後 8000 埠未監聽
+- [x] 以健康檢查、直接搜尋與 tRPC 代理驗證前後端連線；Python 71/71、Vitest 43/43、TypeScript 通過
+- [x] 儲存本輪 FastAPI 服務恢復與受控啟動 checkpoint（570870a5）
+- [x] 驗證 Node 前端預覽固定使用 3000 埠、FastAPI 改為內部 socket，修正預覽路由衝突
+- [x] 將受控 FastAPI 改為內部 Unix socket 通訊並讓 tRPC 代理走該 socket，避免 WebDev 將後端識別為預覽服務
+- [x] 儲存本輪 FastAPI Unix socket 與前端預覽修復 checkpoint（e5638245）
+- [x] 稽核 AO3 與 Penana 的 timeout、請求標頭、CP／原詞查詢與來源級狀態測試
+- [x] 為 AO3 實作十秒專屬來源期限與過長布林查詢的原詞回退，保留成人偏好標頭
+- [x] 強化 Penana 現代瀏覽器請求標頭與 403／驗證頁來源級 blocked 狀態，不使用自動化規避
+- [x] 驗證 AO3／Penana 單一來源重試、Unix socket 代理與其他三個來源隔離；Python 71/71、Vitest 43/43、TypeScript 通過
+- [x] 儲存本輪 AO3／Penana 最後調優 checkpoint（339081d6）
+- [x] 稽核 Penana 現行搜尋 URL、請求標頭、HTML 卡片解析與來源級 403 測試
+- [x] 改用最簡化公開搜尋 URL 與八秒有界 HTTP 請求，維持可驗證作品解析與安全 blocked 降級
+- [x] 驗證 Penana 單一來源「義忍」搜尋、403／空結果狀態、Unix socket 代理與完整回歸；Python 71/71、Vitest 43/43、TypeScript 通過
+- [x] 儲存本輪 Penana 簡化公開搜尋 checkpoint（ea5ece05）
+- [x] 稽核部署日誌、FastAPI sidecar 啟動程式與生產映像需求
+- [x] 配置同時具備 Node、Python 與 FastAPI 依賴的生產容器，避免 `python3 ENOENT`
+- [x] 補強 FastAPI 子程序 error 事件處理，避免 sidecar 無法啟動時使 Node 3000 程序崩潰
+- [x] 驗證本地受控啟動、完整回歸與生產就緒；Python 72/72、Vitest 43/43、TypeScript 通過
+- [x] 儲存本輪生產 Python runtime 與 sidecar 啟動修復 checkpoint（98a00e8d）
+- [x] 稽核 AO3 轉譯查詢、525／503 重試與 Penana blocked 狀態卡現有元件／測試
+- [x] 將 AO3 即時搜尋固定為使用者單一原詞並加入 600ms 有界單次暫時錯誤重試
+- [x] 為 Penana blocked 狀態提供官方站內搜尋的新分頁連結，不使用公開代理或人機保護規避
+- [x] 驗證 AO3／Penana 單一來源重試、其他來源隔離與完整回歸；Python 72/72、Vitest 44/44、TypeScript 通過
+- [x] 儲存本輪 AO3 重試與 Penana 官方搜尋降級 checkpoint（b237c974）
+- [x] 量測 AO3／Penana 公開搜尋端點、tRPC 代理、來源狀態與最近服務日誌
+- [x] 修正可重現的 AO3／Penana URL、標頭、解析、快取或重試缺陷；維持合規公開請求邊界
+- [x] 強化兩個來源受上游防護時的官方連結、快取與單一來源重試體驗
+- [x] 驗證五來源搜尋、AO3／Penana 單獨重試與完整回歸；Python 72/72、Vitest 44/44、TypeScript 通過
+- [x] 為 AO3 525 blocked 狀態加入官方 AO3 搜尋新分頁連結，與既有 Penana 降級一致
+- [x] 儲存本輪 AO3／Penana 來源防護降級 checkpoint（14008058）
+- [x] 確認本機 Git 工作樹、目前分支與 GitHub 目標倉庫存取權限
+- [x] 使用已驗證的 user_github 遠端建立乾淨專案快照並推送至 0808jessie/fanfic_aggregator main
+- [x] 驗證 GitHub 遠端 main 分支與提交 SHA，回報推送結果
+- [x] 稽核既有作者導航、搜尋 UI、FastAPI／tRPC payload 與平台 Adapter 的作者查詢行為
+- [x] 新增可切換的關鍵字／作者模式 UI，調整 placeholder 並維持作者卡片導航與單一來源重試
+- [x] 在 FastAPI、tRPC 與各來源 adapter 傳遞 mode 參數，實作可驗證的作者查詢／安全原詞降級
+- [x] 補齊作者模式單元與回歸測試，完成五來源驗證並推送至 GitHub main
+- [x] 獨立放寬 Pixiv 請求 timeout 至 30.0 秒並加入非阻塞來源級診斷與隔離篩選器
+- [x] 執行單獨 Pixiv 診斷 (test_search.py 鬼滅 --platform pixiv --timeout 35) 並驗證回應狀態
+- [x] 執行全平台測試確認同人誌、水裡寫字、CxC 維持 success，並推送至 GitHub main
+
+- [x] 清理 venv 內超過 GitHub 100 MB 限制的 Playwright 二進位檔與 Git 歷史，重新推送 origin/main
 
 - [x] 初始化 Tauri 桌面專案配置 (`src-tauri/`) 與 Python 本機服務 Sidecar 啟動封裝
 - [x] 設定 Tauri Auto-updater 自動更新端點指向 https://github.com/0808jessie/fanfic_aggregator
 - [x] 建立 `.github/workflows/release.yml` 實現 macOS 與 Windows 自動編譯、簽署與 Release 發布
 - [x] 編寫 `TESTING_GUIDE.md` 內測人員使用指引（含 macOS 允許開發者與自動更新說明）
 - [x] 驗證本地建構並儲存檢查點
+
+- [ ] 建立 FastAPI PyInstaller 進入點 `fastapi_app/entrypoint.py` 與打包腳本 `scripts/build_sidecar.sh`
+- [ ] 配置 `src-tauri/tauri.conf.json` 的 `externalBin` 與 sidecar 執行權限
+- [ ] 在 Tauri Rust (`lib.rs` / `main.rs`) 中實作背景 sidecar 自動啟動、健康檢查與退出關閉清理
+- [ ] 更新 GitHub Actions `release.yml` 加入 Python 依賴安裝、PyInstaller 打包與 target-tripled 重新命名
+- [ ] 驗證 Rust 編譯、檢查 Git 歷史排除二進位檔，並成功推送至 GitHub main

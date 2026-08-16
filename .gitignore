@@ -118,3 +118,6 @@ venv/
 .venv/
 **/__pycache__/
 *.py[cod]
+
+# Rust and Tauri build artifacts
+src-tauri/target/
