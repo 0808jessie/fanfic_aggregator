@@ -305,3 +305,8 @@
 - [x] 建立 `.github/workflows/release.yml` 實現 macOS 與 Windows 自動編譯、簽署與 Release 發布
 - [x] 編寫 `TESTING_GUIDE.md` 內測人員使用指引（含 macOS 允許開發者與自動更新說明）
 - [x] 驗證本地建構並儲存檢查點
+
+- [ ] 檢查 Tauri tauri.conf.json 是否正確配置 externalBin
+- [ ] 檢查 src-tauri 原始碼中是否有實作 sidecar 啟動與退出清理
+- [ ] 在 GitHub Actions release.yml 中補上 PyInstaller 跨平台打包並產出對應 target 檔名
+- [ ] 執行本地編譯與驗證，建立提交與 v1.0.5 標籤並推送至 GitHub

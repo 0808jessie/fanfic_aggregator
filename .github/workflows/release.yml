@@ -15,9 +15,14 @@ jobs:
       matrix:
         include:
           - platform: macos-latest
-            args: ''
+            target_triple: aarch64-apple-darwin
+            binary_name: api-server-aarch64-apple-darwin
+          - platform: macos-latest
+            target_triple: x86_64-apple-darwin
+            binary_name: api-server-x86_64-apple-darwin
           - platform: windows-latest
-            args: ''
+            target_triple: x86_64-pc-windows-msvc
+            binary_name: api-server-x86_64-pc-windows-msvc.exe
 
     runs-on: ${{ matrix.platform }}
 
@@ -46,10 +51,21 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Install Python Dependencies
+      - name: Install Python & PyInstaller Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r fastapi_app/requirements.txt
+          pip install pyinstaller -r fastapi_app/requirements.txt
+
+      - name: Build Python Sidecar with PyInstaller
+        run: |
+          pyinstaller --noconfirm --onefile --name "api-server" --paths "fastapi_app" fastapi_app/entrypoint.py
+          mkdir -p src-tauri/binaries
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            cp dist/api-server.exe src-tauri/binaries/${{ matrix.binary_name }}
+          else
+            cp dist/api-server src-tauri/binaries/${{ matrix.binary_name }}
+          fi
+          ls -la src-tauri/binaries/
 
       - name: Install Frontend Dependencies
         run: pnpm install --no-frozen-lockfile
@@ -61,7 +77,6 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Fanfic Atlas v__VERSION__'
-          releaseBody: '自動編譯發布的內測版本。請參考 TESTING_GUIDE.md 安裝與使用。'
+          releaseBody: '自動編譯發布的內測版本 (含 Python FastAPI Sidecar 自動生命週期管理)。請參考 TESTING_GUIDE.md 安裝與使用。'
           releaseDraft: false
           prerelease: false
-          args: ${{ matrix.args }}
