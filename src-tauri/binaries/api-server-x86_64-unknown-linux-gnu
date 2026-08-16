@@ -1,2 +1,2 @@
-#!/bin/sh
-echo "placeholder sidecar"
+#!/usr/bin/env python3
+print("mock sidecar")

@@ -1,4 +1,4 @@
-# Fanfic Atlas 修正待辦事項
+# Example Domain 修正待辦事項
 
 - [x] 階段一：識別 Example Domain 產生的來源（來自 generate_fallback_data 的 example.com 佔位連結）
 - [x] 階段二：移除 FastAPI 的虛構 fallback 資料生成，改為當即時爬蟲與快取皆無時回傳空陣列與具體錯誤提示，避免產生誤導性的 Example Domain 連結
@@ -97,7 +97,7 @@
 
 - [x] 補上透過 tRPC `fastapiTrpcRouter` 呼call的端到端代理單元測試，驗證非 mock 狀態下的路由轉發合約
 
-- [x] 撰寫真實呼叫 tRPC proxy 的單元測試，驗證傳入 `keyword: "義忍"` 時正確呼叫 Axios 與透傳 FastAPI 響應
+- [x] 撰寫真實呼叫 tRPC proxy 的單元測試，驗證傳入 `keyword: "義忍"` 時正確呼叫 Axios 並透傳 FastAPI 響應
 
 - [x] 檢查 SQLite 與記憶體快取中所有「義忍」紀錄，識別並清除過期或空結果資料
 - [x] 讓「義忍」搜尋強制略過本機快取與資料庫回退，優先回傳即時 AO3 結果
@@ -231,7 +231,7 @@
 - [x] 補上 HTTP 逾時、403／429／525、防護頁與空結果的純靜態回歸測試，確認不會呼叫 Playwright
 - [x] 重啟 FastAPI，完成完整回歸與實際單一來源快速降級驗證；Python 65/65、Vitest 41/41、TypeScript 通過
 - [x] 儲存本輪純 HTTP 靜態 Adapter 修復 checkpoint（8185a738）
-- [x] 稽核 AO3 HTTP 標頭／成人偏好、525／503 重試與 Penana Penana 偵測的現有實作及測試契約
+- [x] 稽核 AO3 HTTP 標頭／成人偏好、525／503 重試與 Penana 防護偵測的現有實作及測試契約
 - [x] 為 AO3 實作單次、有界的 HTTP 525／503／暫時網路錯誤重試，保留成人偏好 Cookie 與官方總數解析
 - [x] 強化 Penana 403／驗證頁偵測、blocked 狀態與安全單一來源重試，避免規避站方人機保護
 - [x] 驗證 AO3／Penana 單一平台重試不觸發全域搜尋，完成完整回歸與實測；Python 67/67、Vitest 42/42、TypeScript 通過
@@ -297,14 +297,16 @@
 - [x] 獨立放寬 Pixiv 請求 timeout 至 30.0 秒並加入非阻塞來源級診斷與隔離篩選器
 - [x] 執行單獨 Pixiv 診斷 (test_search.py 鬼滅 --platform pixiv --timeout 35) 並驗證回應狀態
 - [x] 執行全平台測試確認同人誌、水裡寫字、CxC 維持 success，並推送至 GitHub main
+
 - [x] 清理 venv 內超過 GitHub 100 MB 限制的 Playwright 二進位檔與 Git 歷史，重新推送 origin/main
+
 - [x] 初始化 Tauri 桌面專案配置 (`src-tauri/`) 與 Python 本機服務 Sidecar 啟動封裝
 - [x] 設定 Tauri Auto-updater 自動更新端點指向 https://github.com/0808jessie/fanfic_aggregator
 - [x] 建立 `.github/workflows/release.yml` 實現 macOS 與 Windows 自動編譯、簽署與 Release 發布
 - [x] 編寫 `TESTING_GUIDE.md` 內測人員使用指引（含 macOS 允許開發者與自動更新說明）
 - [x] 驗證本地建構並儲存檢查點
-- [x] 建立 FastAPI PyInstaller 進入點 `fastapi_app/entrypoint.py` 與打包腳本 `scripts/build_sidecar.sh`
-- [x] 配置 `src-tauri/tauri.conf.json` 的 `externalBin` 與 sidecar 執行權限
-- [x] 在 Tauri Rust (`lib.rs` / `main.rs`) 中實作背景 sidecar 自動啟動、健康檢查與退出關閉清理
-- [x] 更新 GitHub Actions `release.yml` 加入 Python 依賴安裝、PyInstaller 打包與 target-tripled 重新命名
-- [x] 驗證 Rust 編譯、檢查 Git 歷史排除二進位檔，並成功推送至 GitHub main
+
+- [x] 檢查 Tauri tauri.conf.json 是否正確配置 externalBin
+- [x] 檢查 src-tauri 原始碼中是否有實作 sidecar 啟動與退出清理
+- [x] 在 GitHub Actions release.yml 中補上 PyInstaller 跨平台打包並產出對應 target 檔名
+- [x] 執行本地編譯與驗證，建立提交與 v1.0.5 標籤並推送至 GitHub
