@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import axios from "axios";
 import { appRouter } from "./routers";
-import { FASTAPI_SOCKET_PATH } from "./fastapiService";
 
 vi.mock("axios", () => ({
   default: {
@@ -36,13 +35,13 @@ describe("fastapi.proxy", () => {
     expect(axios.request).toHaveBeenCalledWith(
       expect.objectContaining({
         method: "POST",
-        url: "http://localhost/search",
-        socketPath: FASTAPI_SOCKET_PATH,
+        url: "http://127.0.0.1:8000/search",
         data: { keyword: "星光", platforms: ["ao3"] },
         timeout: 20_000,
         headers: { "Content-Type": "application/json" },
       }),
     );
+    expect(vi.mocked(axios.request).mock.calls[0]?.[0]).not.toHaveProperty("socketPath");
   });
 
   it("preserves the explicit empty-result envelope from FastAPI", async () => {

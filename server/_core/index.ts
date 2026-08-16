@@ -8,7 +8,7 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { startManagedFastapi } from "../fastapiService";
+import { FASTAPI_BASE_URL, startManagedFastapi } from "../fastapiService";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -47,6 +47,24 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
+  // Health is exposed through the same Node origin as the preview so browser
+  // checks receive FastAPI JSON instead of Vite's SPA fallback document.
+  app.get("/api/health", async (_request, response) => {
+    try {
+      const upstream = await fetch(`${FASTAPI_BASE_URL}/api/health`, {
+        signal: AbortSignal.timeout(1_500),
+      });
+      const payload = await upstream.json();
+      response.status(upstream.status).json(payload);
+    } catch (error) {
+      console.error("[FastAPI Preview Health] Loopback health proxy failed:", error);
+      response.status(503).json({
+        status: "unavailable",
+        service: "fastapi-search",
+        detail: "FastAPI loopback service is not reachable.",
+      });
+    }
+  });
   // tRPC API
   app.use(
     "/api/trpc",

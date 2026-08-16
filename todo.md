@@ -350,3 +350,11 @@
 - [x] 對 AO3 403／429 增加一次低頻退避重試與安全降級結果
 - [x] 低頻連續驗證不同 AO3 關鍵字，並執行 FastAPI 回歸測試
 - [x] 提交並推送 AO3 強化版本以觸發 GitHub Actions 發布（v1.1.3，commit 79623b9）
+
+- [x] 在沙盒背景啟動 FastAPI 並驗證 /api/health，供網頁預覽測試（HTTP 200）
+
+- [ ] 將預覽端 tRPC／Node 代理從 Unix socket 改為優先轉發至 http://127.0.0.1:8000，並保留可測試的錯誤回應
+- [ ] 驗證 http://127.0.0.1:3000/api/health 與預覽搜尋請求均回傳 FastAPI JSON
+- [ ] 稽核 AO3 AsyncSession、Chrome 120 指紋與 URL 編碼，補齊不規避防護的受控重試回歸測試
+- [ ] 稽核 Tauri updater endpoint、簽名資產與前端啟動檢查，修復可重現設定缺口
+- [ ] 執行完整測試、建立新版本標籤並推送 GitHub 觸發跨平台 Release

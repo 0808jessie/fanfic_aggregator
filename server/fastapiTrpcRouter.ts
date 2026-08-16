@@ -1,11 +1,9 @@
-import axios from "axios";
 import { performance } from "node:perf_hooks";
+import axios from "axios";
 import { z } from "zod";
 import { publicProcedure, router } from "./_core/trpc";
-import { FASTAPI_SOCKET_PATH } from "./fastapiService";
+import { FASTAPI_BASE_URL } from "./fastapiService";
 
-const FASTAPI_BASE_URL = process.env.FASTAPI_BASE_URL || "http://localhost";
-const USE_INTERNAL_FASTAPI_SOCKET = !process.env.FASTAPI_BASE_URL;
 // Source aggregation allows each external platform up to a 5s connect + 10s
 // read budget. Keep the proxy above that bounded window so it can return
 // partial results rather than replacing them with a global error envelope.
@@ -73,7 +71,6 @@ export const fastapiTrpcRouter = router({
           // replace source-level states with a global proxy error.
           timeout: FASTAPI_PROXY_TIMEOUT_MS,
           headers: { "Content-Type": "application/json" },
-          ...(USE_INTERNAL_FASTAPI_SOCKET ? { socketPath: FASTAPI_SOCKET_PATH } : {}),
           validateStatus: () => true,
         });
 

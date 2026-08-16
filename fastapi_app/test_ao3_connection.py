@@ -23,6 +23,24 @@ def test_ao3_reuses_one_persistent_http_session():
     assert first_session is second_session
 
 
+def test_ao3_session_uses_matching_chrome_120_fingerprint_and_headers():
+    class FakeSession:
+        def __init__(self):
+            self.headers = {}
+            self.cookies = {}
+
+    fake_session = FakeSession()
+    with patch("scrapers.ao3_scraper.curl_requests.Session", return_value=fake_session) as build_session:
+        scraper = AO3Scraper()
+        session = scraper._get_http_session()
+
+    assert session is fake_session
+    build_session.assert_called_once_with(impersonate="chrome120")
+    assert fake_session.headers["User-Agent"].find("Chrome/120") != -1
+    assert fake_session.headers["Sec-Ch-Ua"].find('v="120"') != -1
+    assert fake_session.cookies["view_adult"] == "true"
+
+
 def test_ao3_retries_403_once_with_low_frequency_backoff():
     class ForbiddenResponse:
         status_code = 403
