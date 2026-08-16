@@ -1,0 +1,52 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "productName": "Fanfic Atlas",
+  "version": "1.0.0",
+  "identifier": "com.fanfic.atlas.app",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build",
+    "devUrl": "http://localhost:3000",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Fanfic Atlas - 跨平台同人小說聚合搜尋引擎",
+        "width": 1280,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' http: https: 'unsafe-inline' 'unsafe-eval' data: blob:"
+    },
+    "trayIcon": {
+      "iconPath": "icons/icon.png"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "externalBin": [
+      "binaries/fastapi-sidecar"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/0808jessie/fanfic_aggregator/releases/latest/download/latest.json"
+      ],
+      "pubkey": ""
+    }
+  }
+}

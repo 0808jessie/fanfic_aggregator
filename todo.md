@@ -305,3 +305,9 @@
 - [x] 對齊 Pixiv scraper 輸出、API 正規化、前端白名單與作品卡片欄位合約
 - [x] 執行 AO3、Penana 真實 HTTP 診斷並保留狀態碼與回應開頭
 - [x] 實測首頁搜尋鬼滅，驗證 Pixiv 卡片顯示標題與作者
+
+- [ ] 初始化 Tauri 桌面專案配置 (`src-tauri/`) 與 Python 本機服務 Sidecar 啟動封裝
+- [ ] 設定 Tauri Auto-updater 自動更新端點指向 https://github.com/0808jessie/fanfic_aggregator
+- [ ] 建立 `.github/workflows/release.yml` 實現 macOS 與 Windows 自動編譯、簽署與 Release 發布
+- [ ] 編寫 `TESTING_GUIDE.md` 內測人員使用指引（含 macOS 允許開發者與自動更新說明）
+- [ ] 驗證本地建構並儲存檢查點
