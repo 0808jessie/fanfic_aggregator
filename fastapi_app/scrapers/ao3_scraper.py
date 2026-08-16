@@ -47,9 +47,18 @@ class AO3Scraper(BaseScraper):
         "path": "/",
     }
     static_headers = {
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9,zh-TW;q=0.8,zh;q=0.7",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Referer": "https://archiveofourown.org/",
+        "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
         "Cookie": "view_adult=true; accepted_tos=2018",
     }
     static_cookies = {"view_adult": "true", "accepted_tos": "2018"}
@@ -119,7 +128,7 @@ class AO3Scraper(BaseScraper):
                     url,
                     headers=self.static_headers,
                     cookies=self.static_cookies,
-                    impersonate="chrome124",
+                    impersonate="chrome120",
                     timeout=30.0,
                 )
                 remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 4.0

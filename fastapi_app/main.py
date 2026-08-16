@@ -200,6 +200,16 @@ def fastapi_status() -> dict[str, str]:
     return {"status": "ok", "service": "fastapi-search", "version": "0.1.8"}
 
 
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "service": "fastapi-search", "version": "1.1.1"}
+
+
+@app.get("/")
+def read_root() -> dict[str, str]:
+    return {"status": "ok", "service": "fastapi-search", "version": "1.1.1"}
+
+
 @app.get("/platforms")
 def list_platforms() -> list[dict[str, str]]:
     return [
