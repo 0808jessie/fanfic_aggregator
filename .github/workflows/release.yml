@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*.*.*'
 
+permissions:
+  contents: write
+
 jobs:
   release-builds:
     strategy:
@@ -49,7 +52,7 @@ jobs:
           pip install -r fastapi_app/requirements.txt
 
       - name: Install Frontend Dependencies
-        run: pnpm install
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0.5.2
