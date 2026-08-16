@@ -326,7 +326,12 @@
 - [x] 在 .github/workflows/release.yml 中為編譯後的 sidecar 執行檔加上 chmod +x 執行權限
 - [x] 執行本地 PyInstaller 打包、cargo check 與 v1.0.9 發布推送
 
-- [ ] 在 FastAPI 中加入通用 CORS (allow_origins=["*"]) 與 /health 檢查端點
-- [ ] 在前端 client/src/lib/desktopApi.ts 中加入 500ms 重試與最多 10 次的健檢輪詢，對齊 127.0.0.1:8000
-- [ ] 校正 scripts/build_sidecar.sh 與 release.yml 中的目標三元組產物複製與 chmod +x
-- [ ] 執行測試、建置、建立 v1.0.10 提交與標籤並強制推送 GitHub 觸發 Actions
+- [x] 在 FastAPI 中加入通用 CORS (allow_origins=["*"]) 與 /health 檢查端點
+- [x] 在前端 client/src/lib/desktopApi.ts 中加入 500ms 重試與最多 10 次的健檢輪詢，對齊 127.0.0.1:8000
+- [x] 校正 scripts/build_sidecar.sh 與 release.yml 中的目標三元組產物複製與 chmod +x
+- [x] 執行測試、建置、建立 v1.0.10 提交與標籤並強制推送 GitHub 觸發 Actions
+
+- [x] 整合 Tauri v2 updater plugin 與前端自動更新檢查提示
+- [x] 在 GitHub Actions release.yml 中加入 updater 端點、簽名設定與 Release Assets 產生
+- [x] 優化 fastapi_app/scrapers/ao3_scraper.py 的 headers 避免 403 阻擋
+- [x] 執行 cargo check、前端建置、建立 v1.1.0 提交與標籤並推送 GitHub 觸發自動發布
