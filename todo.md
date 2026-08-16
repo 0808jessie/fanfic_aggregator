@@ -59,6 +59,11 @@
 - [x] 建立 `fastapi_app/scripts/fix_ao3_search.py` 診斷腳本測試中文 CP 標籤
 - [x] 驗證中文關鍵字搜尋並儲存 checkpoint
 
+- [x] 取得 GitHub Actions 的 Tauri E0423 錯誤上下文並定位 generate_context 巨集呼叫問題
+- [x] 補上 Tauri build.rs、tauri-build 依賴與標準 lib.rs 進入點
+- [x] 產生完整 Tauri icons 圖示集並將 frontendDist 對齊至 dist/public
+- [x] 於本機執行 cargo check 與 pnpm run build 驗證成功
+
 - [x] 檢查並修正 `fastapi_app/main.py` 的匯入路徑，確保 FastAPI 服務正常啟動
 - [x] 執行 FastAPI `/search` 中文關鍵字 API smokeTest，驗證 API 回傳合約
 
