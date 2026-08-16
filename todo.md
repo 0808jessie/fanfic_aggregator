@@ -321,7 +321,7 @@
 - [x] 加入 Sidecar 健康檢查與前端等待／重試狀態，避免後端就緒前發出搜尋請求
 - [x] 補上 URL 與健康檢查回歸測試，執行前端 build 並發布 v1.0.8
 
-- [ ] 在 scripts/build_sidecar.sh 與 release.yml 中補齊 uvicorn、fastapi、pydantic、bs4、httpx、fake_useragent 的 hidden-imports 與 collect-all
-- [ ] 在 src-tauri/src/lib.rs 的 sidecar spawn 中加入 stdout 與 stderr 的 CommandEvent 監聽與日誌輸出
-- [ ] 在 .github/workflows/release.yml 中為編譯後的 sidecar 執行檔加上 chmod +x 執行權限
-- [ ] 執行本地 PyInstaller 打包、cargo check 與 v1.0.9 發布推送
+- [x] 在 scripts/build_sidecar.sh 與 release.yml 中補齊 uvicorn、fastapi、pydantic、bs4、httpx、fake_useragent 的 hidden-imports 與 collect-all
+- [x] 在 src-tauri/src/lib.rs 的 sidecar spawn 中加入 stdout 與 stderr 的 CommandEvent 監聽與日誌輸出
+- [x] 在 .github/workflows/release.yml 中為編譯後的 sidecar 執行檔加上 chmod +x 執行權限
+- [x] 執行本地 PyInstaller 打包、cargo check 與 v1.0.9 發布推送
