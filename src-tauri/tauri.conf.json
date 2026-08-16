@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/schema.json",
   "productName": "Fanfic Atlas",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "identifier": "com.fanfic.atlas.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -36,9 +36,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": [
-      "binaries/fastapi-sidecar"
-    ]
+    "externalBin": []
   },
   "plugins": {
     "updater": {
