@@ -325,3 +325,8 @@
 - [x] 在 src-tauri/src/lib.rs 的 sidecar spawn 中加入 stdout 與 stderr 的 CommandEvent 監聽與日誌輸出
 - [x] 在 .github/workflows/release.yml 中為編譯後的 sidecar 執行檔加上 chmod +x 執行權限
 - [x] 執行本地 PyInstaller 打包、cargo check 與 v1.0.9 發布推送
+
+- [ ] 在 FastAPI 中加入通用 CORS (allow_origins=["*"]) 與 /health 檢查端點
+- [ ] 在前端 client/src/lib/desktopApi.ts 中加入 500ms 重試與最多 10 次的健檢輪詢，對齊 127.0.0.1:8000
+- [ ] 校正 scripts/build_sidecar.sh 與 release.yml 中的目標三元組產物複製與 chmod +x
+- [ ] 執行測試、建置、建立 v1.0.10 提交與標籤並強制推送 GitHub 觸發 Actions
