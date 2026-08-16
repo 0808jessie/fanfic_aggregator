@@ -349,4 +349,4 @@
 - [x] 為 AO3 scraper 導入可重用的持久 Session 與標準 URL 編碼
 - [x] 對 AO3 403／429 增加一次低頻退避重試與安全降級結果
 - [x] 低頻連續驗證不同 AO3 關鍵字，並執行 FastAPI 回歸測試
-- [ ] 提交並推送 AO3 強化版本以觸發 GitHub Actions 發布
+- [x] 提交並推送 AO3 強化版本以觸發 GitHub Actions 發布（v1.1.3，commit 79623b9）
