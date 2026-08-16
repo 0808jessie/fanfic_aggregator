@@ -1,1 +1,1 @@
-{}
+{"main-capability":{"identifier":"main-capability","description":"Permissions for the main Fanfic Atlas window.","local":true,"windows":["main"],"permissions":["core:default","shell:allow-spawn","shell:allow-kill"]}}

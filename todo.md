@@ -306,7 +306,12 @@
 - [x] 編寫 `TESTING_GUIDE.md` 內測人員使用指引（含 macOS 允許開發者與自動更新說明）
 - [x] 驗證本地建構並儲存檢查點
 
-- [ ] 檢查 Tauri tauri.conf.json 是否正確配置 externalBin
-- [ ] 檢查 src-tauri 原始碼中是否有實作 sidecar 啟動與退出清理
-- [ ] 在 GitHub Actions release.yml 中補上 PyInstaller 跨平台打包並產出對應 target 檔名
-- [ ] 執行本地編譯與驗證，建立提交與 v1.0.5 標籤並推送至 GitHub
+- [x] 檢查 Tauri tauri.conf.json 是否正確配置 externalBin
+- [x] 檢查 src-tauri 原始碼中是否有實作 sidecar 啟動與退出清理
+- [x] 在 GitHub Actions release.yml 中補上 PyInstaller 跨平台打包並產出對應 target 檔名
+- [x] 執行本地編譯與驗證，建立提交與 v1.0.5 標籤並推送至 GitHub
+
+- [x] 檢查實際 Tauri main/lib 啟動入口並在 setup 中可靠啟動 api-server sidecar
+- [x] 補強 sidecar 啟動失敗與提早退出的可觀測錯誤日誌
+- [x] 驗證 externalBin、跨平台 binary 命名與 CI 產物流程一致
+- [x] 執行 cargo check、提交修正、建立 v1.0.7 並推送 GitHub

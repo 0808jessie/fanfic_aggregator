@@ -3,7 +3,7 @@ name: Release Desktop App
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
 
 permissions:
   contents: write
@@ -14,10 +14,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
+          - platform: macos-14
             target_triple: aarch64-apple-darwin
             binary_name: api-server-aarch64-apple-darwin
-          - platform: macos-latest
+          - platform: macos-13
             target_triple: x86_64-apple-darwin
             binary_name: api-server-x86_64-apple-darwin
           - platform: windows-latest
@@ -40,16 +40,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
+          cache: "pnpm"
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target_triple }}
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          python-version: "3.11"
+          cache: "pip"
 
       - name: Install Python & PyInstaller Dependencies
         run: |
@@ -57,13 +59,15 @@ jobs:
           pip install pyinstaller -r fastapi_app/requirements.txt
 
       - name: Build Python Sidecar with PyInstaller
+        shell: bash
         run: |
-          pyinstaller --noconfirm --onefile --name "api-server" --paths "fastapi_app" fastapi_app/entrypoint.py
+          pyinstaller --noconfirm --clean --onefile --name "api-server" --paths "fastapi_app" --collect-all curl_cffi fastapi_app/entrypoint.py
           mkdir -p src-tauri/binaries
           if [ "${{ runner.os }}" == "Windows" ]; then
             cp dist/api-server.exe src-tauri/binaries/${{ matrix.binary_name }}
           else
             cp dist/api-server src-tauri/binaries/${{ matrix.binary_name }}
+            chmod +x src-tauri/binaries/${{ matrix.binary_name }}
           fi
           ls -la src-tauri/binaries/
 
@@ -76,7 +80,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'Fanfic Atlas v__VERSION__'
-          releaseBody: '自動編譯發布的內測版本 (含 Python FastAPI Sidecar 自動生命週期管理)。請參考 TESTING_GUIDE.md 安裝與使用。'
+          releaseName: "Fanfic Atlas v__VERSION__"
+          releaseBody: "自動編譯發布的內測版本 (含 Python FastAPI Sidecar 自動生命週期管理)。請參考 TESTING_GUIDE.md 安裝與使用。"
           releaseDraft: false
           prerelease: false
+          args: --target ${{ matrix.target_triple }}
