@@ -1,9 +1,28 @@
+use std::{
+  net::{SocketAddr, TcpStream},
+  sync::Mutex,
+  thread,
+  time::Duration,
+};
 use tauri::{Manager, RunEvent};
 use tauri_plugin_shell::ShellExt;
-use tauri_plugin_shell::process::CommandChild;
-use std::sync::Mutex;
+use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 
 struct ServerProcess(Mutex<Option<CommandChild>>);
+
+fn log_sidecar_readiness() {
+  thread::spawn(|| {
+    let address = SocketAddr::from(([127, 0, 0, 1], 8000));
+    for attempt in 1..=30 {
+      if TcpStream::connect_timeout(&address, Duration::from_millis(250)).is_ok() {
+        println!("FastAPI sidecar is listening on http://127.0.0.1:8000 (attempt {attempt}).");
+        return;
+      }
+      thread::sleep(Duration::from_millis(250));
+    }
+    eprintln!("FastAPI sidecar did not open port 8000 within 7.5 seconds. Review [FastAPI Err] logs for the startup failure.");
+  });
+}
 
 pub fn run() {
   tauri::Builder::default()
@@ -11,7 +30,7 @@ pub fn run() {
     .manage(ServerProcess(Mutex::new(None)))
     .setup(|app| {
       let handle = app.handle();
-      println!("Fanfic Atlas lib setup initialized. Spawning Python sidecar...");
+      println!("Fanfic Atlas setup initialized. Resolving and spawning bundled api-server sidecar...");
 
       match handle.shell().sidecar("api-server") {
         Ok(command) => {
@@ -22,12 +41,19 @@ pub fn run() {
                 let mut lock = state.0.lock().unwrap();
                 *lock = Some(child);
               }
+              log_sidecar_readiness();
               tauri::async_runtime::spawn(async move {
                 while let Some(event) = rx.recv().await {
-                  if let tauri_plugin_shell::process::CommandEvent::Stdout(line) = event {
-                    println!("[FastAPI] {}", String::from_utf8_lossy(&line));
-                  } else if let tauri_plugin_shell::process::CommandEvent::Stderr(line) = event {
-                    eprintln!("[FastAPI Err] {}", String::from_utf8_lossy(&line));
+                  match event {
+                    CommandEvent::Stdout(line) => println!("[FastAPI] {}", String::from_utf8_lossy(&line)),
+                    CommandEvent::Stderr(line) => eprintln!("[FastAPI Err] {}", String::from_utf8_lossy(&line)),
+                    CommandEvent::Error(error) => eprintln!("[FastAPI Sidecar Error] {error}"),
+                    CommandEvent::Terminated(status) => eprintln!(
+                      "[FastAPI Sidecar Exit] code={:?}, signal={:?}. The backend will be unavailable until the desktop app is restarted.",
+                      status.code,
+                      status.signal
+                    ),
+                    _ => {}
                   }
                 }
               });

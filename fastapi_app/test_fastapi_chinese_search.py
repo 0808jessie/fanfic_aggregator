@@ -29,6 +29,19 @@ def test_fastapi_status():
     assert response.json()["status"] == "ok"
 
 
+def test_tauri_webview_can_preflight_loopback_api():
+    response = client.options(
+        "/search",
+        headers={
+            "Origin": "tauri://localhost",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "tauri://localhost"
+
+
 def test_fastapi_search_chinese_keywords_contract():
     """Keep the route contract deterministic; live AO3 availability is verified separately."""
     for index, kw in enumerate(["義忍", "义忍", "五夏", "胡蝶忍"], start=1):

@@ -121,3 +121,5 @@ venv/
 
 # Rust and Tauri build artifacts
 src-tauri/target/
+src-tauri/binaries/api-server-*
+/api-server.spec

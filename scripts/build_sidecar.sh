@@ -2,10 +2,14 @@
 set -e
 
 echo "=== Building FastAPI Sidecar with PyInstaller ==="
-pip install pyinstaller uvicorn fastapi curl_cffi beautifulsoup4 sqlalchemy pydantic
+python3 -c "import PyInstaller, curl_cffi, fastapi, uvicorn" || {
+  echo "Missing packaging dependencies. Run: sudo pip3 install pyinstaller -r fastapi_app/requirements.txt" >&2
+  exit 1
+}
 
-pyinstaller --noconfirm --onefile --name "api-server" \
+python3 -m PyInstaller --noconfirm --clean --onefile --name "api-server" \
   --paths "fastapi_app" \
+  --collect-all curl_cffi \
   fastapi_app/entrypoint.py
 
 mkdir -p src-tauri/binaries
@@ -20,9 +24,11 @@ if [ "$OS" = "Darwin" ]; then
         TRIPLE="x86_64-apple-darwin"
     fi
     cp dist/api-server src-tauri/binaries/api-server-$TRIPLE
+    chmod +x src-tauri/binaries/api-server-$TRIPLE
 elif [ "$OS" = "Linux" ]; then
     TRIPLE="x86_64-unknown-linux-gnu"
     cp dist/api-server src-tauri/binaries/api-server-$TRIPLE
+    chmod +x src-tauri/binaries/api-server-$TRIPLE
 else
     # Windows git bash
     cp dist/api-server.exe src-tauri/binaries/api-server-x86_64-pc-windows-msvc.exe

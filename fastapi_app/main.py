@@ -5,6 +5,7 @@ from time import perf_counter
 from typing import Any, Callable
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -15,7 +16,21 @@ from constants.cp_tags import CP_CACHE_ALIASES, CP_TAG_MAP, build_custom_cp_map
 from relevance import rank_results
 from scrapers.index import SCRAPERS, parallel_search_platforms
 
-app = FastAPI(title="Fanfic Atlas Search API", version="0.1.4")
+app = FastAPI(title="Fanfic Atlas Search API", version="0.1.8")
+app.add_middleware(
+    CORSMiddleware,
+    # The packaged desktop WebView is served from tauri://localhost, while the
+    # bundled Python process intentionally listens only on loopback port 8000.
+    allow_origins=[
+        "tauri://localhost",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+        "http://localhost:3000",
+    ],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type"],
+)
 CACHE_TTL = timedelta(seconds=settings.cache_ttl_seconds)
 
 # 每個快取 entry 的最後一欄是本次結果的可信度 TTL（秒）。舊的五欄 entry
@@ -182,7 +197,7 @@ def get_cached_results(db: Session, keyword: str, platforms: list[str], ignore_t
 
 @app.get("/fastapi-status")
 def fastapi_status() -> dict[str, str]:
-    return {"status": "ok", "service": "fastapi-search", "version": "0.1.4"}
+    return {"status": "ok", "service": "fastapi-search", "version": "0.1.8"}
 
 
 @app.get("/platforms")

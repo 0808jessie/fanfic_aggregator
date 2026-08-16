@@ -310,3 +310,18 @@
 - [x] 檢查 src-tauri 原始碼中是否有實作 sidecar 啟動與退出清理
 - [x] 在 GitHub Actions release.yml 中補上 PyInstaller 跨平台打包並產出對應 target 檔名
 - [x] 執行本地編譯與驗證，建立提交與 v1.0.5 標籤並推送至 GitHub
+
+- [x] 檢查實際 Tauri main/lib 啟動入口並在 setup 中可靠啟動 api-server sidecar
+- [x] 補強 sidecar 啟動失敗與提早退出的可觀測錯誤日誌
+- [x] 驗證 externalBin、跨平台 binary 命名與 CI 產物流程一致
+- [x] 執行 cargo check、提交修正、建立 v1.0.7 並推送 GitHub
+
+- [x] 盤點桌面版前端搜尋 API 的 URL 組裝與 production API base fallback
+- [x] 使用 URL 與 URLSearchParams 修正關鍵字、分頁及搜尋參數的安全編碼
+- [x] 加入 Sidecar 健康檢查與前端等待／重試狀態，避免後端就緒前發出搜尋請求
+- [x] 補上 URL 與健康檢查回歸測試，執行前端 build 並發布 v1.0.8
+
+- [ ] 在 scripts/build_sidecar.sh 與 release.yml 中補齊 uvicorn、fastapi、pydantic、bs4、httpx、fake_useragent 的 hidden-imports 與 collect-all
+- [ ] 在 src-tauri/src/lib.rs 的 sidecar spawn 中加入 stdout 與 stderr 的 CommandEvent 監聽與日誌輸出
+- [ ] 在 .github/workflows/release.yml 中為編譯後的 sidecar 執行檔加上 chmod +x 執行權限
+- [ ] 執行本地 PyInstaller 打包、cargo check 與 v1.0.9 發布推送
