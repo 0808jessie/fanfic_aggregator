@@ -1,3 +1,4 @@
+from __future__ import annotations
 from datetime import datetime
 import json
 import re
@@ -62,9 +63,9 @@ class AO3Scraper(BaseScraper):
         super().__init__()
         self._memory_cache: dict[str, tuple[datetime, dict[str, Any]]] = {}
         self.cache_ttl = 1800  # 30 minutes
-        self.last_total_heading: tuple[str, int] | None = None
-        self._static_terminal_warning: str | None = None
-        self._static_deadline: float | None = None
+        self.last_total_heading: Optional[tuple[str, int]] = None
+        self._static_terminal_warning: Optional[str] = None
+        self._static_deadline: Optional[float] = None
 
     @staticmethod
     def build_search_url(keyword: str, page: int = 1, mode: str = "keyword", language: Optional[str] = None) -> str:
@@ -82,13 +83,13 @@ class AO3Scraper(BaseScraper):
         return f"https://archiveofourown.org/works/search?{urllib.parse.urlencode(parameters)}"
 
     @staticmethod
-    def extract_total_works_from_heading(soup) -> int | None:
+    def extract_total_works_from_heading(soup) -> Optional[int]:
         """Extract AO3's displayed total from an explicit result heading only."""
         heading_match = AO3Scraper.extract_total_works_heading(soup)
         return heading_match[1] if heading_match else None
 
     @staticmethod
-    def extract_total_works_heading(soup) -> tuple[str, int] | None:
+    def extract_total_works_heading(soup) -> Optional[tuple[str, int]]:
         """Return the raw AO3 result heading with its parsed total for diagnostics."""
         headings = soup.select("h2.heading, .heading, #main h2, #main h3")
         patterns = (
@@ -105,7 +106,7 @@ class AO3Scraper(BaseScraper):
                     return heading_text, int(match.group(1).replace(",", ""))
         return None
 
-    def _fetch_static_search_html(self, keyword: str, page: int, mode: str = "keyword") -> str | None:
+    def _fetch_static_search_html(self, keyword: str, page: int, mode: str = "keyword") -> Optional[str]:
         """Fetch AO3 HTML once with a bounded ten-second public HTTP budget."""
         url = self.build_search_url(keyword, page, mode)
         for attempt in range(2):
@@ -180,7 +181,7 @@ class AO3Scraper(BaseScraper):
             ))
         return items
 
-    def _scrape_static_pages(self, keyword: str, target_pages: list[int], requested_page: int, mode: str = "keyword", language: Optional[str] = None) -> dict[str, Any] | None:
+    def _scrape_static_pages(self, keyword: str, target_pages: list[int], requested_page: int, mode: str = "keyword", language: Optional[str] = None) -> dict[str, Any]:
         """Parse cards and official totals from the same server-rendered documents."""
         items: list[ScrapedFanfic] = []
         total_works = 0
@@ -207,7 +208,7 @@ class AO3Scraper(BaseScraper):
         keyword: str,
         page: int = 1,
         force_refresh: bool = False,
-        custom_cp_map: dict[str, CPTagConfig] | None = None,
+        custom_cp_map: Optional[dict[str, CPTagConfig]] = None,
         mode: str = "keyword",
         language: Optional[str] = None,
     ) -> dict[str, Any]:

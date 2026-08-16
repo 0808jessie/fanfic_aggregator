@@ -1,3 +1,4 @@
+from __future__ import annotations
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
@@ -63,7 +64,7 @@ PLATFORM_TIMEOUT_SECONDS: dict[str, float] = {
     "waterwriter": 15.0,
 }
 SOURCE_CACHE_TTL_SECONDS = 600.0
-_SOURCE_CACHE: dict[tuple[str, str, int], tuple[float, list[ScrapedFanfic], int, int, str | None]] = {}
+_SOURCE_CACHE: dict[tuple[str, str, int], tuple[float, list[ScrapedFanfic], int, int, Optional[str]]] = {}
 _SOURCE_CACHE_LOCK = Lock()
 # A fixed worker pool lets each sync-Playwright worker keep its thread-local
 # browser alive between searches. The public response remains bounded by the
@@ -71,7 +72,7 @@ _SOURCE_CACHE_LOCK = Lock()
 def translated_query_for_platform(
     platform_key: str,
     keyword: str,
-    custom_cp_map: dict[str, Any] | None = None,
+    custom_cp_map: Optional[dict[str, Any]] = None,
     mode: str = "keyword",
 ) -> str:
     """Expose a request's active CP translation without altering free-text input."""
@@ -89,7 +90,7 @@ def translated_query_for_platform(
     return keyword.strip()
 
 
-def classify_platform_status(item_count: int, warning: str | None) -> str:
+def classify_platform_status(item_count: int, warning: Optional[str]) -> str:
     """Classify observed source outcomes without fabricating availability data."""
     if item_count:
         return "success"
@@ -116,8 +117,8 @@ def make_platform_status(
     platform_key: str,
     keyword: str,
     item_count: int,
-    warning: str | None,
-    custom_cp_map: dict[str, Any] | None = None,
+    warning: Optional[str],
+    custom_cp_map: Optional[dict[str, Any]] = None,
     mode: str = "keyword",
 ) -> PlatformStatus:
     return PlatformStatus(
@@ -134,7 +135,7 @@ def _source_cache_key(
     platform_key: str,
     keyword: str,
     page: int,
-    custom_cp_map: dict[str, Any] | None,
+    custom_cp_map: Optional[dict[str, Any]],
     mode: str,
     language: Optional[str] = None,
 ) -> tuple[str, str, int]:
@@ -152,7 +153,7 @@ def _matches_author_query(author: str, query: str) -> bool:
     return bool(normalized_author and terms and all(term in normalized_author for term in terms))
 
 
-def _read_source_cache(cache_key: tuple[str, str, int]) -> tuple[list[ScrapedFanfic], int, int, str | None] | None:
+def _read_source_cache(cache_key: tuple[str, str, int]) -> Optional[tuple[list[ScrapedFanfic], int, int, Optional[str]]]:
     with _SOURCE_CACHE_LOCK:
         entry = _SOURCE_CACHE.get(cache_key)
         if entry is None:
@@ -169,7 +170,7 @@ def _write_source_cache(
     items: list[ScrapedFanfic],
     total_works: int,
     total_pages: int,
-    warning: str | None,
+    warning: Optional[str],
 ) -> None:
     # Cache verified items only; transient empty/error pages stay retryable.
     if not items:
@@ -183,7 +184,7 @@ def search_single_platform(
     keyword: str,
     page: int = 1,
     force_refresh: bool = False,
-    custom_cp_map: dict[str, Any] | None = None,
+    custom_cp_map: Optional[dict[str, Any]] = None,
     mode: str = "keyword",
     language: Optional[str] = None,
 ) -> tuple[str, list[ScrapedFanfic], int, int, PlatformStatus]:
@@ -282,7 +283,7 @@ async def parallel_search_platforms_async(
     keyword: str,
     page: int = 1,
     force_refresh: bool = False,
-    custom_cp_map: dict[str, Any] | None = None,
+    custom_cp_map: Optional[dict[str, Any]] = None,
     timeout_seconds: float = ADAPTER_TIMEOUT_SECONDS,
     mode: str = "keyword",
     language: Optional[str] = None,
@@ -371,7 +372,7 @@ def parallel_search_platforms(
     keyword: str,
     page: int = 1,
     force_refresh: bool = False,
-    custom_cp_map: dict[str, Any] | None = None,
+    custom_cp_map: Optional[dict[str, Any]] = None,
     timeout_seconds: float = ADAPTER_TIMEOUT_SECONDS,
     mode: str = "keyword",
 ) -> dict[str, Any]:

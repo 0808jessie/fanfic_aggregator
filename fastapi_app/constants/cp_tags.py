@@ -1,3 +1,4 @@
+from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Literal
 
@@ -97,7 +98,7 @@ def build_custom_cp_map(mappings: Iterable[object] | None) -> dict[str, CPTagCon
 def get_keyword_for_platform(
     keyword: str,
     platform_type: Literal["ao3", "local", "cxc"],
-    custom_map: dict[str, CPTagConfig] | None = None,
+    custom_map: Optional[dict[str, CPTagConfig]] = None,
 ) -> str:
     """Translate a known CP alias or preserve a free-text search unchanged."""
     normalized_keyword = keyword.strip()

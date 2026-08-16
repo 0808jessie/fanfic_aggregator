@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Regression contract for preserving AO3's official result-heading total."""
 
 from pathlib import Path

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Inspect Penana response markers and parser yield in the cloud environment."""
 
 import sys

@@ -1,3 +1,4 @@
+from __future__ import annotations
 from scrapers.penana_scraper import PenanaScraper
 
 

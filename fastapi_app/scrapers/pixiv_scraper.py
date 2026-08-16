@@ -1,3 +1,4 @@
+from __future__ import annotations
 import re
 from datetime import datetime, timezone
 import re
@@ -74,7 +75,7 @@ class PixivScraper(BaseScraper):
             print(f"[Pixiv] {self.last_warning}")
             return {"items": [], "total_works": 0, "total_pages": 1}
 
-    def _fetch_ajax_search(self, keyword: str, page: int) -> dict[str, Any] | None:
+    def _fetch_ajax_search(self, keyword: str, page: int) -> Optional[dict[str, Any]]:
         """Retrieve Pixiv's first-party public novel-search JSON before HTML fallback.
 
         The HTML document can contain only sign-in prompts in cloud environments,
@@ -255,7 +256,7 @@ class PixivScraper(BaseScraper):
         return results
 
     @staticmethod
-    def extract_total_works(html: str) -> int | None:
+    def extract_total_works(html: str) -> Optional[int]:
         soup = BeautifulSoup(html, "html.parser")
         text = soup.get_text(" ", strip=True)
         match = re.search(r"([\d,]+)\s*(?:件|works|novels|小説)", text, re.IGNORECASE)

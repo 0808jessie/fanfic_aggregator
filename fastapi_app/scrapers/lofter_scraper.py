@@ -1,3 +1,4 @@
+from __future__ import annotations
 from datetime import datetime
 from urllib.parse import quote_plus
 import requests

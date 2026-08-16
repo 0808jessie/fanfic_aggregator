@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Remove persisted search rows for 義忍 aliases so the next request is live-only."""
 
 from pathlib import Path

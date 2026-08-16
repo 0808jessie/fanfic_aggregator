@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Print Cloud-runtime HTTP status, response length, and a safe 200-character preview.
 
 This script intentionally performs only public GET requests. It is separate from

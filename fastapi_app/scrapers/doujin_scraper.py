@@ -55,11 +55,11 @@ class DoujinScraper(BaseScraper):
         keyword: str,
         page: int = 1,
         force_refresh: bool = False,
-        custom_cp_map: dict[str, CPTagConfig] | None = None,
+        custom_cp_map: Optional[dict[str, CPTagConfig]] = None,
         mode: str = "keyword",
     ) -> dict[str, object]:
         self.last_warning = None
-        self._static_unavailable_warning: str | None = None
+        self._static_unavailable_warning: Optional[str] = None
         if not keyword.strip():
             return {"items": [], "total_works": 0, "total_pages": 1}
 
@@ -89,7 +89,7 @@ class DoujinScraper(BaseScraper):
             print(self.last_warning)
         return {"items": [], "total_works": 0, "total_pages": 1}
 
-    def _fetch_static_search_html(self, keyword: str, page_number: int = 1) -> str | None:
+    def _fetch_static_search_html(self, keyword: str, page_number: int = 1) -> Optional[str]:
         """Read only the native server-rendered listing with a generous read budget."""
         try:
             response = requests.get(
@@ -194,7 +194,7 @@ class DoujinScraper(BaseScraper):
         return results
 
     @staticmethod
-    def extract_total_works(html: str) -> int | None:
+    def extract_total_works(html: str) -> Optional[int]:
         """Prefer a verified search-header or paginator total over rendered cards."""
         soup = BeautifulSoup(html, "html.parser")
         result_nodes = soup.select(
@@ -221,7 +221,7 @@ class DoujinScraper(BaseScraper):
         return None
 
     @staticmethod
-    def extract_total_pages(html: str) -> int | None:
+    def extract_total_pages(html: str) -> Optional[int]:
         """Read the official page count from the result navigator when present."""
         soup = BeautifulSoup(html, "html.parser")
         pagination_text = " ".join(

@@ -55,7 +55,7 @@ class WaterWriterScraper(BaseScraper):
         keyword: str,
         page: int = 1,
         force_refresh: bool = False,
-        custom_cp_map: dict[str, CPTagConfig] | None = None,
+        custom_cp_map: Optional[dict[str, CPTagConfig]] = None,
         mode: str = "keyword",
     ) -> dict[str, object]:
         self.last_warning = None
@@ -91,7 +91,7 @@ class WaterWriterScraper(BaseScraper):
             print(self.last_warning)
         return {"items": [], "total_works": 0, "total_pages": 1}
 
-    def _fetch_static_search_html(self, keyword: str, mode: str = "keyword") -> str | None:
+    def _fetch_static_search_html(self, keyword: str, mode: str = "keyword") -> Optional[str]:
         """Use Discuz's server-rendered public search HTML with a generous GET."""
         try:
             response = requests.get(
@@ -181,7 +181,7 @@ class WaterWriterScraper(BaseScraper):
         return results
 
     @staticmethod
-    def extract_total_works(html: str) -> int | None:
+    def extract_total_works(html: str) -> Optional[int]:
         """Read Discuz's explicit all-site topic count without guessing from cards."""
         soup = BeautifulSoup(html, "html.parser")
         result_nodes = soup.select("#ct, .ct2, .search_result, .search-results, .pg, .pgb")

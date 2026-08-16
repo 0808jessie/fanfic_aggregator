@@ -43,7 +43,7 @@ class PenanaScraper(BaseScraper):
         if not trimmed_keyword:
             return {"items": [], "total_works": 0, "total_pages": 1}
         items: list[ScrapedFanfic] = []
-        official_total: int | None = None
+        official_total: Optional[int] = None
         try:
             lightweight_html = self._fetch_public_search_html(trimmed_keyword)
             if lightweight_html:
@@ -61,7 +61,7 @@ class PenanaScraper(BaseScraper):
             print(self.last_warning)
             return {"items": [], "total_works": 0, "total_pages": 1}
 
-    def _fetch_public_search_html(self, keyword: str) -> str | None:
+    def _fetch_public_search_html(self, keyword: str) -> Optional[str]:
         """Fetch the ordinary public Finder document with curl_cffi chrome124 impersonation and safety isolation."""
         try:
             response = curl_requests.get(
@@ -132,7 +132,7 @@ class PenanaScraper(BaseScraper):
         return results
 
     @staticmethod
-    def extract_total_works(html: str) -> int | None:
+    def extract_total_works(html: str) -> Optional[int]:
         """Read Penana Finder's declared result count from its search title bar.
 
         The Finder has used both Traditional Chinese and English title variants
@@ -184,7 +184,7 @@ class PenanaScraper(BaseScraper):
         return soup.select_one(".newXbox.p0.storydata a.newBookTitle[href^='/story/']") is None
 
     @staticmethod
-    def parse_detail_metadata(html: str) -> dict[str, str | bool | None]:
+    def parse_detail_metadata(html: str) -> dict[str, str | Optional[bool]]:
         """Read word count and status only from explicitly labelled detail-page nodes."""
         soup = BeautifulSoup(html, "html.parser")
         word_node = soup.select_one('span[title="Word Count"] .bkwords')
@@ -194,7 +194,7 @@ class PenanaScraper(BaseScraper):
             node.get_text(" ", strip=True)
             for node in soup.select(".storyStatus, .story_status, .status, [data-status], .storyProperty")
         ).casefold()
-        is_complete: bool | None = None
+        is_complete: Optional[bool] = None
         if re.search(r"\bcompleted\b|\bcomplete\b|已完結|完結", status_text):
             is_complete = True
         elif re.search(r"\bin progress\b|\bon break\b|\bplanning\b|連載|未完", status_text):
@@ -202,7 +202,7 @@ class PenanaScraper(BaseScraper):
         return {"wordCount": word_count, "isComplete": is_complete}
 
     @staticmethod
-    def _normalize_word_count(value: str) -> str | None:
+    def _normalize_word_count(value: str) -> Optional[str]:
         """Convert a labelled Penana count such as ``3.2K`` into a filterable count."""
         compact = value.strip().replace(",", "")
         match = re.fullmatch(r"(\d+(?:\.\d+)?)\s*([kKmM]?)", compact)

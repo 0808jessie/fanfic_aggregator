@@ -1,3 +1,4 @@
+from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -10,7 +11,7 @@ from models import ScrapedFanfic
 
 class BaseScraper(ABC, object):
     def __init__(self):
-        self.last_warning: str | None = None
+        self.last_warning: Optional[str] = None
 
     @abstractmethod
     def scrape(self, keyword: str, page: int = 1, force_refresh: bool = False) -> dict[str, Any]:

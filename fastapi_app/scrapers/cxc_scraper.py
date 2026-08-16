@@ -63,12 +63,12 @@ class CxCScraper(BaseScraper):
         keyword: str,
         page: int = 1,
         force_refresh: bool = False,
-        custom_cp_map: dict[str, CPTagConfig] | None = None,
+        custom_cp_map: Optional[dict[str, CPTagConfig]] = None,
         mode: str = "keyword",
     ) -> dict[str, object]:
         self.last_warning = None
-        self._api_transport_warning: str | None = None
-        self._public_page_warning: str | None = None
+        self._api_transport_warning: Optional[str] = None
+        self._public_page_warning: Optional[str] = None
         if not keyword.strip():
             return {"items": [], "total_works": 0, "total_pages": 1}
 
@@ -137,7 +137,7 @@ class CxCScraper(BaseScraper):
             "message": self.last_warning or "連線逾時或等待渲染逾時",
         }
 
-    def _fetch_public_api_results(self, keyword: str) -> dict[str, object] | None:
+    def _fetch_public_api_results(self, keyword: str) -> Optional[dict[str, object]]:
         """Read CxC's public work list API when its anonymous catalogue is available.
 
         The endpoint is used by CxC's public catalogue. A malformed response
@@ -267,7 +267,7 @@ class CxCScraper(BaseScraper):
         except (TypeError, ValueError):
             return 0
 
-    def _fetch_public_search_html(self, keyword: str) -> str | None:
+    def _fetch_public_search_html(self, keyword: str) -> Optional[str]:
         """Read CxC's public keyword page without a rendered browser fallback."""
         try:
             response = requests.get(self.build_search_url(keyword), headers=self.headers, timeout=(5, 12))
@@ -325,7 +325,7 @@ class CxCScraper(BaseScraper):
         return results
 
     @staticmethod
-    def extract_total_works(html: str) -> int | None:
+    def extract_total_works(html: str) -> Optional[int]:
         soup = BeautifulSoup(html, "html.parser")
         nodes = soup.select(".search-result-count, .search-results-count, .result-count, [data-total], [data-result-count], [class*='search'][class*='count']")
         for node in nodes:

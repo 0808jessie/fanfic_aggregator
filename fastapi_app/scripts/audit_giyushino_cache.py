@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Inspect persisted SQLite entries that could affect the 義忍 search flow."""
 
 from pathlib import Path

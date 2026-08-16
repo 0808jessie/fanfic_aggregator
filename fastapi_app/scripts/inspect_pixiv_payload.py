@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Inspect Pixiv public HTML against the scraper's parsed item contract."""
 
 import sys

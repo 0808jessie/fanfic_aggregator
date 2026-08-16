@@ -1,3 +1,4 @@
+from __future__ import annotations
 from datetime import datetime, timedelta
 import hashlib
 import json
@@ -49,7 +50,7 @@ def get_db():
         db.close()
 
 
-def canonical_platforms(platforms: list[str] | None) -> list[str]:
+def canonical_platforms(platforms: Optional[list[str]]) -> list[str]:
     requested = platforms or list(SCRAPERS)
     normalized = []
     for platform in requested:
@@ -117,7 +118,7 @@ def cache_ttl_for(keyword: str, result_count: int) -> timedelta:
     return NORMAL_CONFIDENCE_CACHE_TTL
 
 
-def is_real_platform_url(url: str, platform: str | None = None) -> bool:
+def is_real_platform_url(url: str, platform: Optional[str] = None) -> bool:
     """Reject placeholder, local, and unrelated URLs before they reach the UI or cache."""
     normalized_url = url.strip().lower()
     if not normalized_url.startswith(("https://", "http://")):
@@ -160,7 +161,7 @@ def save_fanfic_to_db(db: Session, fanfic: ScrapedFanfic) -> None:
         print(f"[Database] Error saving fanfic: {e}")
 
 
-def get_cached_results(db: Session, keyword: str, platforms: list[str], ignore_ttl: bool = False, source_label: str = "cache") -> list[ScrapedFanfic] | None:
+def get_cached_results(db: Session, keyword: str, platforms: Optional[list[str]] = None, ignore_ttl: bool = False, source_label: str = "cache") -> list[ScrapedFanfic]:
     """Fetch results from SQLite with source labeling."""
     cutoff = datetime.utcnow() - CACHE_TTL
     query = db.query(Fanfic).filter(Fanfic.keyword == keyword)

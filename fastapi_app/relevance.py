@@ -9,7 +9,7 @@ from constants.cp_tags import CP_TAG_MAP
 from models import ScrapedFanfic
 
 
-def _normalize(value: str | None) -> str:
+def _normalize(value: Optional[str]) -> str:
     return (value or "").strip().casefold()
 
 
@@ -48,7 +48,7 @@ def relevance_score(item: ScrapedFanfic, keyword: str) -> int:
     return score
 
 
-def parse_word_count(value: str | None) -> int:
+def parse_word_count(value: Optional[str]) -> int:
     digits = re.sub(r"[^0-9]", "", value or "")
     return int(digits) if digits else 0
 

@@ -330,3 +330,8 @@
 - [x] 在前端 client/src/lib/desktopApi.ts 中加入 500ms 重試與最多 10 次的健檢輪詢，對齊 127.0.0.1:8000
 - [x] 校正 scripts/build_sidecar.sh 與 release.yml 中的目標三元組產物複製與 chmod +x
 - [x] 執行測試、建置、建立 v1.0.10 提交與標籤並強制推送 GitHub 觸發 Actions
+
+- [x] 檢查 fastapi_app/ 內所有 .py 檔案是否缺少 from __future__ import annotations 與型別運算子相容性
+- [x] 修正 fastapi_app/constants/cp_tags.py 等檔案中的 | 型別註記為 Optional / Union
+- [x] 執行本地 Python 匯入與主應用模組載入回歸測試
+- [x] 提交並發布 v1.0.13 標籤，推送至 GitHub 觸發 Actions
