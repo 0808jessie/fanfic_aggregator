@@ -1,6 +1,7 @@
 from datetime import datetime
 import json
 import re
+import threading
 import time
 import urllib.parse
 from time import monotonic
@@ -49,11 +50,11 @@ class AO3Scraper(BaseScraper):
     static_headers = {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "Referer": "https://archiveofourown.org/",
-        "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        "Sec-Ch-Ua": '"Chromium";v="122", "Google Chrome";v="122", "Not-A.Brand";v="99"',
         "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Sec-Ch-Ua-Platform": '"macOS"',
         "Sec-Fetch-Dest": "document",
         "Sec-Fetch-Mode": "navigate",
         "Sec-Fetch-Site": "same-origin",
@@ -74,6 +75,17 @@ class AO3Scraper(BaseScraper):
         self.last_total_heading: tuple[str, int] | None = None
         self._static_terminal_warning: str | None = None
         self._static_deadline: float | None = None
+        self._http_session: Any | None = None
+        self._session_lock = threading.Lock()
+
+    def _get_http_session(self):
+        """Reuse one curl_cffi session so AO3 cookies and TLS connections persist."""
+        if self._http_session is None:
+            session = curl_requests.Session(impersonate="chrome120")
+            session.headers.update(self.static_headers)
+            session.cookies.update(self.static_cookies)
+            self._http_session = session
+        return self._http_session
 
     @staticmethod
     def build_search_url(keyword: str, page: int = 1, mode: str = "keyword", language: Optional[str] = None) -> str:
@@ -88,7 +100,12 @@ class AO3Scraper(BaseScraper):
             parameters.append(("work_search[language_id]", language))
         if page > 1:
             parameters.append(("page", str(page)))
-        return f"https://archiveofourown.org/works/search?{urllib.parse.urlencode(parameters)}"
+        encoded_parameters = urllib.parse.urlencode(
+            parameters,
+            quote_via=urllib.parse.quote,
+            safe="",
+        )
+        return f"https://archiveofourown.org/works/search?{encoded_parameters}"
 
     @staticmethod
     def extract_total_works_from_heading(soup) -> int | None:
@@ -124,18 +141,15 @@ class AO3Scraper(BaseScraper):
                 print("[AO3 Static] Shared HTTP budget exhausted; returning bounded source warning")
                 return None
             try:
-                response = curl_requests.get(
-                    url,
-                    headers=self.static_headers,
-                    cookies=self.static_cookies,
-                    impersonate="chrome120",
-                    timeout=30.0,
-                )
+                with self._session_lock:
+                    response = self._get_http_session().get(url, timeout=30.0)
                 remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 4.0
-                if response.status_code in (503, 525) and attempt == 0 and remaining_budget > 0.6:
-                    print(f"[AO3 Static] HTTP {response.status_code}; retrying once after 600ms")
-                    time.sleep(0.6)
-                    continue
+                if response.status_code in (403, 429, 503, 525) and attempt == 0:
+                    retry_delay = 1.8 if response.status_code in (403, 429) else 0.6
+                    if remaining_budget > retry_delay:
+                        print(f"[AO3 Static] HTTP {response.status_code}; retrying once after {retry_delay:.1f}s")
+                        time.sleep(retry_delay)
+                        continue
                 if response.status_code in (403, 429, 503, 520, 521, 522, 525):
                     self._static_terminal_warning = f"AO3 靜態搜尋暫時不可用（HTTP {response.status_code}）"
                     print(f"[AO3 Static] HTTP {response.status_code}; returning bounded source warning")
@@ -150,9 +164,9 @@ class AO3Scraper(BaseScraper):
                 return html
             except (requests.RequestException, Exception) as error:
                 remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 0
-                if attempt == 0 and remaining_budget > 0.6:
-                    print(f"[AO3 Static] Public GET failed; retrying once after 600ms: {error}")
-                    time.sleep(0.6)
+                if attempt == 0 and remaining_budget > 1.5:
+                    print(f"[AO3 Static] Public GET failed; retrying once after 1.5s: {error}")
+                    time.sleep(1.5)
                     continue
                 self._static_terminal_warning = "AO3 靜態搜尋連線逾時或不可用"
                 print(f"[AO3 Static] Public GET unavailable; returning bounded source warning: {error}")

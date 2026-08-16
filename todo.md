@@ -345,3 +345,8 @@
 - [x] 在前端加入 Tauri updater 自動檢查與下載安裝提示 (@tauri-apps/plugin-updater)
 - [x] 將 src-tauri/tauri.conf.json 與 Cargo.toml 版本更新至 v1.1.2
 - [x] 提交並發布 v1.1.2 標籤，推送至 GitHub 觸發自動發布
+
+- [x] 為 AO3 scraper 導入可重用的持久 Session 與標準 URL 編碼
+- [x] 對 AO3 403／429 增加一次低頻退避重試與安全降級結果
+- [x] 低頻連續驗證不同 AO3 關鍵字，並執行 FastAPI 回歸測試
+- [ ] 提交並推送 AO3 強化版本以觸發 GitHub Actions 發布

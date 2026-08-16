@@ -197,22 +197,22 @@ def get_cached_results(db: Session, keyword: str, platforms: list[str], ignore_t
 
 @app.get("/fastapi-status")
 def fastapi_status() -> dict[str, str]:
-    return {"status": "ok", "service": "fastapi-search", "version": "0.1.8"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.1.3"}
 
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "fastapi-search", "version": "1.1.2"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.1.3"}
 
 
-@app.get("/api/health")
+@app.api_route("/api/health", methods=["GET", "HEAD"])
 def api_health_check():
-    return {"status": "ok", "service": "fastapi-search", "version": "1.1.2"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.1.3"}
 
 
 @app.get("/")
 def read_root() -> dict[str, str]:
-    return {"status": "ok", "service": "fastapi-search", "version": "1.1.1"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.1.3"}
 
 
 @app.get("/platforms")

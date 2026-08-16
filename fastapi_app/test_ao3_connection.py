@@ -1,0 +1,49 @@
+from __future__ import annotations
+
+import os
+import sys
+from time import monotonic
+from unittest.mock import patch
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from scrapers.ao3_scraper import AO3Scraper
+
+
+def test_ao3_search_url_uses_standard_percent_encoding():
+    url = AO3Scraper.build_search_url("義忍 & test")
+    assert "work_search%5Bquery%5D=" in url
+    assert "%E7%BE%A9%E5%BF%8D%20%26%20test" in url
+
+
+def test_ao3_reuses_one_persistent_http_session():
+    scraper = AO3Scraper()
+    first_session = scraper._get_http_session()
+    second_session = scraper._get_http_session()
+    assert first_session is second_session
+
+
+def test_ao3_retries_403_once_with_low_frequency_backoff():
+    class ForbiddenResponse:
+        status_code = 403
+
+    class FakeSession:
+        def __init__(self):
+            self.calls = 0
+
+        def get(self, url: str, timeout: float):
+            self.calls += 1
+            return ForbiddenResponse()
+
+    scraper = AO3Scraper()
+    fake_session = FakeSession()
+    scraper._http_session = fake_session
+    scraper._static_deadline = monotonic() + 5
+
+    with patch("scrapers.ao3_scraper.time.sleep") as sleep:
+        result = scraper._fetch_static_search_html("義忍", 1)
+
+    assert result is None
+    assert fake_session.calls == 2
+    sleep.assert_called_once_with(1.8)
+    assert scraper._static_terminal_warning == "AO3 靜態搜尋暫時不可用（HTTP 403）"
