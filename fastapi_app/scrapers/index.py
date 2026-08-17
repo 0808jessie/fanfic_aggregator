@@ -136,13 +136,49 @@ def _source_cache_key(
     page: int,
     custom_cp_map: dict[str, Any] | None,
     mode: str,
-    language: Optional[str] = None,
 ) -> tuple[str, str, int]:
     """Key cache entries by the source's effective platform-specific query."""
     translated = translated_query_for_platform(platform_key, keyword, custom_cp_map, mode)
-    if language and language != "all":
-        return platform_key, f"{mode}:lang={language}:{translated}", page
     return platform_key, f"{mode}:{translated}", page
+
+
+def normalize_work_language(value: object) -> str:
+    """Normalize adapter metadata to stable language codes for client-side filtering."""
+    if not isinstance(value, str):
+        return "unknown"
+    language = value.strip().lower().replace("_", "-")
+    if language in {"zh-tw", "zh-hant", "traditional", "繁體", "繁中", "正體"}:
+        return "zh-TW"
+    if language in {"zh-cn", "zh-hans", "simplified", "简体", "簡體", "简中", "簡中"}:
+        return "zh-CN"
+    if language in {"zh", "chinese", "中文"}:
+        return "zh"
+    if language in {"ja", "japanese", "日本語", "日文"}:
+        return "ja"
+    if language in {"en", "english", "英文"}:
+        return "en"
+    return "unknown"
+
+
+def annotate_work_language(item: ScrapedFanfic, platform_key: str) -> None:
+    """Preserve source metadata, otherwise apply only high-confidence defaults."""
+    if isinstance(item.language, str) and item.language.strip().lower() == "unknown":
+        item.language = "unknown"
+        return
+    provided = normalize_work_language(item.language)
+    if provided != "unknown":
+        item.language = provided
+        return
+    if platform_key in {"doujin", "waterwriter", "cxc"}:
+        item.language = "zh-TW"
+        return
+    text = f"{item.title} {item.summary} {item.tags}"
+    if any("\u3040" <= char <= "\u30ff" for char in text):
+        item.language = "ja"
+    elif text and all(ord(char) < 128 for char in text if char.isalpha()):
+        item.language = "en"
+    else:
+        item.language = "unknown"
 
 
 def _matches_author_query(author: str, query: str) -> bool:
@@ -194,7 +230,7 @@ def search_single_platform(
         warning = f"Platform '{platform_key}' is not supported."
         return platform_key, [], 0, 0, make_platform_status(platform_key, keyword, 0, warning, custom_cp_map, mode)
 
-    cache_key = _source_cache_key(platform_key, keyword, page, custom_cp_map, mode, language=language)
+    cache_key = _source_cache_key(platform_key, keyword, page, custom_cp_map, mode)
     if force_refresh:
         with _SOURCE_CACHE_LOCK:
             _SOURCE_CACHE.pop(cache_key, None)
@@ -218,8 +254,6 @@ def search_single_platform(
             scrape_kwargs["custom_cp_map"] = custom_cp_map
         if mode == "author":
             scrape_kwargs["mode"] = mode
-        if language:
-            scrape_kwargs["language"] = language
         payload = adapter.scrape(keyword, **scrape_kwargs)
         items: list[ScrapedFanfic] = []
         total_works = 0
@@ -241,27 +275,11 @@ def search_single_platform(
             total_works = 0
             total_pages = 1
 
-        if language and language != "all" and platform_key != "ao3":
-            filtered_items = []
-            for item in items:
-                text_blob = (item.title + " " + item.summary).casefold()
-                if language == "zh":
-                    if any("\u4e00" <= c <= "\u9fff" for c in text_blob):
-                        filtered_items.append(item)
-                elif language == "ja":
-                    if any("\u3040" <= c <= "\u30ff" or "\u4e00" <= c <= "\u9fff" for c in text_blob):
-                        filtered_items.append(item)
-                elif language == "en":
-                    if not any("\u4e00" <= c <= "\u9fff" or "\u3040" <= c <= "\u30ff" for c in text_blob):
-                        filtered_items.append(item)
-                else:
-                    filtered_items.append(item)
-            items = filtered_items
-
         for item in items:
             if not item.id:
                 item.id = f"{platform_key}:{item.url}"
             item.keyword = keyword
+            annotate_work_language(item, platform_key)
         warning = getattr(adapter, "last_warning", None)
         status_count = total_works if total_works > 0 else len(items)
         _write_source_cache(cache_key, items, total_works, total_pages, warning)
@@ -317,7 +335,7 @@ async def parallel_search_platforms_async(
             force_refresh,
             custom_cp_map,
             mode,
-            language,
+            None,
         )
         try:
             platform_timeout = PLATFORM_TIMEOUT_SECONDS.get(platform_key, timeout_seconds)

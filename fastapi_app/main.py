@@ -16,7 +16,7 @@ from constants.cp_tags import CP_CACHE_ALIASES, CP_TAG_MAP, build_custom_cp_map
 from relevance import rank_results
 from scrapers.index import SCRAPERS, parallel_search_platforms
 
-app = FastAPI(title="Fanfic Atlas Search API", version="1.1.6")
+app = FastAPI(title="Fanfic Atlas Search API", version="1.1.7")
 app.add_middleware(
     CORSMiddleware,
     # The packaged desktop WebView is served from tauri://localhost, while the
@@ -197,6 +197,7 @@ def get_cached_results(db: Session, keyword: str, platforms: list[str], ignore_t
             url=record.url,
             tags=record.tags or "",
             summary=record.summary or "",
+            language=getattr(record, "language", "unknown") or "unknown",
             scraped_at=record.scraped_at,
             keyword=record.keyword,
         )
@@ -209,22 +210,22 @@ def get_cached_results(db: Session, keyword: str, platforms: list[str], ignore_t
 
 @app.get("/fastapi-status")
 def fastapi_status() -> dict[str, str]:
-    return {"status": "ok", "service": "fastapi-search", "version": "1.1.6"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.1.7"}
 
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "fastapi-search", "version": "1.1.6"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.1.7"}
 
 
 @app.api_route("/api/health", methods=["GET", "HEAD"])
 def api_health_check():
-    return {"status": "ok", "service": "fastapi-search", "version": "1.1.6"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.1.7"}
 
 
 @app.get("/")
 def read_root() -> dict[str, str]:
-    return {"status": "ok", "service":"fastapi-search", "version": "1.1.6"}
+    return {"status": "ok", "service":"fastapi-search", "version": "1.1.7"}
 
 
 @app.get("/platforms")
@@ -243,7 +244,6 @@ def list_platforms() -> list[dict[str, str]]:
 def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchResponse:
     keyword = query.keyword.strip()
     mode = query.mode
-    language = normalize_search_language(query.language)
     if not keyword:
         raise HTTPException(status_code=422, detail="keyword cannot be empty")
 
@@ -265,8 +265,7 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
         # invalidation still works. Author searches receive a separate prefix to
         # prevent a creator query from sharing keyword/CP result entries.
         cache_prefix = "author:" if mode == "author" else ""
-        lang_suffix = f":lang={language}" if language != "all" else ""
-        base_cache_key = f"{cache_prefix}{keyword}:{'-'.join(sorted(platforms))}{lang_suffix}:page={requested_page}"
+        base_cache_key = f"{cache_prefix}{keyword}:{'-'.join(sorted(platforms))}:page={requested_page}"
         cache_key = (
             f"{cache_prefix}{keyword}:{'-'.join(sorted(platforms))}:cp={custom_cp_mapping_fingerprint(custom_cp_mappings)}:page={requested_page}"
             if custom_cp_map
@@ -314,8 +313,6 @@ def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchR
             aggregate_kwargs["custom_cp_map"] = custom_cp_map
         if mode == "author":
             aggregate_kwargs["mode"] = mode
-        if language != "all":
-            aggregate_kwargs["language"] = language
         aggregate = parallel_search_platforms(platforms, keyword, requested_page, **aggregate_kwargs)
         print(
             f"[Search Aggregate Done in ms] {round((perf_counter() - request_started_at) * 1000)} "

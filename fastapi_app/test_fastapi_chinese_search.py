@@ -93,3 +93,12 @@ def test_invalid_language_filter_degrades_to_all_languages():
     assert response.status_code == 200
     assert response.json()["items"][0]["title"] == "語言容錯作品"
     assert "language" not in search.call_args.kwargs
+
+
+def test_language_is_not_forwarded_to_backend_platform_search():
+    aggregate = {"items": [], "any_success": True, "total_works": 0, "total_pages": 1, "warnings": []}
+    with patch("main.parallel_search_platforms", return_value=aggregate) as search:
+        response = client.post("/search", json={"keyword": "全量", "platforms": ["ao3"], "language": "ja"})
+
+    assert response.status_code == 200
+    assert "language" not in search.call_args.kwargs

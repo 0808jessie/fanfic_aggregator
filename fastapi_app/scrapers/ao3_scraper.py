@@ -199,6 +199,7 @@ class AO3Scraper(BaseScraper):
             word_count_el = work.select_one("dd.words")
             updated_el = work.select_one("p.datetime")
             status_el = work.select_one("dd.status")
+            language_el = work.select_one("dd.language")
             status_text = status_el.get_text(" ", strip=True) if status_el else ""
             if not url or not is_real_url(url):
                 continue
@@ -209,6 +210,7 @@ class AO3Scraper(BaseScraper):
                 wordCount=word_count_el.get_text(strip=True) if word_count_el else None,
                 updatedAt=updated_el.get_text(strip=True) if updated_el else None,
                 isComplete=status_text.casefold().startswith("completed"),
+                language=language_el.get_text(" ", strip=True) if language_el else "unknown",
                 scraped_at=datetime.utcnow(), keyword=keyword,
             ))
         return items

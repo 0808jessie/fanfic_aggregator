@@ -153,9 +153,7 @@ class PixivScraper(BaseScraper):
             title = str(record.get("title") or "").strip()
             if not novel_id or not title:
                 continue
-            record_language = str(record.get("language") or "").casefold()
-            if language and language != "all" and record_language and not record_language.startswith(language):
-                continue
+            record_language = str(record.get("language") or "unknown")
 
             results.append(ScrapedFanfic(
                 id=f"pixiv:https://www.pixiv.net/novel/show.php?id={novel_id}",
@@ -169,6 +167,7 @@ class PixivScraper(BaseScraper):
                 coverUrl=str(record.get("url") or "") or None,
                 wordCount=str(record.get("wordCount") or record.get("textCount") or "") or None,
                 updated_at=str(record.get("updateDate") or record.get("createDate") or datetime.now(timezone.utc).isoformat()),
+                language=record_language,
                 scraped_at=datetime.now(timezone.utc),
                 keyword=keyword,
             ))
@@ -228,14 +227,6 @@ class PixivScraper(BaseScraper):
                 )
 
             lang_detected = "ja" if any(ord(char) > 127 for char in title + summary) else "en"
-            if language and language != "all":
-                if language == "zh" and not re.search(r"[\u4e00-\u9fa5]", title + summary):
-                    continue
-                if language == "ja" and not re.search(r"[\u3040-\u30ff\u4e00-\u9fa5]", title + summary):
-                    continue
-                if language == "en" and re.search(r"[\u3040-\u30ff\u4e00-\u9fa5]", title + summary):
-                    continue
-
             seen_urls.add(url)
             results.append(
                 ScrapedFanfic(
@@ -248,6 +239,7 @@ class PixivScraper(BaseScraper):
                     tags=tags,
                     source="pixiv",
                     updated_at=updated_at,
+                    language=lang_detected,
                     scraped_at=datetime.now(timezone.utc),
                     keyword=keyword,
                 )

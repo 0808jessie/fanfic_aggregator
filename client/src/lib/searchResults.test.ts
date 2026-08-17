@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendUniqueResults, extractIsRateLimited, extractPlatformStatuses, extractSearchPagination, extractSearchWarning, filterAndSortResults, getLoadMoreLabel, isDisplayableResult, isPlatformRetryable, normalizeResults, parseWordCount } from "./searchResults";
+import { appendUniqueResults, countLanguageResults, extractIsRateLimited, extractPlatformStatuses, extractSearchPagination, extractSearchWarning, filterAndSortResults, getLoadMoreLabel, isDisplayableResult, isPlatformRetryable, normalizeResults, parseWordCount } from "./searchResults";
 
 const verifiedAo3Result = {
   title: "Verified work",
@@ -168,6 +168,17 @@ describe("search result safety contract", () => {
     expect(filterAndSortResults([traditional, simplified, japanese], "作品", { ...baseFilters, language: "zh-hant" })).toEqual([traditional]);
     expect(filterAndSortResults([traditional, simplified, japanese], "作品", { ...baseFilters, language: "zh-hans" })).toEqual([simplified]);
     expect(filterAndSortResults([traditional, simplified, japanese], "作品", { ...baseFilters, language: "ja" })).toEqual([japanese]);
+  });
+
+  it("keeps explicitly unknown-language works in all results but out of language-specific filters", () => {
+    const unknown = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/44", language: "unknown" };
+    const traditional = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/45", language: "zh-TW" };
+    const baseFilters = { wordCount: "all" as const, completion: "all" as const, sort: "relevance" as const };
+
+    expect(filterAndSortResults([unknown, traditional], "work", { ...baseFilters, language: "all" })).toHaveLength(2);
+    expect(filterAndSortResults([unknown, traditional], "work", { ...baseFilters, language: "zh" })).toEqual([traditional]);
+    expect(countLanguageResults([unknown, traditional], "all")).toBe(2);
+    expect(countLanguageResults([unknown, traditional], "zh-hant")).toBe(1);
   });
 
   it("sorts filtered results by newest update or highest word count locally", () => {

@@ -30,6 +30,7 @@ import {
 } from "@/lib/desktopApi";
 import {
   appendUniqueResults,
+  countLanguageResults,
   extractIsRateLimited,
   extractPlatformStatuses,
   extractSearchPagination,
@@ -317,7 +318,13 @@ export default function Home() {
       activeQuery || keyword.trim(),
       { wordCount: wordCountFilter, completion: completionFilter, sort: sortMode, language: selectedLanguage },
     ),
-    [results, activePlatformFilter, activeQuery, keyword, wordCountFilter, completionFilter, sortMode],
+    [results, activePlatformFilter, activeQuery, keyword, wordCountFilter, completionFilter, sortMode, selectedLanguage],
+  );
+  const languageCounts = useMemo(
+    () => Object.fromEntries(
+      (["all", "zh", "zh-hant", "zh-hans", "en", "ja"] as const).map((language) => [language, countLanguageResults(results, language)]),
+    ) as Record<LanguageFilter, number>,
+    [results],
   );
   const isRetryingSinglePlatform = searchMutation.isPending && Boolean(retryingPlatformRef.current);
 
@@ -419,7 +426,7 @@ export default function Home() {
     requestSearch({
       path: "/search",
       method: "POST",
-      data: { keyword: trimmedKeyword, mode: requestedMode, platforms: platformOverride ?? selectedPlatforms, page: 1, forceRefresh, customCpMappings, language: selectedLanguage === "zh-hant" || selectedLanguage === "zh-hans" ? "zh" : selectedLanguage },
+      data: { keyword: trimmedKeyword, mode: requestedMode, platforms: platformOverride ?? selectedPlatforms, page: 1, forceRefresh, customCpMappings },
     });
   };
 
@@ -563,7 +570,7 @@ export default function Home() {
                         selectedLanguage === lang ? "bg-[#111826] text-white" : "text-[#61707a] hover:bg-[#f0ece1]"
                       }`}
                     >
-                      {lang === "all" ? "全部" : lang === "zh" ? "中文" : lang === "zh-hant" ? "繁體" : lang === "zh-hans" ? "簡體" : lang === "en" ? "英文" : "日文"}
+                      {lang === "all" ? "全部" : lang === "zh" ? "中文" : lang === "zh-hant" ? "繁體" : lang === "zh-hans" ? "簡體" : lang === "en" ? "英文" : "日文"} {hasSearched ? `(${languageCounts[lang]})` : ""}
                     </button>
                   ))}
                 </div>

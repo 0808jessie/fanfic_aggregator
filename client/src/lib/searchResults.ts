@@ -195,11 +195,12 @@ export function parseWordCount(value: string | null | undefined): number {
 }
 
 /** Prefer source metadata and only infer a broad category when it is absent. */
-export function resultLanguage(result: SearchResult): Exclude<LanguageFilter, "all"> {
+export function resultLanguage(result: SearchResult): Exclude<LanguageFilter, "all"> | "unknown" {
   const language = (result.language || "").trim().toLocaleLowerCase();
+  if (language === "unknown") return "unknown";
   if (/(ja|japanese|日本語|日文)/.test(language)) return "ja";
-  if (/(zh-hant|hant|traditional|繁體|繁中|正體)/.test(language)) return "zh-hant";
-  if (/(zh-hans|hans|simplified|简体|簡體|简中|簡中)/.test(language)) return "zh-hans";
+  if (/(zh-tw|zh-hant|hant|traditional|繁體|繁中|正體)/.test(language)) return "zh-hant";
+  if (/(zh-cn|zh-hans|hans|simplified|简体|簡體|简中|簡中)/.test(language)) return "zh-hans";
   if (/(zh|chinese|中文|華文|华文)/.test(language)) return "zh";
   if (/(en|english|英文)/.test(language)) return "en";
 
@@ -214,7 +215,12 @@ export function resultLanguage(result: SearchResult): Exclude<LanguageFilter, "a
 export function matchesLanguageFilter(result: SearchResult, filter: LanguageFilter = "all"): boolean {
   if (filter === "all") return true;
   const language = resultLanguage(result);
+  if (language === "unknown") return false;
   return filter === "zh" ? language.startsWith("zh") : language === filter;
+}
+
+export function countLanguageResults(results: SearchResult[], filter: LanguageFilter): number {
+  return results.filter((result) => matchesLanguageFilter(result, filter)).length;
 }
 
 function normalized(value: string | null | undefined): string {
