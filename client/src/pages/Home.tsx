@@ -53,18 +53,23 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { BlueprintCover } from "@/components/BlueprintCover";
-import { BookmarkEditorDialog, CpMappingManagerDialog, SavedBookmarksGrid } from "@/components/PersonalLibrary";
+import { BookshelfView } from "@/components/BookshelfView";
+import { BookmarkEditorDialog, CpMappingManagerDialog } from "@/components/PersonalLibrary";
 import {
   loadBookmarks,
   loadCustomCpMappings,
   loadFilterPreset,
+  loadPinnedQueries,
   loadSearchHistory,
+  mergeImportedBookmarks,
   mergeCpMappings,
   persistBookmarks,
   persistCpMappings,
   persistFilterPreset,
+  persistPinnedQueries,
   persistSearchHistory,
   recordSearch,
+  togglePinnedQuery,
   upsertBookmark,
   type BookmarkRecord,
   type CpMapping,
@@ -152,6 +157,8 @@ export default function Home() {
   const [customCpMappings, setCustomCpMappings] = useState<CpMapping[]>([]);
   const [cpManagerOpen, setCpManagerOpen] = useState(false);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [pinnedQueries, setPinnedQueries] = useState<string[]>([]);
+  const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
   const [searchWarning, setSearchWarning] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -165,6 +172,7 @@ export default function Home() {
   const [desktopLoadMorePending, setDesktopLoadMorePending] = useState(false);
   const searchStartedAt = useRef<number | null>(null);
   const retryingPlatformRef = useRef<PlatformId | null>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const [pagination, setPagination] = useState<SearchPagination>({
     totalWorks: 0,
     totalPages: 0,
@@ -334,11 +342,22 @@ export default function Home() {
     setCustomCpMappings(savedCustomMappings);
     setCpMappings(mergeCpMappings(savedCustomMappings));
     setSearchHistory(loadSearchHistory());
+    setPinnedQueries(loadPinnedQueries());
     const preset = loadFilterPreset();
     setWordCountFilter(preset.wordCount);
     setCompletionFilter(preset.completion);
     setSortMode(preset.sort);
   }, []);
+
+  useEffect(() => {
+    const sentinel = loadMoreSentinelRef.current;
+    if (typeof IntersectionObserver === "undefined" || !sentinel || activeView !== "search" || !pagination.hasMore || !pagination.nextPage || isLoadMorePending || !activeQuery) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) loadMore();
+    }, { rootMargin: "260px 0px" });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [activeView, pagination.hasMore, pagination.nextPage, isLoadMorePending, activeQuery, results.length]);
 
   useEffect(() => {
     if (!isSearchPending) return;
@@ -441,16 +460,16 @@ export default function Home() {
     runSearch(false);
   };
 
-  const loadMore = () => {
+  function loadMore() {
     if (!pagination.nextPage || isLoadMorePending || !activeQuery) return;
     requestLoadMore({
       path: "/search",
       method: "POST",
-      data: { keyword: activeQuery, mode: searchMode, platforms: selectedPlatforms, page: pagination.nextPage, forceRefresh: false, customCpMappings, language: selectedLanguage },
+      data: { keyword: activeQuery, mode: searchMode, platforms: selectedPlatforms, page: pagination.nextPage, forceRefresh: false, customCpMappings },
     });
-  };
+  }
 
-  const saveBookmark = (value: { result: SearchResult; rating: number; notes: string; tags: string[] }) => {
+  const saveBookmark = (value: { result: SearchResult; rating: number; notes: string; tags: string[]; shelf: "to-read" | "favorite" }) => {
     const next = upsertBookmark(bookmarks, { url: value.result.url, ...value });
     setBookmarks(next);
     persistBookmarks(next);
@@ -476,6 +495,25 @@ export default function Home() {
     setBookmarks(next);
     persistBookmarks(next);
     showInfoToast("已從閱讀清單移除");
+  };
+
+  const importBookmarks = (incoming: BookmarkRecord[]) => {
+    if (!incoming.length) { toast.error("找不到可還原的 JSON 藏書資料"); return; }
+    const next = mergeImportedBookmarks(bookmarks, incoming);
+    setBookmarks(next);
+    persistBookmarks(next);
+    toast.success(`已匯入 ${incoming.length} 筆藏書`, { description: `藏書閣目前共有 ${next.length} 筆。` });
+  };
+
+  const clearHistory = () => {
+    setSearchHistory([]);
+    window.localStorage.removeItem("sui-read-search-history");
+  };
+
+  const pinCurrentQuery = () => {
+    const next = togglePinnedQuery(pinnedQueries, keyword || activeQuery);
+    setPinnedQueries(next);
+    persistPinnedQueries(next);
   };
 
   const updateCpMappings = (nextCustomMappings: CpMapping[]) => {
@@ -536,13 +574,13 @@ export default function Home() {
         <section className="mt-9 flex flex-col gap-3 border-y border-[#111826]/12 py-3 sm:mt-12 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <Button type="button" variant="ghost" onClick={() => setActiveView("search")} className={`h-10 rounded-none border-b-2 px-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] ${activeView === "search" ? "border-[#10151b] bg-white/65 text-[#10151b]" : "border-transparent text-[#75838b] hover:bg-white/60"}`}><Search className="mr-2 h-3.5 w-3.5" />搜尋索引</Button>
-            <Button type="button" variant="ghost" onClick={() => setActiveView("bookmarks")} className={`h-10 rounded-none border-b-2 px-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] ${activeView === "bookmarks" ? "border-[#10151b] bg-white/65 text-[#10151b]" : "border-transparent text-[#75838b] hover:bg-white/60"}`}><BookMarked className="mr-2 h-3.5 w-3.5" />我的閱讀清單 <span className="ml-2 text-[#e27d9d]">{bookmarks.length}</span></Button>
+            <Button type="button" variant="ghost" onClick={() => setActiveView("bookmarks")} className={`h-10 rounded-none border-b-2 px-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] ${activeView === "bookmarks" ? "border-[#10151b] bg-white/65 text-[#10151b]" : "border-transparent text-[#75838b] hover:bg-white/60"}`}><BookMarked className="mr-2 h-3.5 w-3.5" />藏書閣 / 收藏夾 <span className="ml-2 text-[#e27d9d]">{bookmarks.length}</span></Button>
           </div>
           <Button type="button" variant="outline" onClick={() => setCpManagerOpen(true)} className="h-9 rounded-none border-[#10151b]/15 bg-white/55 font-mono text-[10px] font-bold uppercase tracking-[0.13em] hover:border-[#45b9b2] lg:hidden"><Tags className="mr-2 h-3.5 w-3.5" />CP 詞庫管理</Button>
         </section>
 
         <section className="atlas-panel relative mt-5 border-b-2 border-b-[#111826] px-4 py-4 sm:px-6">
-          <form onSubmit={submitSearch} className="flex flex-col gap-4 lg:flex-row lg:items-center">
+          <form onSubmit={submitSearch} onFocusCapture={() => setHistoryMenuOpen(true)} className="flex flex-col gap-4 lg:flex-row lg:items-center">
             <div className="flex flex-1 items-center gap-3"><div className={`flex h-10 w-10 items-center justify-center ${searchMode === "author" ? "bg-[#fff0e9] text-[#e76f51]" : "bg-[#e6efff] text-[#2d70d6]"}`}>{searchMode === "author" ? <UserRound className="h-5 w-5 shrink-0" /> : <Search className="h-5 w-5 shrink-0" />}</div><div className="min-w-0 flex-1"><div className="mb-2 flex w-fit border border-[#111826]/15 bg-white/70 p-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.1em"><Button type="button" variant="ghost" aria-pressed={searchMode === "keyword"} onClick={() => setSearchMode("keyword")} className={`h-6 rounded-none px-2 ${searchMode === "keyword" ? "bg-[#e6efff] text-[#2d70d6]" : "text-[#71808a]"}`}>關鍵字 / CP</Button><Button type="button" variant="ghost" aria-pressed={searchMode === "author"} onClick={() => setSearchMode("author")} className={`h-6 rounded-none px-2 ${searchMode === "author" ? "bg-[#fff0e9] text-[#e76f51]" : "text-[#71808a]"}`}>作者</Button></div><Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder={searchMode === "author" ? "輸入作者暱稱、繪師或社團名..." : "輸入角色、配對、作品名或關鍵字"} className="h-10 border-0 bg-transparent px-0 text-lg font-semibold shadow-none placeholder:text-[#8b929c] focus-visible:ring-0 sm:text-xl" aria-label="搜尋同人作品" />{searchMode === "author" && <div className="atlas-mono mt-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-[#e76f51]">AUTHOR MODE / 搜尋作者：{keyword}</div>}</div></div>
             <div className="flex flex-wrap items-center gap-3">
               <Button type="button" variant="outline" onClick={() => setShowFilters((current) => !current)} className="h-11 border-[#111826]/20 bg-white/80 font-mono text-[10px] font-bold uppercase tracking-[0.14em] hover:border-[#2d70d6] hover:bg-[#e6efff]"><SlidersHorizontal className="mr-2 h-4 w-4" /> FILTERS <ChevronDown className={`ml-2 h-4 w-4 transition-transform ${showFilters ? "rotate-180" : ""}`} /></Button>
@@ -550,7 +588,8 @@ export default function Home() {
               <Button type="submit" disabled={isSearchPending} className="h-11 min-w-36 bg-[#111826] px-6 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white hover:bg-[#2d70d6]">{isSearchPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Terminal className="mr-2 h-4 w-4" />}{isSearchPending ? "SCANNING" : "RUN SEARCH"}</Button>
             </div>
           </form>
-          {searchHistory.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#10151b]/10 pt-3"><span className="mr-1 inline-flex items-center gap-1 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-[#75838b]"><History className="h-3 w-3" />最近搜尋</span>{searchHistory.map((entry) => <button key={entry} type="button" onClick={() => { setKeyword(entry); setSearchMode("keyword"); runSearch(false, entry); }} className="border border-[#10151b]/12 bg-white/65 px-2.5 py-1.5 font-mono text-[10px] font-bold text-[#52616b] transition-colors hover:border-[#45b9b2] hover:bg-[#d9f8f5] hover:text-[#197b75]">{entry}</button>)}</div>}
+          {historyMenuOpen && searchHistory.length > 0 && <div className="relative z-20 mt-3 border-t border-[#10151b]/10 pt-3"><div className="w-full border border-[#111826]/15 bg-[#fdfbf6] p-2 shadow-[5px_5px_0_rgba(17,24,38,0.12)]"><div className="mb-1 flex items-center justify-between px-2 font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#75838b]"><span className="inline-flex items-center gap-1"><History className="h-3 w-3" />最近 10 次搜尋</span><button type="button" onClick={clearHistory} className="text-[#9b4358] hover:underline">清除</button></div>{searchHistory.map((entry) => <button key={entry} type="button" onClick={() => { setKeyword(entry); setSearchMode("keyword"); setHistoryMenuOpen(false); runSearch(false, entry); }} className="block w-full px-2 py-2 text-left text-sm font-semibold hover:bg-[#e6efff]">{entry}</button>)}</div></div>}
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#10151b]/10 pt-3"><Button type="button" variant="outline" onClick={pinCurrentQuery} disabled={!(keyword || activeQuery).trim()} className="h-8 rounded-none border-[#e8a7bf] bg-[#fff5f7] px-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#8b3e59] hover:bg-[#ffe8f0]">⭐ 釘選目前搜尋詞</Button>{pinnedQueries.map((entry) => <button key={entry} type="button" onClick={() => { setKeyword(entry); setSearchMode("keyword"); runSearch(false, entry); }} className="border border-[#e8a7bf] bg-[#ffe8f0] px-2.5 py-1.5 font-mono text-[10px] font-bold text-[#8b3e59] hover:bg-[#fff5f7]">{entry}</button>)}</div>
           {desktopRuntime && sidecarState !== "ready" && <div className={`mt-3 border-t border-[#10151b]/10 pt-3 font-mono text-[10px] font-bold tracking-[0.13em] ${sidecarState === "error" ? "text-[#9b4358]" : "text-[#197b75]"}`} aria-live="polite">{sidecarState === "error" ? "搜尋引擎尚未就緒；系統會在搜尋時再次嘗試連線。" : "正在啟動搜尋引擎..."}</div>}
           {isSearchPending && <div className="mt-3 border-t border-[#10151b]/10 pt-3 font-mono text-[10px] font-bold tracking-[0.13em] text-[#197b75]" aria-live="polite">{desktopRuntime && sidecarState === "starting" ? "正在等待搜尋引擎就緒..." : `正在掃描 AO3 數據庫...（已耗時 ${(elapsedMs / 1000).toFixed(1)} 秒）`}</div>}
           {showFilters && (
@@ -682,10 +721,11 @@ export default function Home() {
 
         <div className="mt-8">
           {activeView === "bookmarks" ? (
-            <SavedBookmarksGrid
+            <BookshelfView
               bookmarks={bookmarks}
               onEdit={(bookmark) => { setBookmarkTarget(bookmark.result); setBookmarkDialogOpen(true); }}
               onRemove={removeBookmark}
+              onImport={importBookmarks}
             />
           ) : <>
           {!hasSearched && !searchMutation.isPending && <div className="atlas-panel relative overflow-hidden p-8 sm:p-10"><div className="absolute bottom-0 right-0 h-28 w-28 border-l border-t border-[#2d70d6]/20" /><div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-center"><div><div className="mb-5 flex h-12 w-12 items-center justify-center bg-[#e6efff] text-[#2d70d6]"><Sparkles className="h-5 w-5" /></div><div className="atlas-mono text-[9px] font-medium uppercase tracking-[0.18em] text-[#e76f51]">FIRST COORDINATE</div><h3 className="mt-2 text-2xl font-black tracking-[-0.06em]">輸入一組關鍵字，建立你的閱讀座標。</h3><p className="mt-3 max-w-xl text-sm leading-6 text-[#64727a]">選擇一個角色、配對或作品名；系統會沿著五條公開來源路徑，回傳可驗證的原站作品。</p></div><div className="grid grid-cols-2 gap-3 atlas-mono text-[9px] font-medium uppercase tracking-[0.14em] text-[#66757d]"><div className="border border-[#111826]/10 bg-white/70 p-4"><Database className="mb-3 h-4 w-4 text-[#e76f51]" />PRIVATE CACHE</div><div className="border border-[#111826]/10 bg-white/70 p-4"><BookOpen className="mb-3 h-4 w-4 text-[#2d70d6]" />VERIFIED LINKS</div></div></div></div>}
@@ -772,9 +812,11 @@ export default function Home() {
               </div>
               {pagination.hasMore && pagination.nextPage && (
                 <div className="flex flex-col items-center gap-3 border-t border-[#10151b]/10 pt-6">
-                  <Button type="button" onClick={loadMore} disabled={loadMoreMutation.isPending} className="min-w-56 rounded-none bg-[#10151b] px-6 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white hover:bg-[#24313a]">
-                    {loadMoreMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowUpRight className="mr-2 h-4 w-4" />}
-                    {getLoadMoreLabel(loadMoreMutation.isPending, pagination.nextPage)}
+                  <div ref={loadMoreSentinelRef} className="h-px w-full" aria-hidden="true" />
+                  <span className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#197b75]">{isLoadMorePending ? "加載更多作品中..." : "向下捲動自動載入下一頁"}</span>
+                  <Button type="button" onClick={loadMore} disabled={isLoadMorePending} className="min-w-56 rounded-none bg-[#10151b] px-6 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white hover:bg-[#24313a]">
+                    {isLoadMorePending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowUpRight className="mr-2 h-4 w-4" />}
+                    {getLoadMoreLabel(isLoadMorePending, pagination.nextPage)}
                   </Button>
                   <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#75838b]">{results.length.toLocaleString()} LOADED / {pagination.totalWorks.toLocaleString()} TOTAL WORKS</span>
                 </div>

@@ -16,7 +16,7 @@ from constants.cp_tags import CP_CACHE_ALIASES, CP_TAG_MAP, build_custom_cp_map
 from relevance import rank_results
 from scrapers.index import SCRAPERS, parallel_search_platforms
 
-app = FastAPI(title="Fanfic Atlas Search API", version="1.1.7")
+app = FastAPI(title="Fanfic Atlas Search API", version="1.1.8")
 app.add_middleware(
     CORSMiddleware,
     # The packaged desktop WebView is served from tauri://localhost, while the

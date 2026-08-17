@@ -144,7 +144,7 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "義忍", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: false, customCpMappings: [], language: "all" },
+      data: { keyword: "義忍", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
     await waitFor(() => expect(screen.getByLabelText("平台連線狀態")).toBeTruthy());
     expect(screen.getByText("冷卻限制中")).toBeTruthy();
@@ -153,7 +153,7 @@ describe("Home pagination interactions", () => {
     expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "義忍", mode: "keyword", platforms: ["waterwriter"], page: 1, forceRefresh: true, customCpMappings: [], language: "all" },
+      data: { keyword: "義忍", mode: "keyword", platforms: ["waterwriter"], page: 1, forceRefresh: true, customCpMappings: [] },
     });
   });
 
@@ -178,7 +178,7 @@ describe("Home pagination interactions", () => {
     expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "義忍", mode: "keyword", platforms: ["ao3"], page: 1, forceRefresh: true, customCpMappings: [], language: "all" },
+      data: { keyword: "義忍", mode: "keyword", platforms: ["ao3"], page: 1, forceRefresh: true, customCpMappings: [] },
     });
 
     await waitFor(() => expect((screen.getByRole("button", { name: "重試 Penana" }) as HTMLButtonElement).disabled).toBe(false));
@@ -186,7 +186,7 @@ describe("Home pagination interactions", () => {
     expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "義忍", mode: "keyword", platforms: ["penana"], page: 1, forceRefresh: true, customCpMappings: [], language: "all" },
+      data: { keyword: "義忍", mode: "keyword", platforms: ["penana"], page: 1, forceRefresh: true, customCpMappings: [] },
     });
   });
 
@@ -219,7 +219,7 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "Mizuki Studio", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: false, customCpMappings: [], language: "all" },
+      data: { keyword: "Mizuki Studio", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
   });
 
@@ -294,7 +294,7 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "花", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: false, customCpMappings: [], language: "all" },
+      data: { keyword: "花", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
   });
 
@@ -353,7 +353,7 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
-      data: { keyword: "Atlas Creator", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: false, customCpMappings: [], language: "all" },
+      data: { keyword: "Atlas Creator", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
     expect(screen.getByText(/AUTHOR MODE \/ 搜尋作者：Atlas Creator/)).toBeTruthy();
   });

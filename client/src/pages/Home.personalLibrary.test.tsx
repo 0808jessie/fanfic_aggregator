@@ -60,7 +60,8 @@ describe("Home personal reading tools", () => {
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "月光" } });
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
     await waitFor(() => expect(screen.getByText("義忍閱讀測試")).toBeTruthy());
-    expect(screen.getByText("最近搜尋")).toBeTruthy();
+    fireEvent.focus(screen.getByLabelText("搜尋同人作品"));
+    expect(screen.getByText("最近 10 次搜尋")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /收藏 義忍閱讀測試/ }));
     fireEvent.click(screen.getByRole("button", { name: "5 星" }));
@@ -68,10 +69,10 @@ describe("Home personal reading tools", () => {
     fireEvent.change(screen.getByLabelText("自訂標籤"), { target: { value: "神作, 重讀" } });
     fireEvent.click(screen.getByRole("button", { name: "儲存閱讀卡" }));
 
-    fireEvent.click(screen.getByRole("button", { name: /我的閱讀清單/ }));
+    fireEvent.click(screen.getByRole("button", { name: /藏書閣 \/ 收藏夾/ }));
     expect(await screen.findByText("想在夏天重讀。")).toBeTruthy();
-    expect(screen.getByText("#神作")).toBeTruthy();
-    expect(screen.getByText("#重讀")).toBeTruthy();
+    expect(screen.getAllByText("#神作").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("#重讀").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getAllByRole("button", { name: /CP 詞庫管理/ })[0]);
     fireEvent.change(screen.getByLabelText("中文縮寫"), { target: { value: "黑邪" } });

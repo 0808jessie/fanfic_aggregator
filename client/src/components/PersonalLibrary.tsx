@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { isCustomCpMapping, upsertCpMapping, type BookmarkRecord, type CpMapping } from "@/lib/personalLibrary";
+import { isCustomCpMapping, upsertCpMapping, type BookmarkRecord, type BookmarkShelf, type CpMapping } from "@/lib/personalLibrary";
 import type { SearchResult } from "@/lib/searchResults";
 import { DEFAULT_TROPE_MAPPINGS } from "@/lib/tropeMappings";
 import { BlueprintCover } from "@/components/BlueprintCover";
@@ -19,7 +19,7 @@ type BookmarkEditorDialogProps = {
   result: SearchResult | null;
   existing: BookmarkRecord | null;
   onOpenChange: (open: boolean) => void;
-  onSave: (record: { result: SearchResult; rating: number; notes: string; tags: string[] }) => void;
+  onSave: (record: { result: SearchResult; rating: number; notes: string; tags: string[]; shelf: BookmarkShelf }) => void;
   onRemove: (url: string) => void;
 };
 
@@ -34,11 +34,13 @@ export function BookmarkEditorDialog({
   const [rating, setRating] = useState(0);
   const [notes, setNotes] = useState("");
   const [tagText, setTagText] = useState("");
+  const [shelf, setShelf] = useState<BookmarkShelf>("to-read");
 
   useEffect(() => {
     setRating(existing?.rating || 0);
     setNotes(existing?.notes || "");
     setTagText(existing?.tags.join(", ") || "");
+    setShelf(existing?.shelf || "to-read");
   }, [existing, result?.url, open]);
 
   const save = () => {
@@ -48,6 +50,7 @@ export function BookmarkEditorDialog({
       rating,
       notes: notes.trim(),
       tags: tagText.split(",").map((tag) => tag.trim()).filter(Boolean),
+      shelf,
     });
   };
 
@@ -76,6 +79,9 @@ export function BookmarkEditorDialog({
           </label>
           <label className="grid gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#6e7480]">自訂標籤
             <input value={tagText} onChange={(event) => setTagText(event.target.value)} placeholder="神作, 重讀, 避雷" className="h-10 border border-[#111826]/15 bg-white px-3 font-sans text-sm font-normal normal-case tracking-normal text-[#111826] outline-none focus:border-[#2d70d6]" />
+          </label>
+          <label className="grid gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#6e7480]">藏書分類
+            <select value={shelf} onChange={(event) => setShelf(event.target.value as BookmarkShelf)} className="h-10 border border-[#111826]/15 bg-white px-3 font-sans text-sm font-normal normal-case tracking-normal text-[#111826] outline-none focus:border-[#2d70d6]"><option value="to-read">待讀</option><option value="favorite">最愛</option></select>
           </label>
         </div>
         <DialogFooter className="border-t border-[#111826]/10 bg-white/40 px-6 py-4 sm:justify-between">

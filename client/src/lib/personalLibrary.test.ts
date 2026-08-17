@@ -5,14 +5,24 @@ import {
   CP_MAP_STORAGE_KEY,
   DEFAULT_CP_MAPPINGS,
   LEGACY_CP_MAP_STORAGE_KEY,
+  bookmarksToCsv,
+  bookmarksToMarkdown,
+  clearSearchHistory,
+  filterBookmarks,
   loadCpMappings,
   loadCustomCpMappings,
   loadFilterPreset,
+  loadPinnedQueries,
   loadSearchHistory,
+  mergeImportedBookmarks,
   mergeCpMappings,
+  parseBookmarkImport,
   persistCpMappings,
   persistFilterPreset,
+  persistPinnedQueries,
   recordSearch,
+  serializeBookmarksJson,
+  togglePinnedQuery,
   upsertBookmark,
   upsertCpMapping,
 } from "./personalLibrary";
@@ -32,11 +42,11 @@ describe("personal library local storage helpers", () => {
   beforeEach(() => window.localStorage.clear());
 
   it("creates and updates a bookmark using its canonical work URL", () => {
-    const first = upsertBookmark([], { url: result.url, result, rating: 5, notes: "神作", tags: ["重讀"] });
-    const updated = upsertBookmark(first, { url: result.url, result, rating: 4, notes: "更新筆記", tags: ["收藏"] });
+    const first = upsertBookmark([], { url: result.url, result, rating: 5, notes: "神作", tags: ["重讀"], shelf: "favorite" });
+    const updated = upsertBookmark(first, { url: result.url, result, rating: 4, notes: "更新筆記", tags: ["收藏"], shelf: "to-read" });
 
     expect(updated).toHaveLength(1);
-    expect(updated[0]).toMatchObject({ rating: 4, notes: "更新筆記", tags: ["收藏"], url: result.url });
+    expect(updated[0]).toMatchObject({ rating: 4, notes: "更新筆記", tags: ["收藏"], shelf: "to-read", url: result.url });
     expect(updated[0]?.savedAt).toBe(first[0]?.savedAt);
   });
 
@@ -56,15 +66,39 @@ describe("personal library local storage helpers", () => {
     expect(mergeCpMappings([])).toEqual(DEFAULT_CP_MAPPINGS);
   });
 
-  it("deduplicates search history and keeps only the five newest queries", () => {
+  it("deduplicates search history and keeps the ten newest queries", () => {
     const history = ["花", "月", "雨", "風", "雪"];
     expect(recordSearch(history, "花")).toEqual(["花", "月", "雨", "風", "雪"]);
-    expect(recordSearch(history, "星")).toEqual(["星", "花", "月", "雨", "風"]);
+    expect(recordSearch(history, "星")).toEqual(["星", "花", "月", "雨", "風", "雪"]);
+    expect(loadSearchHistory()).toEqual([]);
+    window.localStorage.setItem("sui-read-search-history", JSON.stringify(history));
+    clearSearchHistory();
     expect(loadSearchHistory()).toEqual([]);
   });
 
   it("validates and restores saved filter preferences", () => {
     persistFilterPreset({ wordCount: "long", completion: "complete", sort: "updated" });
     expect(loadFilterPreset()).toEqual({ wordCount: "long", completion: "complete", sort: "updated" });
+  });
+
+  it("filters bookshelf records and round-trips JSON import/export safely", () => {
+    const saved = upsertBookmark([], { url: result.url, result, rating: 5, notes: "必收", tags: ["義忍", "神作"], shelf: "favorite" });
+    expect(filterBookmarks(saved, "短篇", "all", "favorite", "")).toHaveLength(1);
+    expect(filterBookmarks(saved, "", "Pixiv", "all", "")).toHaveLength(0);
+
+    const json = serializeBookmarksJson(saved);
+    const restored = parseBookmarkImport(json);
+    expect(restored).toHaveLength(1);
+    expect(restored[0]).toMatchObject({ url: result.url, shelf: "favorite" });
+    expect(mergeImportedBookmarks(saved, restored)).toHaveLength(1);
+    expect(bookmarksToMarkdown(saved)).toContain("義忍短篇");
+    expect(bookmarksToCsv(saved)).toContain("title,author,platform");
+  });
+
+  it("persists CP pins and toggles a repeated query off", () => {
+    const pinned = togglePinnedQuery([], "義忍");
+    persistPinnedQueries(pinned);
+    expect(loadPinnedQueries()).toEqual(["義忍"]);
+    expect(togglePinnedQuery(pinned, "義忍")).toEqual([]);
   });
 });
