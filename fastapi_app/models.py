@@ -28,12 +28,13 @@ class ScrapedFanfic(BaseModel):
     keyword: Optional[str] = None
     source: str = Field(default="live", description="Source of result: live, cache, or fallback")
     warning: Optional[str] = Field(default=None, description="Diagnostic warning if live scraping failed")
+    language: Optional[str] = None
 
 
 class SearchQuery(BaseModel):
     keyword: str = Field(min_length=1, max_length=120)
     mode: Literal["keyword", "author"] = "keyword"
-    language: Optional[Literal["all", "zh", "en", "ja"]] = "all"
+    language: Optional[str] = "all"
     platforms: Optional[list[str]] = None
     platform: Optional[str] = Field(default=None, min_length=1, max_length=40)
     page: int = Field(default=1, ge=1)

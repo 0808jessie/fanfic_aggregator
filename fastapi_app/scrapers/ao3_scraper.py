@@ -102,7 +102,7 @@ class AO3Scraper(BaseScraper):
             parameters.append(("page", str(page)))
         encoded_parameters = urllib.parse.urlencode(
             parameters,
-            quote_via=urllib.parse.quote,
+            quote_via=urllib.parse.quote_plus,
             safe="",
         )
         return f"https://archiveofourown.org/works/search?{encoded_parameters}"
@@ -131,9 +131,9 @@ class AO3Scraper(BaseScraper):
                     return heading_text, int(match.group(1).replace(",", ""))
         return None
 
-    def _fetch_static_search_html(self, keyword: str, page: int, mode: str = "keyword") -> str | None:
+    def _fetch_static_search_html(self, keyword: str, page: int, mode: str = "keyword", language: Optional[str] = None) -> str | None:
         """Fetch AO3 HTML once with a bounded ten-second public HTTP budget."""
-        url = self.build_search_url(keyword, page, mode)
+        url = self.build_search_url(keyword, page, mode, language)
         for attempt in range(2):
             remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 4.0
             if remaining_budget <= 0:
@@ -173,6 +173,16 @@ class AO3Scraper(BaseScraper):
                 return None
         return None
 
+    @staticmethod
+    def simplify_query(keyword: str) -> str:
+        """Use the first literal CP term for boolean mappings at AO3's protected edge."""
+        compact = keyword.strip()
+        if not compact:
+            return compact
+        parts = re.split(r"\s+(?:OR|AND)\s+", compact, flags=re.IGNORECASE)
+        primary = parts[0].strip().strip('"').strip("'") if parts else compact
+        return primary or compact
+
     def _parse_static_results(self, html: str, keyword: str) -> list[ScrapedFanfic]:
         soup = BeautifulSoup(html, "html.parser")
         items: list[ScrapedFanfic] = []
@@ -208,7 +218,7 @@ class AO3Scraper(BaseScraper):
         items: list[ScrapedFanfic] = []
         total_works = 0
         for target_page in target_pages:
-            html = self._fetch_static_search_html(keyword, target_page, mode)
+            html = self._fetch_static_search_html(keyword, target_page, mode, language)
             if html is None:
                 return None
             soup = BeautifulSoup(html, "html.parser")
@@ -248,8 +258,8 @@ class AO3Scraper(BaseScraper):
         # available to the vocabulary UI and relevance ranking.
         boolean_markers = (" OR ", " AND ", '"')
         if any(marker in translated_query for marker in boolean_markers):
-            ao3_query = trimmed_kw
-            print("[AO3 Static] Boolean translation fell back to the original keyword")
+            ao3_query = self.simplify_query(translated_query)
+            print(f"[AO3 Static] Simplified boolean mapping to primary query: {ao3_query!r}")
         else:
             ao3_query = translated_query
 

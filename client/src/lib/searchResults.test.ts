@@ -159,6 +159,17 @@ describe("search result safety contract", () => {
     expect(parseWordCount("12,345")).toBe(12345);
   });
 
+  it("filters loaded results locally by Chinese variants and Japanese without an API request", () => {
+    const traditional = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/41", title: "這是繁體作品", language: "中文（繁體）" };
+    const simplified = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/42", title: "这是简体作品", language: "中文（简体）" };
+    const japanese = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/43", title: "日本語の作品", language: "日本語" };
+    const baseFilters = { wordCount: "all" as const, completion: "all" as const, sort: "relevance" as const };
+
+    expect(filterAndSortResults([traditional, simplified, japanese], "作品", { ...baseFilters, language: "zh-hant" })).toEqual([traditional]);
+    expect(filterAndSortResults([traditional, simplified, japanese], "作品", { ...baseFilters, language: "zh-hans" })).toEqual([simplified]);
+    expect(filterAndSortResults([traditional, simplified, japanese], "作品", { ...baseFilters, language: "ja" })).toEqual([japanese]);
+  });
+
   it("sorts filtered results by newest update or highest word count locally", () => {
     const olderLong = {
       ...verifiedAo3Result,

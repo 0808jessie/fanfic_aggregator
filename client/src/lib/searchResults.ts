@@ -16,6 +16,7 @@ export type SearchResult = {
   scraped_at: string;
   source?: string;
   warning?: string;
+  language?: string | null;
 };
 
 function normalizeTags(value: unknown): string {
@@ -39,11 +40,13 @@ export type PlatformStatus = {
 export type WordCountFilter = "all" | "short" | "medium" | "long";
 export type CompletionFilter = "all" | "complete" | "ongoing";
 export type ResultSortMode = "relevance" | "updated" | "words";
+export type LanguageFilter = "all" | "zh" | "zh-hant" | "zh-hans" | "ja" | "en";
 
 export type ResultViewFilters = {
   wordCount: WordCountFilter;
   completion: CompletionFilter;
   sort: ResultSortMode;
+  language?: LanguageFilter;
 };
 
 export function isDisplayableResult(value: unknown): value is SearchResult {
@@ -191,6 +194,29 @@ export function parseWordCount(value: string | null | undefined): number {
   return digits ? Number(digits) : 0;
 }
 
+/** Prefer source metadata and only infer a broad category when it is absent. */
+export function resultLanguage(result: SearchResult): Exclude<LanguageFilter, "all"> {
+  const language = (result.language || "").trim().toLocaleLowerCase();
+  if (/(ja|japanese|日本語|日文)/.test(language)) return "ja";
+  if (/(zh-hant|hant|traditional|繁體|繁中|正體)/.test(language)) return "zh-hant";
+  if (/(zh-hans|hans|simplified|简体|簡體|简中|簡中)/.test(language)) return "zh-hans";
+  if (/(zh|chinese|中文|華文|华文)/.test(language)) return "zh";
+  if (/(en|english|英文)/.test(language)) return "en";
+
+  const text = `${result.title} ${result.summary} ${result.tags}`;
+  if (/[ぁ-んァ-ヶ]/.test(text)) return "ja";
+  if (/[后发复里为这国书爱见]/.test(text)) return "zh-hans";
+  if (/[臺這個與為國書愛見]/.test(text)) return "zh-hant";
+  if (/[\u3400-\u9fff]/.test(text)) return "zh";
+  return "en";
+}
+
+export function matchesLanguageFilter(result: SearchResult, filter: LanguageFilter = "all"): boolean {
+  if (filter === "all") return true;
+  const language = resultLanguage(result);
+  return filter === "zh" ? language.startsWith("zh") : language === filter;
+}
+
 function normalized(value: string | null | undefined): string {
   return (value || "").trim().toLocaleLowerCase();
 }
@@ -224,7 +250,7 @@ export function filterAndSortResults(
     const completionMatch = filters.completion === "all"
       || (filters.completion === "complete" && result.isComplete === true)
       || (filters.completion === "ongoing" && result.isComplete === false);
-    return wordMatch && completionMatch;
+    return wordMatch && completionMatch && matchesLanguageFilter(result, filters.language);
   });
 
   return filtered

@@ -39,6 +39,7 @@ import {
   isPlatformRetryable,
   normalizeResults,
   type CompletionFilter,
+  type LanguageFilter,
   type ResultSortMode,
   type SearchPagination,
   type SearchResult,
@@ -138,7 +139,7 @@ export default function Home() {
   const [activeQuery, setActiveQuery] = useState("");
   const [searchMode, setSearchMode] = useState<"keyword" | "author">("keyword");
   const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformId[]>(["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"]);
-  const [selectedLanguage, setSelectedLanguage] = useState<"all" | "zh" | "en" | "ja">("all");
+  const [selectedLanguage, setSelectedLanguage] = useState<LanguageFilter>("all");
   const [activePlatformFilter, setActivePlatformFilter] = useState<PlatformId | null>(null);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [platformStatuses, setPlatformStatuses] = useState<PlatformStatus[]>([]);
@@ -314,7 +315,7 @@ export default function Home() {
         ? results.filter((result) => platformMeta(result.platform).id === activePlatformFilter)
         : results,
       activeQuery || keyword.trim(),
-      { wordCount: wordCountFilter, completion: completionFilter, sort: sortMode },
+      { wordCount: wordCountFilter, completion: completionFilter, sort: sortMode, language: selectedLanguage },
     ),
     [results, activePlatformFilter, activeQuery, keyword, wordCountFilter, completionFilter, sortMode],
   );
@@ -357,9 +358,12 @@ export default function Home() {
         const { relaunch } = await import("@tauri-apps/plugin-process");
         const update = await check();
         if (update?.available) {
-          toast.info(`發現新版本 v${update.version}，正在下載並更新...`, { duration: 8000 });
-          await update.downloadAndInstall();
-          await relaunch();
+          const confirmed = window.confirm(`發現新版本 v${update.version}！是否立即下載並安裝更新？`);
+          if (confirmed) {
+            toast.info(`正在下載 v${update.version} 並準備重新啟動…`, { duration: 8000 });
+            await update.downloadAndInstall();
+            await relaunch();
+          }
         }
       } catch (err) {
         console.log("[Updater] Not in Tauri environment or update check skipped:", err);
@@ -415,7 +419,7 @@ export default function Home() {
     requestSearch({
       path: "/search",
       method: "POST",
-      data: { keyword: trimmedKeyword, mode: requestedMode, platforms: platformOverride ?? selectedPlatforms, page: 1, forceRefresh, customCpMappings, language: selectedLanguage },
+      data: { keyword: trimmedKeyword, mode: requestedMode, platforms: platformOverride ?? selectedPlatforms, page: 1, forceRefresh, customCpMappings, language: selectedLanguage === "zh-hant" || selectedLanguage === "zh-hans" ? "zh" : selectedLanguage },
     });
   };
 
@@ -550,7 +554,7 @@ export default function Home() {
               </div>
               <div className="grid gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#61707a]">語言篩選
                 <div className="flex h-10 items-center border border-[#10151b]/15 bg-white p-1">
-                  {(["all", "zh", "en", "ja"] as const).map((lang) => (
+                  {(["all", "zh", "zh-hant", "zh-hans", "en", "ja"] as const).map((lang) => (
                     <button
                       key={lang}
                       type="button"
@@ -559,7 +563,7 @@ export default function Home() {
                         selectedLanguage === lang ? "bg-[#111826] text-white" : "text-[#61707a] hover:bg-[#f0ece1]"
                       }`}
                     >
-                      {lang === "all" ? "全部" : lang === "zh" ? "中文" : lang === "en" ? "英文" : "日文"}
+                      {lang === "all" ? "全部" : lang === "zh" ? "中文" : lang === "zh-hant" ? "繁體" : lang === "zh-hans" ? "簡體" : lang === "en" ? "英文" : "日文"}
                     </button>
                   ))}
                 </div>

@@ -13,7 +13,12 @@ from scrapers.ao3_scraper import AO3Scraper
 def test_ao3_search_url_uses_standard_percent_encoding():
     url = AO3Scraper.build_search_url("義忍 & test")
     assert "work_search%5Bquery%5D=" in url
-    assert "%E7%BE%A9%E5%BF%8D%20%26%20test" in url
+    assert "%E7%BE%A9%E5%BF%8D+%26+test" in url
+    assert "work_search%5Blanguage_id%5D=zh" in AO3Scraper.build_search_url("義忍", language="zh")
+
+
+def test_ao3_simplifies_boolean_cp_mapping_to_primary_literal():
+    assert AO3Scraper.simplify_query('"Uchiha Sasuke/Haruno Sakura" OR "佐櫻"') == "Uchiha Sasuke/Haruno Sakura"
 
 
 def test_ao3_reuses_one_persistent_http_session():

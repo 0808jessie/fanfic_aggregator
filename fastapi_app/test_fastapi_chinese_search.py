@@ -73,3 +73,23 @@ def test_fastapi_search_chinese_keywords_contract():
         assert first["title"] == f"{kw} 搜尋契約作品"
         assert first["author"] == "AO3 測試作者"
         assert first["url"].startswith("https://archiveofourown.org")
+
+
+def test_invalid_language_filter_degrades_to_all_languages():
+    fixture = ScrapedFanfic(
+        id="ao3:language-contract",
+        title="語言容錯作品",
+        author="AO3 測試作者",
+        platform="AO3",
+        url="https://archiveofourown.org/works/language-contract",
+        tags="測試",
+        summary="不支援的語言值不應讓搜尋端點回傳 500。",
+        keyword="測試",
+    )
+    aggregate = {"items": [fixture], "any_success": True, "total_works": 1, "total_pages": 1, "warnings": []}
+    with patch("main.parallel_search_platforms", return_value=aggregate) as search, patch("main.save_fanfic_to_db"):
+        response = client.post("/search", json={"keyword": "測試", "platforms": ["ao3"], "language": "unexpected-value"})
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["title"] == "語言容錯作品"
+    assert "language" not in search.call_args.kwargs

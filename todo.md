@@ -366,4 +366,10 @@
 - [x] 將 Web 預覽 FastAPI worker 改為 Unix socket，避免 Manus 預覽服務誤選後端 TCP 埠
 - [x] 驗證右側預覽固定使用 Node 3000，並完成 FastAPI 代理與桌面端建置檢查
 - [x] 將作品來源外鏈接上 Tauri opener，並保留網頁預覽的原生新分頁行為
-- [ ] 更新版本、建立發布標籤並推送 GitHub Actions 產出最新桌面安裝檔
+- [x] 更新版本、建立發布標籤並推送 GitHub Actions 產出最新桌面安裝檔（v1.1.5，commit 912dfa8）
+
+- [x] 將語言與字數篩選改為以已載入搜尋結果的前端本地即時過濾，切換不重送搜尋請求
+- [x] 為搜尋前 language 參數補上安全正規化與預設全語言容錯，避免非法值造成後端錯誤
+- [x] 正規化 AO3 複合 OR／引號查詢，使用 quote_plus 與主 CP 降級請求，並保留持久 Chrome Session
+- [x] 驗證 Tauri 啟動時的更新檢查、確認對話框、下載安裝與重新啟動流程
+- [ ] 更新 v1.1.6 版本、執行回歸測試並推送 GitHub Release 標籤

@@ -32,6 +32,16 @@ describe("Tauri updater configuration", () => {
     expect(homePage).toContain("openSourceLink");
   });
 
+  it("checks updates on desktop startup and asks before download, install, and relaunch", () => {
+    const homePage = fs.readFileSync(path.join(projectRoot, "client", "src", "pages", "Home.tsx"), "utf8");
+
+    expect(homePage).toContain('import("@tauri-apps/plugin-updater")');
+    expect(homePage).toContain('import("@tauri-apps/plugin-process")');
+    expect(homePage).toContain("window.confirm(`發現新版本 v${update.version}！是否立即下載並安裝更新？`)");
+    expect(homePage).toContain("await update.downloadAndInstall()");
+    expect(homePage).toContain("await relaunch()");
+  });
+
   it("fails CI clearly when the signing secrets are not available", () => {
     const workflow = fs.readFileSync(path.join(projectRoot, ".github", "workflows", "release.yml"), "utf8");
 
