@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendUniqueResults, countLanguageResults, extractIsRateLimited, extractPlatformStatuses, extractSearchPagination, extractSearchWarning, filterAndSortResults, getLoadMoreLabel, isDisplayableResult, isPlatformRetryable, normalizeResults, parseWordCount } from "./searchResults";
+import { appendUniqueResults, countLanguageResults, extractIsRateLimited, extractPlatformStatuses, extractSearchPagination, extractSearchWarning, filterAndSortResults, getLoadMoreLabel, isDisplayableResult, isPlatformRetryable, isRestrictedResult, matchesExcludedKeyword, normalizeResults, parseWordCount } from "./searchResults";
 
 const verifiedAo3Result = {
   title: "Verified work",
@@ -179,6 +179,29 @@ describe("search result safety contract", () => {
     expect(filterAndSortResults([unknown, traditional], "work", { ...baseFilters, language: "zh" })).toEqual([traditional]);
     expect(countLanguageResults([unknown, traditional], "all")).toBe(2);
     expect(countLanguageResults([unknown, traditional], "zh-hant")).toBe(1);
+  });
+
+  it("excludes a work locally when a blacklist keyword matches any visible work metadata", () => {
+    const safe = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/81", title: "純愛短篇", tags: "治癒, 原作向" };
+    const blockedByCharacter = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/82", characters: ["避雷角色"], title: "角色劇情" };
+    const blockedByRelationship = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/83", relationships: ["甲/乙"], title: "配對劇情" };
+    const filters = { wordCount: "all" as const, completion: "all" as const, sort: "relevance" as const, excludedKeywords: ["避雷角色", "甲/乙"] };
+
+    expect(matchesExcludedKeyword(blockedByCharacter, ["避雷角色"])).toBe(true);
+    expect(matchesExcludedKeyword(blockedByRelationship, ["甲/乙"])).toBe(true);
+    expect(filterAndSortResults([safe, blockedByCharacter, blockedByRelationship], "劇情", filters)).toEqual([safe]);
+  });
+
+  it("recognizes source rating and tag markers, then filters R18 results locally", () => {
+    const general = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/91", rating: "General Audiences" };
+    const explicit = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/92", rating: "Explicit" };
+    const pixivR18 = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/93", tags: "Original, R-18" };
+    const base = { wordCount: "all" as const, completion: "all" as const, sort: "relevance" as const };
+
+    expect(isRestrictedResult(explicit)).toBe(true);
+    expect(isRestrictedResult(pixivR18)).toBe(true);
+    expect(filterAndSortResults([general, explicit, pixivR18], "work", { ...base, rating: "safe" })).toEqual([general]);
+    expect(filterAndSortResults([general, explicit, pixivR18], "work", { ...base, rating: "r18" })).toEqual([explicit, pixivR18]);
   });
 
   it("sorts filtered results by newest update or highest word count locally", () => {

@@ -29,6 +29,7 @@ class ScrapedFanfic(BaseModel):
     source: str = Field(default="live", description="Source of result: live, cache, or fallback")
     warning: Optional[str] = Field(default=None, description="Diagnostic warning if live scraping failed")
     language: Optional[str] = None
+    rating: Optional[str] = Field(default=None, description="Source content rating such as General, Mature, Explicit, or R-18")
 
 
 class SearchQuery(BaseModel):

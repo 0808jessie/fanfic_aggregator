@@ -64,6 +64,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  window.localStorage.setItem("sui-read-content-safety-settings", JSON.stringify({ ageConfirmation: "adult", blurRestrictedSummaries: true }));
   mockState.lastVariables = null;
 });
 
@@ -74,21 +75,21 @@ describe("Home Page Traditional Chinese '義忍' Search", () => {
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "義忍" } });
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
 
-    expect(screen.getByText(/正在掃描 AO3 數據庫/)).toBeTruthy();
+    expect(screen.getByText(/正在查詢 6 個來源/)).toBeTruthy();
 
-    await waitFor(() => expect(screen.getByText("40 STORIES FOUND")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("找到 40 篇作品")).toBeTruthy());
     expect(screen.getByText("【義忍】無題")).toBeTruthy();
     expect(screen.getByText(/mitsuhane/i)).toBeTruthy();
-    expect(screen.getByText("RELEVANCE 100")).toBeTruthy();
-    expect(screen.getByText("COMPLETED")).toBeTruthy();
-    expect(screen.getByText(/已於 .* 秒內完成查詢/)).toBeTruthy();
+    expect(screen.getByText("相關度 100")).toBeTruthy();
+    expect(screen.getByText("已完結")).toBeTruthy();
+    expect(screen.getByText(/.* 秒完成/)).toBeTruthy();
     expect(mockState.lastVariables).toEqual({
       path: "/search",
       method: "POST",
       data: { keyword: "義忍", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: false, customCpMappings: [] },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /FILTERS/ }));
+    fireEvent.click(screen.getByRole("button", { name: /進階篩選/ }));
     expect(screen.getByLabelText("字數區間")).toBeTruthy();
     expect(screen.getByLabelText("完結狀態")).toBeTruthy();
     expect(screen.getByLabelText("排序方式")).toBeTruthy();

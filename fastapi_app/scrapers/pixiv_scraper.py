@@ -154,6 +154,8 @@ class PixivScraper(BaseScraper):
             if not novel_id or not title:
                 continue
             record_language = str(record.get("language") or "unknown")
+            restrict_flag = str(record.get("xRestrict") or record.get("restrict") or "").strip().lower()
+            rating = "R-18" if restrict_flag in {"1", "2", "r18", "r-18", "r18g"} else None
 
             results.append(ScrapedFanfic(
                 id=f"pixiv:https://www.pixiv.net/novel/show.php?id={novel_id}",
@@ -168,6 +170,7 @@ class PixivScraper(BaseScraper):
                 wordCount=str(record.get("wordCount") or record.get("textCount") or "") or None,
                 updated_at=str(record.get("updateDate") or record.get("createDate") or datetime.now(timezone.utc).isoformat()),
                 language=record_language,
+                rating=rating,
                 scraped_at=datetime.now(timezone.utc),
                 keyword=keyword,
             ))

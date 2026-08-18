@@ -17,6 +17,7 @@ export type SearchResult = {
   source?: string;
   warning?: string;
   language?: string | null;
+  rating?: string | null;
 };
 
 function normalizeTags(value: unknown): string {
@@ -41,12 +42,15 @@ export type WordCountFilter = "all" | "short" | "medium" | "long";
 export type CompletionFilter = "all" | "complete" | "ongoing";
 export type ResultSortMode = "relevance" | "updated" | "words";
 export type LanguageFilter = "all" | "zh" | "zh-hant" | "zh-hans" | "ja" | "en";
+export type RatingFilter = "all" | "safe" | "r18";
 
 export type ResultViewFilters = {
   wordCount: WordCountFilter;
   completion: CompletionFilter;
   sort: ResultSortMode;
   language?: LanguageFilter;
+  excludedKeywords?: string[];
+  rating?: RatingFilter;
 };
 
 export function isDisplayableResult(value: unknown): value is SearchResult {
@@ -227,6 +231,35 @@ function normalized(value: string | null | undefined): string {
   return (value || "").trim().toLocaleLowerCase();
 }
 
+export function normalizeExcludedKeywords(values: string[]): string[] {
+  return Array.from(new Set(
+    values.map((value) => value.trim()).filter(Boolean).map((value) => value.toLocaleLowerCase()),
+  )).slice(0, 50);
+}
+
+export function matchesExcludedKeyword(result: SearchResult, excludedKeywords: string[] = []): boolean {
+  const needleList = normalizeExcludedKeywords(excludedKeywords);
+  if (!needleList.length) return false;
+  const haystack = [
+    result.title,
+    result.characters?.join(" "),
+    result.relationships?.join(" "),
+    result.tags,
+    result.summary,
+  ].map(normalized).join(" ");
+  return needleList.some((keyword) => haystack.includes(keyword));
+}
+
+export function isRestrictedResult(result: SearchResult): boolean {
+  const classification = [result.rating, result.tags].filter(Boolean).join(" ").toLocaleLowerCase();
+  return /\b(explicit|mature|r[-\s]?18|18\+|r18g)\b|限制級|成人向|僅限成人/.test(classification);
+}
+
+export function matchesRatingFilter(result: SearchResult, filter: RatingFilter | undefined): boolean {
+  if (!filter || filter === "all") return true;
+  return filter === "r18" ? isRestrictedResult(result) : !isRestrictedResult(result);
+}
+
 function localRelevanceScore(result: SearchResult, keyword: string): number {
   const query = normalized(keyword);
   if (!query) return 0;
@@ -256,7 +289,8 @@ export function filterAndSortResults(
     const completionMatch = filters.completion === "all"
       || (filters.completion === "complete" && result.isComplete === true)
       || (filters.completion === "ongoing" && result.isComplete === false);
-    return wordMatch && completionMatch && matchesLanguageFilter(result, filters.language);
+    const blacklistMatch = matchesExcludedKeyword(result, filters.excludedKeywords);
+    return wordMatch && completionMatch && matchesLanguageFilter(result, filters.language) && matchesRatingFilter(result, filters.rating) && !blacklistMatch;
   });
 
   return filtered

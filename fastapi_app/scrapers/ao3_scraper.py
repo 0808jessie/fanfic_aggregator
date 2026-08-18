@@ -200,6 +200,7 @@ class AO3Scraper(BaseScraper):
             updated_el = work.select_one("p.datetime")
             status_el = work.select_one("dd.status")
             language_el = work.select_one("dd.language")
+            rating_el = work.select_one("li.rating .text, li.rating")
             status_text = status_el.get_text(" ", strip=True) if status_el else ""
             if not url or not is_real_url(url):
                 continue
@@ -211,6 +212,7 @@ class AO3Scraper(BaseScraper):
                 updatedAt=updated_el.get_text(strip=True) if updated_el else None,
                 isComplete=status_text.casefold().startswith("completed"),
                 language=language_el.get_text(" ", strip=True) if language_el else "unknown",
+                rating=rating_el.get_text(" ", strip=True) if rating_el else None,
                 scraped_at=datetime.utcnow(), keyword=keyword,
             ))
         return items

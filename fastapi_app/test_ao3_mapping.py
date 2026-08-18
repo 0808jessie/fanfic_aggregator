@@ -157,6 +157,21 @@ def test_ao3_static_html_path_parses_cards_and_official_heading_without_browser(
     assert get.call_args.kwargs["cookies"] == {"view_adult": "true", "accepted_tos": "2018"}
 
 
+def test_ao3_static_card_preserves_explicit_rating_metadata():
+    html = """
+    <li class="work blurb">
+      <h4 class="heading"><a href="/works/42002">Rated AO3 Story</a><a rel="author">Author</a></h4>
+      <ul class="tags"><li class="rating tags"><span class="text">Explicit</span></li></ul>
+      <dd class="status">Completed</dd>
+    </li>
+    """
+
+    items = AO3Scraper()._parse_static_results(html, "rating")
+
+    assert len(items) == 1
+    assert items[0].rating == "Explicit"
+
+
 def test_ao3_boolean_translation_falls_back_to_the_original_keyword():
     scraper = AO3Scraper()
     long_boolean_query = '"Tomioka Giyuu/Kochou Shinobu" OR "義忍"'

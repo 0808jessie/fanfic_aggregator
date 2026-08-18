@@ -15,10 +15,10 @@ describe("Tauri updater configuration", () => {
     ]);
   });
 
-  it("grants the updater installer and process relaunch capabilities", () => {
+  it("grants updater, process, opener, and AppData store capabilities", () => {
     const capabilities = JSON.parse(fs.readFileSync(path.join(projectRoot, "src-tauri", "capabilities", "default.json"), "utf8"));
 
-    expect(capabilities.permissions).toEqual(expect.arrayContaining(["updater:default", "process:default", "opener:default"]));
+    expect(capabilities.permissions).toEqual(expect.arrayContaining(["updater:default", "process:default", "opener:default", "store:default"]));
   });
 
   it("registers the opener plugin so desktop source links use the system browser", () => {
@@ -30,6 +30,17 @@ describe("Tauri updater configuration", () => {
     expect(rustEntry).toContain("tauri_plugin_opener::init()");
     expect(homePage).toContain('@tauri-apps/plugin-opener');
     expect(homePage).toContain("openSourceLink");
+  });
+
+  it("registers Tauri Store for AppData-backed personal data", () => {
+    const cargoManifest = fs.readFileSync(path.join(projectRoot, "src-tauri", "Cargo.toml"), "utf8");
+    const rustEntry = fs.readFileSync(path.join(projectRoot, "src-tauri", "src", "lib.rs"), "utf8");
+    const personalStore = fs.readFileSync(path.join(projectRoot, "client", "src", "lib", "desktopPersonalStore.ts"), "utf8");
+
+    expect(cargoManifest).toContain('tauri-plugin-store = "2.4.4"');
+    expect(rustEntry).toContain("tauri_plugin_store::Builder::new().build()");
+    expect(personalStore).toContain('"favorites.json"');
+    expect(personalStore).toContain('"settings.json"');
   });
 
   it("checks updates on desktop startup and asks before download, install, and relaunch", () => {

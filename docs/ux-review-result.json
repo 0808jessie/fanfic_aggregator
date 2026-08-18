@@ -1,0 +1,96 @@
+{
+  "schema_version": "2.1",
+  "session_config": {
+    "working_language": "zh-TW",
+    "canonical_identifiers": "en",
+    "fallback_language": "en"
+  },
+  "review_id": "fanfic-atlas-ux-heuristic-2026-08-18",
+  "product_direction": "改善跨平台搜尋、非同步來源回饋、結果掃描與藏書管理的可理解性與低摩擦操作。",
+  "mode": "standard_gate",
+  "stage": "prototype",
+  "actor_boundary": {
+    "target_population": ["需要跨平台找文、避雷與管理私人書單的成年同人讀者"],
+    "operator": "Fanfic Atlas 讀者",
+    "beneficiary": "希望降低找文、避雷與追蹤閱讀進度成本的讀者",
+    "machine_actor": "來源 adapter、FastAPI 搜尋服務與 Tauri Store",
+    "affected_people": ["讀者", "原始內容平台", "被導流的創作者與社群"],
+    "excluded_groups": ["未滿 18 歲者", "不支援來源或語言的讀者", "沒有桌面裝置的使用者"]
+  },
+  "product_organization": {
+    "organization": "Fanfic Atlas",
+    "project_owner": "0808jessie",
+    "issuer": "Fanfic Atlas 專案"
+  },
+  "stakeholder_effects": [
+    {"stakeholder": "讀者", "effect": "可降低搜尋與書單管理的認知成本，但過多控制項可能反而提高學習負擔。"},
+    {"stakeholder": "原始內容平台", "effect": "單一來源失敗時的重試與導流設計影響其請求負載與合規邊界。"},
+    {"stakeholder": "專案維護者", "effect": "新增模式與狀態會提高測試、維護與支援成本。"}
+  ],
+  "human_judgment_boundary": {
+    "human_owned_decisions": ["P0／P1 優先級", "內容保護尺度", "視覺語氣", "後續投入範圍"],
+    "machine_supported_inputs": ["原始碼結構、目前視覺預覽、既有測試與狀態模型"],
+    "not_mechanized": ["實際使用者需求判斷", "是否發布", "是否改變來源平台策略"],
+    "approval_gates": [
+      {"gate_id": "owner-approve-ux-slice", "accountable_owner": "0808jessie", "condition": "依任務測試結果選定首個 P0 實作切片前"}
+    ]
+  },
+  "unresolved_assumptions": [
+    "尚無真實使用者任務測試、完成時間、錯誤率或回訪資料。",
+    "尚未知曉不同讀者是否會常用進階篩選、避雷遮罩與批次模式。",
+    "目前程式介面檢視不能證明建議能改善真實任務效率。"
+  ],
+  "combined_verdict": "verify",
+  "weakest_flow": "evidence",
+  "strongest_signal": "現有程式已暴露高密度搜尋篩選、六來源獨立狀態、卡片多層資訊與多選工具列，可直接識別啟發式風險。",
+  "riskiest_claim": "把目前的啟發式建議直接視為已被使用者驗證的優化方向。",
+  "main_uncertainty": "沒有觀察到目標讀者完成首查、來源失敗復原、避雷解除與批次管理的真實行為。",
+  "confidence_level": "low",
+  "evidence_tier": "t1",
+  "main_trade_off": "降低首次認知負擔通常需要隱藏部分控制項；這可能增加熟練使用者多一步操作。",
+  "human_owned_decision": "strategy",
+  "human_decision_record_id": "fanfic-atlas-owner-priority-2026-08-18",
+  "evidence_receipt_ids": ["source-home-2026-08-18", "source-bookshelf-2026-08-18", "source-library-card-2026-08-18"],
+  "reviews": {
+    "user": {
+      "verdict": "verify",
+      "evidence_tier": "t1",
+      "strongest_signal": "搜尋表面與藏書卡上可見多個同時競爭注意力的控制項與資訊層級。",
+      "weakest_assumption": "讀者會偏好把所有篩選與閱讀進度欄位維持在主畫面上。",
+      "missing_evidence": "目標讀者在中斷、行動尺寸與多來源失敗情境下的任務完成紀錄。",
+      "disconfirming_evidence": "熟練讀者可能重視一次看見所有控制項，抽屜分層可能降低效率。",
+      "stop_condition": "若五位目標讀者在首查任務中無法理解新分層或完成時間未改善，停止擴大重構。"
+    },
+    "evidence": {
+      "verdict": "verify",
+      "evidence_tier": "t1",
+      "strongest_signal": "程式結構顯示篩選、來源狀態、遮罩和批次操作均已有可測量的明確互動點。",
+      "weakest_assumption": "內部程式檢視可代表真實使用者痛點優先級。",
+      "missing_evidence": "任務時間、誤觸、放棄率、恢復成功率與使用者口述原因。",
+      "disconfirming_evidence": "視覺密度可能是品牌偏好而非造成任務失敗的原因。",
+      "stop_condition": "若無法蒐集最小任務測試證據，僅保留低風險文案與可見性修正，不進行結構性改版。"
+    },
+    "business": {
+      "verdict": "verify",
+      "evidence_tier": "t1",
+      "strongest_signal": "改善搜尋復原與本地書單流程可直接提升核心產品價值。",
+      "weakest_assumption": "新增導覽與狀態層不會造成不成比例的維護與測試負擔。",
+      "missing_evidence": "維護時間、支援量與來源平台錯誤情境下的使用者需求。",
+      "disconfirming_evidence": "功能擴張可能加重小型專案的測試與文件成本。",
+      "stop_condition": "若 P0 切片需要同步改動多個不可回復資料格式或來源 adapter，縮小為前端可逆調整。"
+    }
+  },
+  "next_smallest_action": "以 5 位符合條件的讀者進行 20 分鐘任務測試：完成一次 CP 搜尋、理解單一來源受阻後繼續瀏覽、開啟／解除避雷遮罩、批次調整 3 筆藏書；記錄完成時間、誤觸、求助與主觀負荷。",
+  "execution_boundary": {
+    "may_do": ["製作低保真流程原型", "進行任務導向可用性測試", "依測試結果提出單一前端 P0 切片"],
+    "must_not_do": ["不把本次啟發式評估當成真實使用者驗證", "不在未獲擁有者確認前重構核心搜尋或資料格式", "不改變內容保護與來源請求策略"],
+    "must_ask": ["目標測試使用者資格與裝置", "成功指標門檻", "內容分級與避雷文案的接受尺度"]
+  },
+  "human_approval_gates": [
+    {"gate_id": "owner-approve-ux-slice", "accountable_owner": "0808jessie", "condition": "任務測試結果支持選定 P0 切片後"}
+  ],
+  "high_risk_actions": [],
+  "stop_conditions": ["未取得任務測試資料時，不將假設性的 P0 建議實作為大型重構。", "若新資訊架構讓任務完成時間或錯誤率變差，回復目前控制項並重新界定問題。"],
+  "context_pack_required": false,
+  "proof_step": "執行上述最小任務測試並比較現行版與低保真分層原型的完成時間、誤觸與主觀負荷。"
+}

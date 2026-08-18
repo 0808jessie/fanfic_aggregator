@@ -388,3 +388,35 @@
 - [x] 將最近 10 次搜尋改為可清除的聚焦下拉紀錄，並加入常用 CP 釘選列
 - [x] 在搜尋結果底部以 IntersectionObserver 自動追加下一頁，並提供載入中狀態與手動備援
 - [x] 補齊收藏、匯出、歷史、釘選與分頁單元測試，驗證正式建置與 Tauri 編譯
+- [x] 建立避雷黑名單關鍵字模型，支援逗號／Enter 轉標籤、全局儲存及作品 metadata 純前端比對
+- [x] 在搜尋篩選列新增可管理的避雷標籤輸入，並在結果與計數中排除命中作品
+- [x] 整合 Tauri Store，將收藏、黑名單、釘選 CP 與搜尋歷史寫入 AppData 並自 localStorage 自動遷移
+- [x] 為網頁預覽保留安全 localStorage 降級，並補上桌面與網頁儲存 adapter 測試
+- [x] 完成 TypeScript、Vitest、production build、cargo check 與介面驗證
+- [x] 建立作品分級正規化與 R18 辨識，涵蓋 Explicit、Mature、R-18、18+ 與限制級標籤
+- [x] 建立首次啟動年齡確認與未滿 18 歲的全年齡保護預設，持久化於 AppData／localStorage
+- [x] 在前端篩選列加入全部、全年齡與 R18 分級模式，保持純前端即時過濾
+- [x] 在限制級作品卡加入 R18 徽章與可選摘要模糊／展開保護
+- [x] 補齊分級、年齡設定與互動測試，完成 TypeScript、Vitest、production build 與 cargo check
+- [x] 擴充收藏資料模型，支援未讀／閱讀中／已讀完、百分比或章節進度與多維度排序
+- [x] 建立藏書多選模式，提供批次刪除、分類變更與標籤覆寫操作
+- [x] 將避雷詞升級為可獨立啟用的分組，並提供命中作品的可解鎖防雷遮罩模式
+- [x] 在搜尋篩選列顯示已啟用條件數與一鍵重設，保留所有過濾操作的前端即時性
+- [x] 建立包含藏書、進度、避雷分組與偏好的完整 JSON 匯出／匯入還原流程
+- [x] 補齊資料模型、批次操作、避雷遮罩、備份與篩選回饋測試，驗證 TypeScript、production build 與 cargo check
+- [x] 進行 Fanfic Atlas 搜尋、非同步回饋、結果瀏覽與藏書閣的 UX 啟發式評估
+- [x] 整理 P0／P1 體驗痛點、具體版面／互動／文案優化與元件重構建議
+- [x] 在不改動搜尋 API、Tauri Store、避雷分組或資料契約下，將語言／分級改為常駐快捷篩選並加入可移除生效標籤
+- [x] 將字數、完結、排序與平台設定保留於進階篩選，修正 Reset All 僅清除本次條件而不影響全局避雷設定
+- [x] 以聚合來源進度與卡片級重試狀態改善多來源搜尋回饋，保持既有結果清單與請求流程不變
+- [x] 收斂結果卡標籤、優化避雷遮罩文案，維持現有 R18 與避雷資料判定
+- [x] 將藏書批次操作改為 sticky selection bar，增加批次刪除確認並將閱讀進度輸入改為輕量 popover
+- [x] 補齊前端互動回歸測試並完成 TypeScript、production build、cargo check 與視覺驗證
+- [x] 載入 Impeccable 上下文與既有視覺證據，定義不觸及後端、Tauri、避雷與篩選邏輯的重構邊界
+- [x] 建立現代工藝閱讀器的中性階層、溫潤 accent、閱讀字級與明暗主題 token
+- [x] 將搜尋列、模式切換與篩選控制重設為具微光回饋的一體化命令列與 segmented controls
+- [x] 將結果卡、避雷遮罩與藏書閣重設為閱讀導向的低邊框、舒適留白與細緻互動元件
+- [x] 完成 Impeccable 品質檢查、Vitest、TypeScript、production build、cargo check 與桌面／行動視覺驗證
+- [x] 將桌面端與後端公開版本更新為 v1.1.9
+- [ ] 將 v1.1.9 視覺重構同步至 GitHub main 並推送版本標籤
+- [ ] 確認 GitHub Actions 已接收 v1.1.9 標籤建置

@@ -9,8 +9,10 @@ from database import engine
 from sqlalchemy import inspect
 
 
-def test_language_column_is_available_for_persistent_cache():
-    assert "language" in {column["name"] for column in inspect(engine).get_columns("fanfics")}
+def test_language_and_rating_columns_are_available_for_persistent_cache():
+    columns = {column["name"] for column in inspect(engine).get_columns("fanfics")}
+    assert "language" in columns
+    assert "rating" in columns
 
 
 def test_language_selection_never_restricts_adapter_results(monkeypatch):

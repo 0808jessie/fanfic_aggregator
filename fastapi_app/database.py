@@ -30,6 +30,7 @@ class Fanfic(Base):
     tags = Column(String, nullable=False, default="")
     summary = Column(String, nullable=False, default="")
     language = Column(String, nullable=False, default="unknown", index=True)
+    rating = Column(String, nullable=True, index=True)
     keyword = Column(String, nullable=True, index=True)
     scraped_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
 
@@ -44,6 +45,9 @@ def initialize_database() -> None:
     if "language" not in columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE fanfics ADD COLUMN language VARCHAR NOT NULL DEFAULT 'unknown'"))
+    if "rating" not in columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE fanfics ADD COLUMN rating VARCHAR"))
 
 
 initialize_database()

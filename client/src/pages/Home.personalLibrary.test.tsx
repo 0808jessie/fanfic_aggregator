@@ -51,7 +51,10 @@ vi.mock("@/lib/trpc", async () => {
 });
 
 describe("Home personal reading tools", () => {
-  beforeEach(() => window.localStorage.clear());
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem("sui-read-content-safety-settings", JSON.stringify({ ageConfirmation: "adult", blurRestrictedSummaries: true }));
+  });
   afterEach(() => cleanup());
 
   it("saves a reading card, shows it in the private shelf, and manages a CP mapping", async () => {
@@ -86,5 +89,26 @@ describe("Home personal reading tools", () => {
     expect(screen.getByText("TROPE / WORLD INDEX")).toBeTruthy();
     expect(screen.getByText("ABO / 歐米茄")).toBeTruthy();
     expect(screen.getByText("Alpha/Beta/Omega Dynamics")).toBeTruthy();
+  });
+
+  it("adds an exclusion keyword and immediately hides matching loaded works", async () => {
+    render(<Home />);
+
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "月光" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+    await waitFor(() => expect(screen.getByText("義忍閱讀測試")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: /進階篩選/ }));
+    fireEvent.change(screen.getByLabelText("避雷分組名稱"), { target: { value: "通用避雷" } });
+    fireEvent.change(screen.getByLabelText("避雷分組關鍵字"), { target: { value: "義忍" } });
+    fireEvent.click(screen.getByRole("button", { name: "新增分組" }));
+
+    expect(screen.getByText("通用避雷")).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText("義忍閱讀測試")).toBeNull());
+
+    fireEvent.click(screen.getByLabelText("顯示被過濾作品"));
+    await waitFor(() => expect(screen.getByText("⚠️ 此作品命中避雷設定")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "⚠️ 暫時查看這一篇" }));
+    await waitFor(() => expect(screen.getByText("義忍閱讀測試")).toBeTruthy());
   });
 });

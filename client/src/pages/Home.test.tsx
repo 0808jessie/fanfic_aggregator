@@ -78,6 +78,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  window.localStorage.setItem("sui-read-content-safety-settings", JSON.stringify({ ageConfirmation: "adult", blurRestrictedSummaries: true }));
   mockState.nextHookId = 0;
   mockState.lastVariables = null;
   mockState.responseWarning = null;
@@ -87,13 +88,49 @@ beforeEach(() => {
 });
 
 describe("Home pagination interactions", () => {
-  it("renders the story cartography search workspace before a query", () => {
+  it("asks for age confirmation on first launch and forces the safe rating mode for minors", async () => {
+    window.localStorage.clear();
+    mockState.primaryPayload = {
+      items: [{ title: "限制級測試作品", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/801", tags: "R-18", rating: "Explicit", summary: "測試摘要", scraped_at: "2026-01-01T00:00:00Z" }],
+      totalWorks: 1, totalPages: 1, page: 1, loadedThroughPage: 1, nextPage: null, hasMore: false,
+    };
     render(<Home />);
 
-    expect(screen.getByText("QUERY TRAJECTORY")).toBeTruthy();
-    expect(screen.getByText("READY FOR A QUERY")).toBeTruthy();
-    expect(screen.getByText("FIRST COORDINATE")).toBeTruthy();
-    expect(screen.getByText("VERIFIED LINKS")).toBeTruthy();
+    expect(screen.getByText("年齡確認")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /未滿 18 歲/ }));
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "測試" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+    await waitFor(() => expect(screen.queryByText("限制級測試作品")).toBeNull());
+
+    expect(screen.getByText("全年齡保護已啟用")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "R18" }).getAttribute("disabled")).not.toBeNull();
+  });
+
+  it("lets an adult select R18 locally and marks restricted cards", async () => {
+    mockState.primaryPayload = {
+      items: [
+        { title: "全年齡作品", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/811", tags: "General", rating: "General Audiences", summary: "安全摘要", scraped_at: "2026-01-01T00:00:00Z" },
+        { title: "限制級作品", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/812", tags: "Explicit", rating: "Explicit", summary: "敏感摘要", scraped_at: "2026-01-01T00:00:00Z" },
+      ], totalWorks: 2, totalPages: 1, page: 1, loadedThroughPage: 1, nextPage: null, hasMore: false,
+    };
+    render(<Home />);
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "作品" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+    await waitFor(() => expect(screen.getByText("限制級作品")).toBeTruthy());
+    expect(screen.getByText("18+ / R18")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "R18" }));
+    expect(screen.getByText("限制級作品")).toBeTruthy();
+    expect(screen.queryByText("全年齡作品")).toBeNull();
+  });
+
+  it("renders the crafted reading workspace before a query", () => {
+    render(<Home />);
+
+    expect(screen.getByText("你的私人閱讀空間")).toBeTruthy();
+    expect(screen.getByText("準備好開始搜尋")).toBeTruthy();
+    expect(screen.getByText("把想讀的故事")).toBeTruthy();
+    expect(screen.getByText("跨平台同人閱讀")).toBeTruthy();
     expect(screen.getByRole("button", { name: "RUN SEARCH" })).toBeTruthy();
   });
 
@@ -103,7 +140,7 @@ describe("Home pagination interactions", () => {
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "月光" } });
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
 
-    await waitFor(() => expect(screen.getByText("60 STORIES FOUND")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("找到 60 篇作品")).toBeTruthy());
     expect(screen.getByText("PAGE ONE")).toBeTruthy();
     const relationshipTag = screen.getByText("♡ 富岡義勇/胡蝶忍");
     expect(relationshipTag.className).toContain("bg-[#ffe8f0]");
@@ -115,7 +152,7 @@ describe("Home pagination interactions", () => {
 
     await waitFor(() => expect(screen.getByText("PAGE THREE")).toBeTruthy());
     expect(screen.getAllByText("PAGE ONE", { exact: true })).toHaveLength(1);
-    expect(screen.getByText("LOADED THROUGH PAGE 3 / 3")).toBeTruthy();
+    expect(screen.getByText("已載入第 3 / 3 頁")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "LOAD MORE / PAGE 3" })).toBeNull();
   });
 
@@ -213,7 +250,7 @@ describe("Home pagination interactions", () => {
     expect(screen.getByLabelText("搜尋同人作品").getAttribute("placeholder")).toBe("輸入作者暱稱、繪師或社團名...");
 
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "Mizuki Studio" } });
-    expect(screen.getByText("AUTHOR MODE / 搜尋作者：Mizuki Studio")).toBeTruthy();
+    expect(screen.getByText("正在搜尋作者：Mizuki Studio")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
 
     await waitFor(() => expect(mockState.lastVariables).toEqual({
@@ -240,7 +277,7 @@ describe("Home pagination interactions", () => {
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "佐櫻不存在測試CP" } });
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
 
-    await waitFor(() => expect(screen.getByText("NO VERIFIED STORIES")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("暫時沒有可驗證的公開作品")).toBeTruthy());
     expect(screen.getByText("CxC 創利市集")).toBeTruthy();
     expect(screen.getByText("無公開結果")).toBeTruthy();
     expect(screen.queryByText("DISCOVERY HALTED")).toBeNull();
@@ -278,7 +315,7 @@ describe("Home pagination interactions", () => {
   it("renders platform checkboxes and sends the selected platform list", async () => {
     render(<Home />);
 
-    fireEvent.click(screen.getByRole("button", { name: /FILTERS/ }));
+    fireEvent.click(screen.getByRole("button", { name: /進階篩選/ }));
     const doujinCheckbox = screen.getByRole("checkbox", { name: "搜尋 同人誌中心" });
     const waterwriterCheckbox = screen.getByRole("checkbox", { name: "搜尋 在水裡寫字" });
     const penanaCheckbox = screen.getByRole("checkbox", { name: "搜尋 PENANA" });
@@ -355,5 +392,5 @@ describe("Home pagination interactions", () => {
       method: "POST",
       data: { keyword: "Atlas Creator", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
-    expect(screen.getByText(/AUTHOR MODE \/ 搜尋作者：Atlas Creator/)).toBeTruthy();
+    expect(screen.getByText(/正在搜尋作者：Atlas Creator/)).toBeTruthy();
   });

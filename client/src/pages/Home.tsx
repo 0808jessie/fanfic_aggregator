@@ -38,13 +38,16 @@ import {
   filterAndSortResults,
   getLoadMoreLabel,
   isPlatformRetryable,
+  isRestrictedResult,
   normalizeResults,
+  matchesExcludedKeyword,
   type CompletionFilter,
   type LanguageFilter,
   type ResultSortMode,
   type SearchPagination,
   type SearchResult,
   type PlatformStatus,
+  type RatingFilter,
   type WordCountFilter,
 } from "@/lib/searchResults";
 import { Badge } from "@/components/ui/badge";
@@ -54,24 +57,43 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { BlueprintCover } from "@/components/BlueprintCover";
 import { BookshelfView } from "@/components/BookshelfView";
+import { BlacklistGroupManager } from "@/components/ExcludeKeywordEditor";
+import { AgeConfirmationDialog, RestrictedSummary } from "@/components/ContentSafety";
 import { BookmarkEditorDialog, CpMappingManagerDialog } from "@/components/PersonalLibrary";
 import {
   loadBookmarks,
+  activeBlacklistKeywords,
+  clearSearchHistory,
+  DEFAULT_CONTENT_SAFETY_SETTINGS,
+  loadContentSafetySettings,
   loadCustomCpMappings,
+  loadExcludedKeywords,
+  loadBlacklistGroups,
   loadFilterPreset,
   loadPinnedQueries,
   loadSearchHistory,
+  hydratePersonalLibrary,
   mergeImportedBookmarks,
   mergeCpMappings,
   persistBookmarks,
+  persistContentSafetySettings,
   persistCpMappings,
+  persistExcludedKeywords,
+  persistBlacklistGroups,
   persistFilterPreset,
   persistPinnedQueries,
   persistSearchHistory,
   recordSearch,
+  parseFullPersonalBackup,
+  serializeFullPersonalBackup,
+  normalizeExcludedKeywordList,
   togglePinnedQuery,
+  updateBookmarksBatch,
+  updateBlacklistGroup,
   upsertBookmark,
   type BookmarkRecord,
+  type BlacklistGroup,
+  type ContentSafetySettings,
   type CpMapping,
 } from "@/lib/personalLibrary";
 
@@ -158,6 +180,13 @@ export default function Home() {
   const [cpManagerOpen, setCpManagerOpen] = useState(false);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [pinnedQueries, setPinnedQueries] = useState<string[]>([]);
+  const [excludedKeywords, setExcludedKeywords] = useState<string[]>([]);
+  const [blacklistGroups, setBlacklistGroups] = useState<BlacklistGroup[]>([]);
+  const [showFilteredResults, setShowFilteredResults] = useState(false);
+  const [revealedFilteredUrls, setRevealedFilteredUrls] = useState<Set<string>>(new Set());
+  const [expandedTagUrls, setExpandedTagUrls] = useState<Set<string>>(new Set());
+  const [ratingFilter, setRatingFilter] = useState<RatingFilter>(() => loadContentSafetySettings().ageConfirmation === "adult" ? "all" : "safe");
+  const [contentSafetySettings, setContentSafetySettings] = useState<ContentSafetySettings>(() => loadContentSafetySettings());
   const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
   const [searchWarning, setSearchWarning] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
@@ -170,9 +199,11 @@ export default function Home() {
   const [sidecarState, setSidecarState] = useState<"idle" | "starting" | "ready" | "error">("idle");
   const [desktopSearchPending, setDesktopSearchPending] = useState(false);
   const [desktopLoadMorePending, setDesktopLoadMorePending] = useState(false);
+  const [retryingPlatformId, setRetryingPlatformId] = useState<PlatformId | null>(null);
   const searchStartedAt = useRef<number | null>(null);
   const retryingPlatformRef = useRef<PlatformId | null>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
+  const personalDataRevisionRef = useRef(0);
   const [pagination, setPagination] = useState<SearchPagination>({
     totalWorks: 0,
     totalPages: 0,
@@ -196,6 +227,7 @@ export default function Home() {
           : current;
       });
       retryingPlatformRef.current = null;
+      setRetryingPlatformId(null);
       if (retryingPlatform) {
         setResults((current) => appendUniqueResults(
           current.filter((result) => platformMeta(result.platform).id !== retryingPlatform),
@@ -232,6 +264,7 @@ export default function Home() {
         setPagination({ totalWorks: 0, totalPages: 0, page: 1, loadedThroughPage: 0, nextPage: null, hasMore: false });
       }
       retryingPlatformRef.current = null;
+      setRetryingPlatformId(null);
       setSearchWarning(error.message || "搜尋服務暫時無法連線，請確認 FastAPI 服務已啟動。");
       if (searchStartedAt.current !== null) {
         setCompletedElapsedMs(performance.now() - searchStartedAt.current);
@@ -324,17 +357,50 @@ export default function Home() {
         ? results.filter((result) => platformMeta(result.platform).id === activePlatformFilter)
         : results,
       activeQuery || keyword.trim(),
-      { wordCount: wordCountFilter, completion: completionFilter, sort: sortMode, language: selectedLanguage },
+      { wordCount: wordCountFilter, completion: completionFilter, sort: sortMode, language: selectedLanguage, excludedKeywords: showFilteredResults ? [] : excludedKeywords, rating: contentSafetySettings.ageConfirmation === "minor" ? "safe" : ratingFilter },
     ),
-    [results, activePlatformFilter, activeQuery, keyword, wordCountFilter, completionFilter, sortMode, selectedLanguage],
+    [results, activePlatformFilter, activeQuery, keyword, wordCountFilter, completionFilter, sortMode, selectedLanguage, excludedKeywords, showFilteredResults, ratingFilter, contentSafetySettings.ageConfirmation],
   );
+  const activeFilterCount = [
+    selectedLanguage !== "all",
+    wordCountFilter !== "all",
+    completionFilter !== "all",
+    contentSafetySettings.ageConfirmation === "adult" && ratingFilter !== "all",
+    Boolean(activePlatformFilter),
+    selectedPlatforms.length !== PLATFORMS.length,
+    excludedKeywords.length > 0,
+  ].filter(Boolean).length;
+  const activeFilterChips = useMemo(() => {
+    const chips: Array<{ id: string; label: string; clear: () => void }> = [];
+    if (selectedLanguage !== "all") {
+      const label = selectedLanguage === "zh" ? "中文" : selectedLanguage === "zh-hant" ? "繁體" : selectedLanguage === "zh-hans" ? "簡體" : selectedLanguage === "en" ? "英文" : "日文";
+      chips.push({ id: "language", label, clear: () => setSelectedLanguage("all") });
+    }
+    if (wordCountFilter !== "all") chips.push({ id: "words", label: wordCountFilter === "short" ? "1,000 字以下" : wordCountFilter === "medium" ? "1,000–10,000 字" : "10,000 字以上", clear: () => setWordCountFilter("all") });
+    if (completionFilter !== "all") chips.push({ id: "completion", label: completionFilter === "complete" ? "僅完結" : "僅連載", clear: () => setCompletionFilter("all") });
+    if (sortMode !== "relevance") chips.push({ id: "sort", label: sortMode === "updated" ? "最新更新" : "字數最多", clear: () => setSortMode("relevance") });
+    if (contentSafetySettings.ageConfirmation === "adult" && ratingFilter !== "all") chips.push({ id: "rating", label: ratingFilter === "safe" ? "僅全年齡" : "僅 R18", clear: () => setRatingFilter("all") });
+    if (activePlatformFilter) chips.push({ id: "result-platform", label: `${platformMeta(activePlatformFilter).label} 結果`, clear: () => setActivePlatformFilter(null) });
+    if (selectedPlatforms.length !== PLATFORMS.length) chips.push({ id: "sources", label: `${selectedPlatforms.length} 個來源`, clear: () => setSelectedPlatforms(PLATFORMS.map((platform) => platform.id)) });
+    if (excludedKeywords.length > 0 && !showFilteredResults) chips.push({ id: "blacklist", label: "避雷生效中", clear: () => setShowFilteredResults(true) });
+    return chips;
+  }, [selectedLanguage, wordCountFilter, completionFilter, sortMode, contentSafetySettings.ageConfirmation, ratingFilter, activePlatformFilter, selectedPlatforms.length, excludedKeywords.length, showFilteredResults]);
   const languageCounts = useMemo(
     () => Object.fromEntries(
-      (["all", "zh", "zh-hant", "zh-hans", "en", "ja"] as const).map((language) => [language, countLanguageResults(results, language)]),
+      (["all", "zh", "zh-hant", "zh-hans", "en", "ja"] as const).map((language) => [language, countLanguageResults(results.filter((result) => !matchesExcludedKeyword(result, excludedKeywords)), language)]),
     ) as Record<LanguageFilter, number>,
-    [results],
+    [results, excludedKeywords],
   );
-  const isRetryingSinglePlatform = searchMutation.isPending && Boolean(retryingPlatformRef.current);
+  const isRetryingSinglePlatform = isSearchPending && Boolean(retryingPlatformId);
+  const sourceProgress = useMemo(() => {
+    const selectedStatuses = platformStatuses.filter((status) => selectedPlatforms.includes(status.platformId as PlatformId));
+    const trackedStatuses = isRetryingSinglePlatform && retryingPlatformId ? selectedStatuses.filter((status) => status.platformId === retryingPlatformId) : selectedStatuses;
+    const responded = trackedStatuses.filter((status) => status.status === "success" || status.status === "empty").length;
+    const blocked = trackedStatuses.filter((status) => status.status === "blocked" || status.status === "cooldown" || status.status === "error").length;
+    const total = isRetryingSinglePlatform ? 1 : selectedPlatforms.length;
+    const pending = isSearchPending ? Math.max(0, total - responded - blocked) : 0;
+    return { total, responded, pending, blocked };
+  }, [platformStatuses, selectedPlatforms, isSearchPending, isRetryingSinglePlatform]);
 
   useEffect(() => {
     setBookmarks(loadBookmarks());
@@ -343,10 +409,36 @@ export default function Home() {
     setCpMappings(mergeCpMappings(savedCustomMappings));
     setSearchHistory(loadSearchHistory());
     setPinnedQueries(loadPinnedQueries());
+    const savedBlacklistGroups = loadBlacklistGroups();
+    setBlacklistGroups(savedBlacklistGroups);
+    setExcludedKeywords(activeBlacklistKeywords(savedBlacklistGroups).length ? activeBlacklistKeywords(savedBlacklistGroups) : loadExcludedKeywords());
+    const savedContentSafety = loadContentSafetySettings();
+    setContentSafetySettings(savedContentSafety);
+    if (savedContentSafety.ageConfirmation === "minor") setRatingFilter("safe");
+    if (savedContentSafety.ageConfirmation === "adult") setRatingFilter("all");
     const preset = loadFilterPreset();
     setWordCountFilter(preset.wordCount);
     setCompletionFilter(preset.completion);
     setSortMode(preset.sort);
+    let mounted = true;
+    const initialRevision = personalDataRevisionRef.current;
+    void hydratePersonalLibrary().then((snapshot) => {
+      if (!mounted || personalDataRevisionRef.current !== initialRevision) return;
+      setBookmarks(snapshot.bookmarks);
+      setCustomCpMappings(snapshot.customCpMappings);
+      setCpMappings(mergeCpMappings(snapshot.customCpMappings));
+      setSearchHistory(snapshot.searchHistory);
+      setPinnedQueries(snapshot.pinnedQueries);
+      setBlacklistGroups(snapshot.blacklistGroups);
+      setExcludedKeywords(activeBlacklistKeywords(snapshot.blacklistGroups).length ? activeBlacklistKeywords(snapshot.blacklistGroups) : snapshot.excludedKeywords);
+      setContentSafetySettings(snapshot.contentSafetySettings);
+      if (snapshot.contentSafetySettings.ageConfirmation === "minor") setRatingFilter("safe");
+      if (snapshot.contentSafetySettings.ageConfirmation === "adult") setRatingFilter("all");
+      setWordCountFilter(snapshot.filterPreset.wordCount);
+      setCompletionFilter(snapshot.filterPreset.completion);
+      setSortMode(snapshot.filterPreset.sort);
+    });
+    return () => { mounted = false; };
   }, []);
 
   useEffect(() => {
@@ -427,6 +519,7 @@ export default function Home() {
       return;
     }
     const retryPlatform = platformOverride?.length === 1 ? platformOverride[0] : null;
+    personalDataRevisionRef.current += 1;
     retryingPlatformRef.current = retryPlatform;
     setActiveQuery(trimmedKeyword);
     const nextHistory = recordSearch(searchHistory, trimmedKeyword);
@@ -452,6 +545,7 @@ export default function Home() {
   const retrySinglePlatform = (event: React.MouseEvent<HTMLButtonElement>, platform: PlatformId) => {
     event.preventDefault();
     event.stopPropagation();
+    setRetryingPlatformId(platform);
     runSearch(true, activeQuery || keyword, [platform]);
   };
 
@@ -470,6 +564,7 @@ export default function Home() {
   }
 
   const saveBookmark = (value: { result: SearchResult; rating: number; notes: string; tags: string[]; shelf: "to-read" | "favorite" }) => {
+    personalDataRevisionRef.current += 1;
     const next = upsertBookmark(bookmarks, { url: value.result.url, ...value });
     setBookmarks(next);
     persistBookmarks(next);
@@ -491,6 +586,7 @@ export default function Home() {
   };
 
   const removeBookmark = (url: string) => {
+    personalDataRevisionRef.current += 1;
     const next = bookmarks.filter((bookmark) => bookmark.url !== url);
     setBookmarks(next);
     persistBookmarks(next);
@@ -499,6 +595,7 @@ export default function Home() {
 
   const importBookmarks = (incoming: BookmarkRecord[]) => {
     if (!incoming.length) { toast.error("找不到可還原的 JSON 藏書資料"); return; }
+    personalDataRevisionRef.current += 1;
     const next = mergeImportedBookmarks(bookmarks, incoming);
     setBookmarks(next);
     persistBookmarks(next);
@@ -506,72 +603,163 @@ export default function Home() {
   };
 
   const clearHistory = () => {
+    personalDataRevisionRef.current += 1;
     setSearchHistory([]);
-    window.localStorage.removeItem("sui-read-search-history");
+    clearSearchHistory();
   };
 
   const pinCurrentQuery = () => {
+    personalDataRevisionRef.current += 1;
     const next = togglePinnedQuery(pinnedQueries, keyword || activeQuery);
     setPinnedQueries(next);
     persistPinnedQueries(next);
   };
 
+  const updateExcludedKeywords = (next: string[]) => {
+    personalDataRevisionRef.current += 1;
+    const normalized = normalizeExcludedKeywordList(next);
+    setExcludedKeywords(normalized);
+    persistExcludedKeywords(normalized);
+  };
+
+  const updateBlacklistGroups = (nextGroups: BlacklistGroup[]) => {
+    personalDataRevisionRef.current += 1;
+    const activeKeywords = activeBlacklistKeywords(nextGroups);
+    setBlacklistGroups(nextGroups);
+    setExcludedKeywords(activeKeywords);
+    persistBlacklistGroups(nextGroups);
+  };
+
+  const updateBookmarkProgress = (url: string, progress: BookmarkRecord["progress"]) => {
+    personalDataRevisionRef.current += 1;
+    const next = bookmarks.map((bookmark) => bookmark.url === url ? { ...bookmark, progress, updatedAt: new Date().toISOString() } : bookmark);
+    setBookmarks(next);
+    persistBookmarks(next);
+  };
+
+  const batchUpdateBookmarks = (urls: string[], patch: Parameters<typeof updateBookmarksBatch>[2]) => {
+    personalDataRevisionRef.current += 1;
+    const next = updateBookmarksBatch(bookmarks, urls, patch);
+    setBookmarks(next);
+    persistBookmarks(next);
+    toast.success(`已更新 ${urls.length} 筆藏書`);
+  };
+
+  const batchRemoveBookmarks = (urls: string[]) => {
+    personalDataRevisionRef.current += 1;
+    const targets = new Set(urls);
+    const next = bookmarks.filter((bookmark) => !targets.has(bookmark.url));
+    setBookmarks(next);
+    persistBookmarks(next);
+    toast.success(`已移除 ${urls.length} 筆藏書`);
+  };
+
+  const exportAllPersonalData = () => {
+    const body = serializeFullPersonalBackup({ bookmarks, customCpMappings, searchHistory, pinnedQueries, blacklistGroups, filterPreset: { wordCount: wordCountFilter, completion: completionFilter, sort: sortMode }, contentSafetySettings });
+    const url = URL.createObjectURL(new Blob([body], { type: "application/json;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "fanfic-atlas-complete-backup.json";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importAllPersonalData = (text: string) => {
+    const backup = parseFullPersonalBackup(text);
+    if (!backup) { toast.error("找不到可還原的完整備份資料"); return; }
+    personalDataRevisionRef.current += 1;
+    setBookmarks(backup.bookmarks); persistBookmarks(backup.bookmarks);
+    setCustomCpMappings(backup.customCpMappings); setCpMappings(mergeCpMappings(backup.customCpMappings)); persistCpMappings(backup.customCpMappings);
+    setSearchHistory(backup.searchHistory); persistSearchHistory(backup.searchHistory);
+    setPinnedQueries(backup.pinnedQueries); persistPinnedQueries(backup.pinnedQueries);
+    setBlacklistGroups(backup.blacklistGroups); setExcludedKeywords(activeBlacklistKeywords(backup.blacklistGroups)); persistBlacklistGroups(backup.blacklistGroups);
+    setWordCountFilter(backup.filterPreset.wordCount); setCompletionFilter(backup.filterPreset.completion); setSortMode(backup.filterPreset.sort); persistFilterPreset(backup.filterPreset);
+    setContentSafetySettings(backup.contentSafetySettings); persistContentSafetySettings(backup.contentSafetySettings);
+    toast.success("已完整還原個人資料", { description: `包含 ${backup.bookmarks.length} 筆藏書與 ${backup.blacklistGroups.length} 組避雷設定。` });
+  };
+
+  const confirmAge = (ageConfirmation: "adult" | "minor") => {
+    personalDataRevisionRef.current += 1;
+    const next = { ...contentSafetySettings, ageConfirmation };
+    setContentSafetySettings(next);
+    if (ageConfirmation === "minor") setRatingFilter("safe");
+    if (ageConfirmation === "adult") setRatingFilter("all");
+    persistContentSafetySettings(next);
+  };
+
+  const setSensitiveSummaryBlur = (blurRestrictedSummaries: boolean) => {
+    personalDataRevisionRef.current += 1;
+    const next = { ...contentSafetySettings, blurRestrictedSummaries };
+    setContentSafetySettings(next);
+    persistContentSafetySettings(next);
+  };
+
   const updateCpMappings = (nextCustomMappings: CpMapping[]) => {
+    personalDataRevisionRef.current += 1;
     setCustomCpMappings(nextCustomMappings);
     setCpMappings(mergeCpMappings(nextCustomMappings));
     persistCpMappings(nextCustomMappings);
   };
 
   const saveCurrentFilters = () => {
+    personalDataRevisionRef.current += 1;
     persistFilterPreset({ wordCount: wordCountFilter, completion: completionFilter, sort: sortMode });
     toast.success("已設為預設篩選", { description: "下次開啟網站時會自動帶入這組設定。" });
   };
 
-  return (
-    <div className="min-h-screen overflow-hidden bg-[#f5f1e8] text-[#111826]">
-      <div className="blueprint-grid pointer-events-none fixed inset-0 opacity-80" />
-      <div className="blueprint-orbit orbit-one pointer-events-none fixed opacity-50" />
-      <div className="blueprint-cross cross-two pointer-events-none fixed opacity-60" />
+  const resetAllFilters = () => {
+    personalDataRevisionRef.current += 1;
+    setSelectedLanguage("all");
+    setWordCountFilter("all");
+    setCompletionFilter("all");
+    setSortMode("relevance");
+    setActivePlatformFilter(null);
+    setSelectedPlatforms(PLATFORMS.map((platform) => platform.id));
+    setRatingFilter(contentSafetySettings.ageConfirmation === "minor" ? "safe" : "all");
+    setShowFilteredResults(false);
+    setRevealedFilteredUrls(new Set());
+    persistFilterPreset({ wordCount: "all", completion: "all", sort: "relevance" });
+    toast.success("已清除本次搜尋篩選", { description: "全局避雷分組與內容保護設定維持生效。" });
+  };
 
-      <header className="relative z-10 border-b border-[#111826]/12 bg-[#f5f1e8]/90 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-[1320px] items-center justify-between px-5 py-4 sm:px-8 lg:px-10">
+  return (
+    <div className="fanfic-app overflow-hidden">
+
+      <header className="relative z-10 border-b border-[color:var(--atlas-line)] bg-[color:var(--atlas-bg)]/85 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-[1160px] items-center justify-between px-5 py-4 sm:px-8">
           <div className="flex items-center gap-3">
-            <div className="brand-mark flex h-10 w-10 items-center justify-center border-2 border-[#111826] bg-[#bfe9e1]">
-              <span className="font-mono text-lg font-bold">∑</span>
+            <div className="brand-mark flex h-10 w-10 items-center justify-center">
+              <span className="text-lg font-extrabold">A</span>
             </div>
             <div>
-              <div className="atlas-mono text-[9px] font-medium uppercase tracking-[0.24em] text-[#6e7480]">STORY CARTOGRAPHY / 01</div>
-              <div className="text-lg font-black tracking-[-0.07em]">FANFIC // ATLAS</div>
+              <div className="text-base font-extrabold tracking-[-0.04em]">Fanfic Atlas</div>
+              <div className="mt-0.5 text-xs text-[color:var(--atlas-muted)]">跨平台同人閱讀</div>
             </div>
           </div>
-          <div className="atlas-mono hidden items-center gap-5 text-[9px] font-medium uppercase tracking-[0.18em] text-[#6e7480] md:flex">
-            <span>SEARCH INDEX</span><span className="h-1 w-1 rounded-full bg-[#e76f51]" />
-            <span>5 LIVE ROUTES</span><span className="h-1 w-1 rounded-full bg-[#6fc7b6]" />
-            <span>PRIVATE SHELF</span>
+          <div className="hidden items-center gap-5 text-xs text-[color:var(--atlas-muted)] md:flex">
+            <span>搜尋</span><span>6 個來源</span><span>私人藏書</span>
           </div>
-          <div className="atlas-mono flex items-center gap-2 text-[9px] font-medium uppercase tracking-[0.14em] text-[#111826]">
-            <Button type="button" variant="ghost" onClick={() => setCpManagerOpen(true)} className="hidden h-9 rounded-none border border-[#111826]/12 px-3 font-mono text-[10px] font-bold uppercase tracking-[0.13em] hover:border-[#2d70d6] hover:bg-[#e6efff] lg:inline-flex"><Tags className="mr-2 h-3.5 w-3.5" />CP 詞庫</Button>
-            <span className="h-2 w-2 rounded-full bg-[#6fc7b6] shadow-[0_0_0_4px_#d7f1eb]" /> LIVE
+          <div className="flex items-center gap-2 text-xs font-medium text-[color:var(--atlas-muted)]">
+            <Button type="button" variant="ghost" onClick={() => setCpManagerOpen(true)} className="hidden h-9 border-0 bg-[color:var(--atlas-elevated)] px-3 text-xs font-semibold text-[color:var(--atlas-ink)] hover:bg-[color:var(--atlas-indigo-soft)] lg:inline-flex"><Tags className="mr-2 h-3.5 w-3.5" />CP 詞庫</Button>
+            <span className="h-2 w-2 rounded-full bg-[#0f766e]" />已連線
           </div>
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto max-w-[1320px] px-5 pb-20 pt-9 sm:px-8 lg:px-10 lg:pt-12">
-        <section className="grid items-end gap-8 lg:grid-cols-[1.2fr_0.8fr]">
+      <main className="relative z-10 mx-auto max-w-[1160px] px-5 pb-20 pt-12 sm:px-8 lg:pt-16">
+        <section className="grid items-center gap-8 lg:grid-cols-[1.25fr_0.75fr]">
           <div>
-            <div className="atlas-mono mb-4 flex items-center gap-3 text-[10px] font-medium uppercase tracking-[0.22em] text-[#e76f51]"><span className="h-px w-9 bg-[#e76f51]" /> CROSS-PLATFORM STORY INDEX</div>
-            <h1 className="max-w-4xl text-[clamp(3.4rem,7vw,7.3rem)] font-black leading-[0.86] tracking-[-0.09em]">FIND THE<br /><span className="relative inline-block">RIGHT <span className="text-[#2d70d6]">THREAD</span><span className="absolute -bottom-1 left-1 h-2 w-[92%] bg-[#e76f51]/35" /></span></h1>
-            <p className="mt-6 max-w-2xl text-base leading-7 text-[#58616e] sm:text-lg">用一個角色、配對或作品名，沿著公開來源的軌跡找到下一段想讀的故事。</p>
+            <h1 className="max-w-3xl text-[clamp(2.65rem,5vw,4.6rem)] font-extrabold">把想讀的故事<br /><span className="text-[color:var(--atlas-indigo)]">留在這裡。</span></h1>
+            <p className="mt-5 max-w-xl text-base leading-8 text-[color:var(--atlas-muted)]">從多個公開來源找到作品，依照你的閱讀習慣、分級與避雷設定，安靜地整理成自己的書架。</p>
           </div>
-          <div className="atlas-panel relative hidden min-h-[214px] overflow-hidden p-6 lg:block">
-            <div className="atlas-mono text-[9px] font-medium uppercase tracking-[0.18em] text-[#6e7480]">QUERY TRAJECTORY</div>
-            <div className="atlas-route mt-8 h-px" />
-            <div className="mt-6 grid grid-cols-3 gap-3"><div><div className="atlas-mono text-[9px] uppercase tracking-[0.13em] text-[#6e7480]">INPUT</div><div className="mt-1 text-sm font-bold">關鍵字</div></div><div><div className="atlas-mono text-[9px] uppercase tracking-[0.13em] text-[#6e7480]">ROUTES</div><div className="mt-1 text-sm font-bold">5 來源</div></div><div><div className="atlas-mono text-[9px] uppercase tracking-[0.13em] text-[#6e7480]">SHELF</div><div className="mt-1 text-sm font-bold">私藏筆記</div></div></div>
-            <div className="absolute bottom-5 right-6 flex items-center gap-2 atlas-mono text-[9px] uppercase tracking-[0.12em] text-[#2d70d6]"><span className="h-2 w-2 bg-[#2d70d6]" /> READY FOR A QUERY</div>
+          <div className="atlas-panel hidden p-6 lg:block">
+            <div className="text-sm font-semibold">你的私人閱讀空間</div>
+            <p className="mt-3 text-sm leading-6 text-[color:var(--atlas-muted)]">搜尋結果只做索引與導流；收藏、筆記、避雷與閱讀進度都保留在你的裝置。</p>
+            <div className="mt-6 flex items-center gap-2 text-sm text-[color:var(--atlas-indigo)]"><span className="h-2 w-2 rounded-full bg-current" />準備好開始搜尋</div>
           </div>
         </section>
 
-        <section className="mt-9 flex flex-col gap-3 border-y border-[#111826]/12 py-3 sm:mt-12 sm:flex-row sm:items-center sm:justify-between">
+        <section className="mt-10 flex flex-col gap-3 border-b border-[color:var(--atlas-line)] pb-3 sm:mt-14 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <Button type="button" variant="ghost" onClick={() => setActiveView("search")} className={`h-10 rounded-none border-b-2 px-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] ${activeView === "search" ? "border-[#10151b] bg-white/65 text-[#10151b]" : "border-transparent text-[#75838b] hover:bg-white/60"}`}><Search className="mr-2 h-3.5 w-3.5" />搜尋索引</Button>
             <Button type="button" variant="ghost" onClick={() => setActiveView("bookmarks")} className={`h-10 rounded-none border-b-2 px-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] ${activeView === "bookmarks" ? "border-[#10151b] bg-white/65 text-[#10151b]" : "border-transparent text-[#75838b] hover:bg-white/60"}`}><BookMarked className="mr-2 h-3.5 w-3.5" />藏書閣 / 收藏夾 <span className="ml-2 text-[#e27d9d]">{bookmarks.length}</span></Button>
@@ -579,40 +767,39 @@ export default function Home() {
           <Button type="button" variant="outline" onClick={() => setCpManagerOpen(true)} className="h-9 rounded-none border-[#10151b]/15 bg-white/55 font-mono text-[10px] font-bold uppercase tracking-[0.13em] hover:border-[#45b9b2] lg:hidden"><Tags className="mr-2 h-3.5 w-3.5" />CP 詞庫管理</Button>
         </section>
 
-        <section className="atlas-panel relative mt-5 border-b-2 border-b-[#111826] px-4 py-4 sm:px-6">
+        <section className="reader-command relative mt-6 px-4 py-4 sm:px-6 sm:py-5">
           <form onSubmit={submitSearch} onFocusCapture={() => setHistoryMenuOpen(true)} className="flex flex-col gap-4 lg:flex-row lg:items-center">
-            <div className="flex flex-1 items-center gap-3"><div className={`flex h-10 w-10 items-center justify-center ${searchMode === "author" ? "bg-[#fff0e9] text-[#e76f51]" : "bg-[#e6efff] text-[#2d70d6]"}`}>{searchMode === "author" ? <UserRound className="h-5 w-5 shrink-0" /> : <Search className="h-5 w-5 shrink-0" />}</div><div className="min-w-0 flex-1"><div className="mb-2 flex w-fit border border-[#111826]/15 bg-white/70 p-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.1em"><Button type="button" variant="ghost" aria-pressed={searchMode === "keyword"} onClick={() => setSearchMode("keyword")} className={`h-6 rounded-none px-2 ${searchMode === "keyword" ? "bg-[#e6efff] text-[#2d70d6]" : "text-[#71808a]"}`}>關鍵字 / CP</Button><Button type="button" variant="ghost" aria-pressed={searchMode === "author"} onClick={() => setSearchMode("author")} className={`h-6 rounded-none px-2 ${searchMode === "author" ? "bg-[#fff0e9] text-[#e76f51]" : "text-[#71808a]"}`}>作者</Button></div><Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder={searchMode === "author" ? "輸入作者暱稱、繪師或社團名..." : "輸入角色、配對、作品名或關鍵字"} className="h-10 border-0 bg-transparent px-0 text-lg font-semibold shadow-none placeholder:text-[#8b929c] focus-visible:ring-0 sm:text-xl" aria-label="搜尋同人作品" />{searchMode === "author" && <div className="atlas-mono mt-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-[#e76f51]">AUTHOR MODE / 搜尋作者：{keyword}</div>}</div></div>
+            <div className="flex flex-1 items-center gap-3"><div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${searchMode === "author" ? "bg-amber-50 text-amber-700" : "bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]"}`}>{searchMode === "author" ? <UserRound className="h-5 w-5 shrink-0" /> : <Search className="h-5 w-5 shrink-0" />}</div><div className="min-w-0 flex-1"><div className="reader-segmented mb-2 flex w-fit"><Button type="button" variant="ghost" aria-pressed={searchMode === "keyword"} onClick={() => setSearchMode("keyword")} className={`h-7 px-3 text-xs font-semibold ${searchMode === "keyword" ? "bg-white text-[color:var(--atlas-indigo)] shadow-sm" : "text-[color:var(--atlas-muted)]"}`}>關鍵字 / CP</Button><Button type="button" variant="ghost" aria-pressed={searchMode === "author"} onClick={() => setSearchMode("author")} className={`h-7 px-3 text-xs font-semibold ${searchMode === "author" ? "bg-white text-amber-700 shadow-sm" : "text-[color:var(--atlas-muted)]"}`}>作者</Button></div><Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder={searchMode === "author" ? "輸入作者暱稱、繪師或社團名..." : "輸入角色、配對、作品名或關鍵字"} className="h-10 border-0 bg-transparent px-0 text-lg font-semibold shadow-none focus-visible:ring-0 sm:text-xl" aria-label="搜尋同人作品" />{searchMode === "author" && <div className="mt-1 text-xs text-amber-700">正在搜尋作者：{keyword}</div>}</div></div>
             <div className="flex flex-wrap items-center gap-3">
-              <Button type="button" variant="outline" onClick={() => setShowFilters((current) => !current)} className="h-11 border-[#111826]/20 bg-white/80 font-mono text-[10px] font-bold uppercase tracking-[0.14em] hover:border-[#2d70d6] hover:bg-[#e6efff]"><SlidersHorizontal className="mr-2 h-4 w-4" /> FILTERS <ChevronDown className={`ml-2 h-4 w-4 transition-transform ${showFilters ? "rotate-180" : ""}`} /></Button>
               <Button type="button" variant="outline" onClick={() => runSearch(true)} disabled={isSearchPending || !keyword.trim()} aria-label="強制重新抓取" className="h-11 border-[#111826]/20 bg-white/80 font-mono text-[10px] font-bold uppercase tracking-[0.14em] hover:border-[#2d70d6] hover:text-[#2d70d6]"><RotateCw className={`h-4 w-4 ${isSearchPending ? "animate-spin" : ""}`} /><span className="sr-only">強制重新抓取</span></Button>
-              <Button type="submit" disabled={isSearchPending} className="h-11 min-w-36 bg-[#111826] px-6 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white hover:bg-[#2d70d6]">{isSearchPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Terminal className="mr-2 h-4 w-4" />}{isSearchPending ? "SCANNING" : "RUN SEARCH"}</Button>
+              <Button type="submit" disabled={isSearchPending} aria-label={isSearchPending ? "SCANNING" : "RUN SEARCH"} className="h-11 min-w-36 bg-[color:var(--atlas-indigo)] px-6 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(79,70,229,0.24)] hover:bg-[#4338ca]">{isSearchPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}{isSearchPending ? "搜尋中" : "開始搜尋"}</Button>
             </div>
           </form>
           {historyMenuOpen && searchHistory.length > 0 && <div className="relative z-20 mt-3 border-t border-[#10151b]/10 pt-3"><div className="w-full border border-[#111826]/15 bg-[#fdfbf6] p-2 shadow-[5px_5px_0_rgba(17,24,38,0.12)]"><div className="mb-1 flex items-center justify-between px-2 font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#75838b]"><span className="inline-flex items-center gap-1"><History className="h-3 w-3" />最近 10 次搜尋</span><button type="button" onClick={clearHistory} className="text-[#9b4358] hover:underline">清除</button></div>{searchHistory.map((entry) => <button key={entry} type="button" onClick={() => { setKeyword(entry); setSearchMode("keyword"); setHistoryMenuOpen(false); runSearch(false, entry); }} className="block w-full px-2 py-2 text-left text-sm font-semibold hover:bg-[#e6efff]">{entry}</button>)}</div></div>}
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#10151b]/10 pt-3"><Button type="button" variant="outline" onClick={pinCurrentQuery} disabled={!(keyword || activeQuery).trim()} className="h-8 rounded-none border-[#e8a7bf] bg-[#fff5f7] px-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#8b3e59] hover:bg-[#ffe8f0]">⭐ 釘選目前搜尋詞</Button>{pinnedQueries.map((entry) => <button key={entry} type="button" onClick={() => { setKeyword(entry); setSearchMode("keyword"); runSearch(false, entry); }} className="border border-[#e8a7bf] bg-[#ffe8f0] px-2.5 py-1.5 font-mono text-[10px] font-bold text-[#8b3e59] hover:bg-[#fff5f7]">{entry}</button>)}</div>
+          <div className="mt-3 border-t border-[#10151b]/10 pt-3">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex min-w-0 flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1 border border-[#111826]/15 bg-white/70 p-1" aria-label="語言快速篩選">
+                  {(["all", "zh-hant", "zh-hans", "ja", "en"] as const).map((lang) => <button key={lang} type="button" onClick={() => setSelectedLanguage(lang)} className={`h-7 px-2 font-mono text-[9px] font-bold tracking-[0.08em] transition-colors ${selectedLanguage === lang ? "bg-[#111826] text-white" : "text-[#61707a] hover:bg-[#f0ece1]"}`}>{lang === "all" ? "全部" : lang === "zh-hant" ? "繁體" : lang === "zh-hans" ? "簡體" : lang === "ja" ? "日文" : "英文"}</button>)}
+                </div>
+                <div className="flex items-center gap-1 border border-[#efb4c4] bg-[#fff7f9] p-1" aria-label="內容分級快速篩選">
+                  {(["all", "safe", "r18"] as const).map((rating) => <button key={rating} type="button" disabled={contentSafetySettings.ageConfirmation !== "adult" && rating !== "safe"} onClick={() => setRatingFilter(rating)} className={`h-7 px-2 font-mono text-[9px] font-bold tracking-[0.08em] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${ratingFilter === rating ? "bg-[#9b4358] text-white" : "text-[#8b3e59] hover:bg-[#ffe5eb]"}`}>{rating === "all" ? "全部" : rating === "safe" ? "全年齡" : "R18"}</button>)}
+                </div>
+                <Button type="button" variant="outline" onClick={() => setShowFilters((current) => !current)} className={`h-9 rounded-none border-[#111826]/20 bg-white/80 font-mono text-[9px] font-bold uppercase tracking-[0.12em] hover:border-[#2d70d6] hover:bg-[#e6efff] ${activeFilterCount ? "border-[#2d70d6] bg-[#e6efff] text-[#245da9]" : ""}`}><SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />進階篩選 {activeFilterCount > 0 && <span className="ml-1.5 inline-flex min-w-5 items-center justify-center bg-[#2d70d6] px-1.5 py-0.5 font-mono text-[9px] font-bold text-white">{activeFilterCount}</span>}<ChevronDown className={`ml-1.5 h-3.5 w-3.5 transition-transform ${showFilters ? "rotate-180" : ""}`} /></Button>
+                {activeFilterCount > 0 && <Button type="button" variant="outline" onClick={resetAllFilters} className="h-9 rounded-none border-[#e8a7bf] bg-[#fff5f7] px-3 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#8b3e59] hover:bg-[#ffe8f0]">清除本次條件</Button>}
+              </div>
+              {contentSafetySettings.ageConfirmation === "minor" && <span className="font-mono text-[9px] font-bold tracking-[0.1em] text-[#2d70d6]">全年齡保護已啟用</span>}
+            </div>
+            {activeFilterChips.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="目前生效的篩選條件"><span className="font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#75838b]">篩選中</span>{activeFilterChips.map((chip) => <button key={chip.id} type="button" onClick={chip.clear} className="inline-flex items-center gap-1 border border-[#b7c9ef] bg-[#e6efff] px-2 py-1 font-mono text-[9px] font-bold text-[#245da9] hover:border-[#2d70d6] hover:bg-white" aria-label={`移除篩選 ${chip.label}`}>{chip.label}<X className="h-3 w-3" /></button>)}</div>}
+          </div>
           {desktopRuntime && sidecarState !== "ready" && <div className={`mt-3 border-t border-[#10151b]/10 pt-3 font-mono text-[10px] font-bold tracking-[0.13em] ${sidecarState === "error" ? "text-[#9b4358]" : "text-[#197b75]"}`} aria-live="polite">{sidecarState === "error" ? "搜尋引擎尚未就緒；系統會在搜尋時再次嘗試連線。" : "正在啟動搜尋引擎..."}</div>}
-          {isSearchPending && <div className="mt-3 border-t border-[#10151b]/10 pt-3 font-mono text-[10px] font-bold tracking-[0.13em] text-[#197b75]" aria-live="polite">{desktopRuntime && sidecarState === "starting" ? "正在等待搜尋引擎就緒..." : `正在掃描 AO3 數據庫...（已耗時 ${(elapsedMs / 1000).toFixed(1)} 秒）`}</div>}
+          {isSearchPending && <div className="mt-3 border-t border-[#10151b]/10 pt-3" aria-live="polite"><div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] font-bold tracking-[0.11em] text-[#197b75]"><Loader2 className="h-3.5 w-3.5 animate-spin" />{desktopRuntime && sidecarState === "starting" ? "正在等待搜尋引擎就緒..." : isRetryingSinglePlatform && retryingPlatformId ? `正在重試 ${platformMeta(retryingPlatformId).label} · 僅更新此來源` : `正在查詢 ${sourceProgress.total} 個來源 · ${sourceProgress.responded} 已回應 · ${sourceProgress.pending} 查詢中 · ${sourceProgress.blocked} 受阻`}<span className="text-[#75838b]">· {(elapsedMs / 1000).toFixed(1)} 秒</span></div><div className="mt-2 h-1 overflow-hidden bg-[#d6e5e1]"><div className="h-full w-2/5 animate-pulse bg-[#45b9b2]" /></div></div>}
           {showFilters && (
-            <div className="mt-4 grid gap-5 border-t border-[#10151b]/10 pt-4 lg:grid-cols-[1.25fr_0.75fr_0.75fr_0.9fr]">
+            <div className="mt-4 grid gap-5 border-t border-[#10151b]/10 pt-4 lg:grid-cols-[1.25fr_repeat(3,0.75fr)]">
               <div>
                 <div className="mb-2 flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#61707a]"><Filter className="h-3.5 w-3.5" /> SOURCE ADAPTERS</div>
                 <div className="flex flex-wrap gap-2">{PLATFORMS.map((platform) => { const active = selectedPlatforms.includes(platform.id); return <label key={platform.id} className={`group flex cursor-pointer items-center gap-2 border px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.13em] transition-colors ${active ? platform.tone === "cyan" ? "border-[#5acbc4] bg-[#d9f8f5] text-[#126762]" : "border-[#ec9db8] bg-[#ffe3eb] text-[#8b3e59]" : "border-[#10151b]/15 bg-white/50 text-[#86929a]"}`}><Checkbox checked={active} onCheckedChange={() => togglePlatform(platform.id)} aria-label={`搜尋 ${platform.label}`} className="rounded-none border-[#10151b]/30 data-[state=checked]:border-[#10151b] data-[state=checked]:bg-[#10151b] data-[state=checked]:text-white" />{platform.label}</label>; })}</div>
-              </div>
-              <div className="grid gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#61707a]">語言篩選
-                <div className="flex h-10 items-center border border-[#10151b]/15 bg-white p-1">
-                  {(["all", "zh", "zh-hant", "zh-hans", "en", "ja"] as const).map((lang) => (
-                    <button
-                      key={lang}
-                      type="button"
-                      onClick={() => setSelectedLanguage(lang)}
-                      className={`h-8 flex-1 font-mono text-[10px] font-bold uppercase tracking-[0.12em] transition-colors ${
-                        selectedLanguage === lang ? "bg-[#111826] text-white" : "text-[#61707a] hover:bg-[#f0ece1]"
-                      }`}
-                    >
-                      {lang === "all" ? "全部" : lang === "zh" ? "中文" : lang === "zh-hant" ? "繁體" : lang === "zh-hans" ? "簡體" : lang === "en" ? "英文" : "日文"} {hasSearched ? `(${languageCounts[lang]})` : ""}
-                    </button>
-                  ))}
-                </div>
               </div>
               <label className="grid gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#61707a]">字數區間
                 <select value={wordCountFilter} onChange={(event) => setWordCountFilter(event.target.value as WordCountFilter)} className="h-10 border border-[#10151b]/15 bg-white px-3 text-[#10151b] outline-none focus:border-[#45b9b2]">
@@ -629,17 +816,19 @@ export default function Home() {
                   <option value="relevance">相關度最高</option><option value="updated">最新更新</option><option value="words">字數最多</option>
                 </select>
               </label>
+              <BlacklistGroupManager groups={blacklistGroups} showFilteredResults={showFilteredResults} onGroupsChange={updateBlacklistGroups} onShowFilteredResultsChange={(value) => { setShowFilteredResults(value); if (!value) setRevealedFilteredUrls(new Set()); }} />
+              {contentSafetySettings.ageConfirmation === "adult" && <label className="flex items-center gap-3 border border-[#efb4c4] bg-[#fff7f9] px-3 py-3 lg:col-span-4"><Checkbox checked={contentSafetySettings.blurRestrictedSummaries} onCheckedChange={(value) => setSensitiveSummaryBlur(value === true)} aria-label="敏感內容模糊" className="rounded-none border-[#9b4358] data-[state=checked]:bg-[#9b4358]" /><span><span className="block font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#9b4358]">敏感內容模糊</span><span className="mt-1 block text-xs text-[#69777f]">限制級作品的摘要預設模糊，點擊後才會展開。</span></span></label>}
               <div className="flex items-end lg:col-span-4"><Button type="button" variant="outline" onClick={saveCurrentFilters} className="h-10 rounded-none border-[#10151b]/15 bg-white/65 font-mono text-[10px] font-bold uppercase tracking-[0.13em] hover:border-[#45b9b2] hover:bg-[#d9f8f5] hover:text-[#197b75]"><Save className="mr-2 h-3.5 w-3.5" />設為預設篩選</Button><span className="ml-3 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#8b979d]">保留字數、完結與排序偏好</span></div>
             </div>
           )}
         </section>
 
-        <section className="mt-8 flex flex-col gap-3 border-b border-[#10151b]/15 pb-5 sm:flex-row sm:items-end sm:justify-between"><div><div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[#75838b]">{activeView === "bookmarks" ? "PERSONAL READING LIBRARY" : searchMode === "author" ? "AUTHOR ROUTE / CROSS-PLATFORM" : "SEARCH OUTPUT"}</div><h2 className="mt-2 text-3xl font-black tracking-[-0.07em] sm:text-4xl">{activeView === "bookmarks" ? `${bookmarks.length.toLocaleString()} SAVED STORIES` : searchMutation.isPending ? "SCANNING ARCHIVES..." : hasSearched ? pagination.totalWorks > 0 ? `${pagination.totalWorks.toLocaleString()} STORIES FOUND` : "NO VERIFIED STORIES FOUND" : "READY TO EXPLORE"}</h2>{activeView === "search" && searchMode === "author" && <div className="mt-2 flex items-center gap-2 atlas-mono text-[10px] font-medium uppercase tracking-[0.12em] text-[#e76f51]"><UserRound className="h-3.5 w-3.5" /> 搜尋作者：{activeQuery || keyword}</div>}{activeView === "search" && hasSearched && pagination.totalWorks > 0 && <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#75838b]"><span>LOADED THROUGH PAGE {pagination.loadedThroughPage} / {pagination.totalPages}</span><span>顯示 {displayedResults.length} / {results.length} 筆</span>{completedElapsedMs !== null && <span className="text-[#197b75]">已於 {(completedElapsedMs / 1000).toFixed(1)} 秒內完成查詢</span>}</div>}</div><div className="flex items-center gap-4 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#6b7982]"><span>{activeView === "bookmarks" ? "LOCAL STORAGE / PRIVATE TO THIS DEVICE" : `ADAPTERS: ${selectedLabels}`}</span><span className="hidden h-4 w-px bg-[#10151b]/20 sm:block" />{activeView === "search" && <span className="text-[#45b9b2]">CACHE: CP 2H / NORMAL 30M / LOW 5M</span>}</div></section>
+        <section className="mt-10 flex flex-col gap-3 border-b border-[color:var(--atlas-line)] pb-5 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="text-3xl font-extrabold sm:text-4xl">{activeView === "bookmarks" ? `藏書閣 · ${bookmarks.length.toLocaleString()} 本` : searchMutation.isPending ? "正在尋找作品" : hasSearched ? pagination.totalWorks > 0 ? `找到 ${pagination.totalWorks.toLocaleString()} 篇作品` : "暫時沒有可驗證的作品" : "開始探索"}</h2>{activeView === "search" && searchMode === "author" && <div className="mt-2 flex items-center gap-2 text-sm text-amber-700"><UserRound className="h-3.5 w-3.5" /> 搜尋作者：{activeQuery || keyword}</div>}{activeView === "search" && hasSearched && pagination.totalWorks > 0 && <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[color:var(--atlas-muted)]"><span>已載入第 {pagination.loadedThroughPage} / {pagination.totalPages} 頁</span><span>顯示 {displayedResults.length} / {results.length} 筆</span>{excludedKeywords.length > 0 && <span className="text-[color:var(--atlas-danger)]">避雷中：{excludedKeywords.length} 詞</span>}{completedElapsedMs !== null && <span className="text-[color:var(--atlas-success)]">{(completedElapsedMs / 1000).toFixed(1)} 秒完成</span>}</div>}</div><div className="text-xs text-[color:var(--atlas-muted)]">{activeView === "bookmarks" ? desktopRuntime ? "只保留在這台裝置" : "保留在這個瀏覽器" : `${selectedPlatforms.length} 個來源已啟用`}</div></section>
 
         {activeView === "search" && hasSearched && platformStatuses.length > 0 && (
           <section aria-label="平台連線狀態" className="atlas-panel relative mt-5 overflow-hidden p-4 sm:p-5">
             <div className="mb-4 flex flex-col gap-3 border-b border-[#111826]/10 pb-3 sm:flex-row sm:items-center sm:justify-between">
-              <div><div className="atlas-mono text-[9px] font-medium uppercase tracking-[0.18em] text-[#2d70d6]">SOURCE HEALTH / LIVE ROUTES</div><div className="mt-1 text-sm font-bold">每一個來源都是獨立路徑</div></div>
+              <div><div className="atlas-mono text-[9px] font-medium uppercase tracking-[0.18em] text-[#2d70d6]">SOURCE HEALTH / LIVE ROUTES</div><div className="mt-1 text-sm font-bold">{isSearchPending ? `${sourceProgress.total} 個來源中，${sourceProgress.responded} 已回應、${sourceProgress.pending} 查詢中、${sourceProgress.blocked} 受阻` : "每一個來源都是獨立路徑"}</div></div>
               <div className="flex items-center gap-3"><span className="atlas-mono text-[9px] font-medium tracking-[0.1em] text-[#6e7480]">點選來源查看結果；受阻來源可單獨重試</span><Button type="button" variant="ghost" size="sm" aria-pressed={!activePlatformFilter} onClick={() => setActivePlatformFilter(null)} className={`h-7 rounded-none border px-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] ${activePlatformFilter ? "border-[#111826]/15 bg-white/60 text-[#66757d] hover:border-[#2d70d6] hover:bg-[#e6efff]" : "border-[#2d70d6] bg-[#e6efff] text-[#2d70d6]"}`}>ALL / 全部</Button></div>
             </div>
             <div className="grid gap-2 lg:grid-cols-5 lg:gap-0">
@@ -668,6 +857,7 @@ export default function Home() {
                       : "border-[#d5d8da] bg-[#f5f6f4] text-[#65737a]";
                 const stateLabel = isSuccess ? "已連線" : isCooldown ? "冷卻限制中" : isBlocked ? "觸發人機保護" : status.status === "error" ? "連線逾時" : "無公開結果";
                 const isActiveFilter = activePlatformFilter === status.platformId;
+                const isRetryingThisPlatform = isSearchPending && retryingPlatformId === status.platformId;
                 return (
                   <div
                     key={status.platformId}
@@ -675,6 +865,7 @@ export default function Home() {
                     tabIndex={0}
                     aria-label={`篩選 ${status.label} 平台結果`}
                     aria-pressed={isActiveFilter}
+                    aria-busy={isRetryingThisPlatform}
                     onClick={() => togglePlatformQuickFilter(status.platformId as PlatformId)}
                     onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); togglePlatformQuickFilter(status.platformId as PlatformId); } }}
                     className={`atlas-status-node min-w-0 cursor-pointer border p-3 transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2d70d6] ${tone} ${isActiveFilter ? "z-10 border-2 border-[#2d70d6] shadow-[4px_4px_0_#2d70d6]" : ""}`}
@@ -689,12 +880,12 @@ export default function Home() {
                           type="button"
                           variant="ghost"
                           size="sm"
-                          disabled={searchMutation.isPending}
+                          disabled={isSearchPending && !isRetryingThisPlatform}
                           aria-label={`重試 ${status.label}`}
                           onClick={(event) => retrySinglePlatform(event, status.platformId as PlatformId)}
                           className="h-7 shrink-0 rounded-none border border-current px-2 font-mono text-[9px] font-bold uppercase tracking-[0.08em] hover:bg-white/70"
                         >
-                          <RotateCw className={`mr-1 h-3 w-3 ${searchMutation.isPending ? "animate-spin" : ""}`} />重試
+                          <RotateCw className={`mr-1 h-3 w-3 ${isRetryingThisPlatform ? "animate-spin" : ""}`} />{isRetryingThisPlatform ? "重試中" : "重試"}
                         </Button>
                       )}
                     </div>
@@ -726,9 +917,14 @@ export default function Home() {
               onEdit={(bookmark) => { setBookmarkTarget(bookmark.result); setBookmarkDialogOpen(true); }}
               onRemove={removeBookmark}
               onImport={importBookmarks}
+              onBatchRemove={batchRemoveBookmarks}
+              onBatchUpdate={batchUpdateBookmarks}
+              onProgressChange={updateBookmarkProgress}
+              onExportAll={exportAllPersonalData}
+              onImportAll={importAllPersonalData}
             />
           ) : <>
-          {!hasSearched && !searchMutation.isPending && <div className="atlas-panel relative overflow-hidden p-8 sm:p-10"><div className="absolute bottom-0 right-0 h-28 w-28 border-l border-t border-[#2d70d6]/20" /><div className="grid gap-8 md:grid-cols-[1fr_auto] md:items-center"><div><div className="mb-5 flex h-12 w-12 items-center justify-center bg-[#e6efff] text-[#2d70d6]"><Sparkles className="h-5 w-5" /></div><div className="atlas-mono text-[9px] font-medium uppercase tracking-[0.18em] text-[#e76f51]">FIRST COORDINATE</div><h3 className="mt-2 text-2xl font-black tracking-[-0.06em]">輸入一組關鍵字，建立你的閱讀座標。</h3><p className="mt-3 max-w-xl text-sm leading-6 text-[#64727a]">選擇一個角色、配對或作品名；系統會沿著五條公開來源路徑，回傳可驗證的原站作品。</p></div><div className="grid grid-cols-2 gap-3 atlas-mono text-[9px] font-medium uppercase tracking-[0.14em] text-[#66757d]"><div className="border border-[#111826]/10 bg-white/70 p-4"><Database className="mb-3 h-4 w-4 text-[#e76f51]" />PRIVATE CACHE</div><div className="border border-[#111826]/10 bg-white/70 p-4"><BookOpen className="mb-3 h-4 w-4 text-[#2d70d6]" />VERIFIED LINKS</div></div></div></div>}
+          {!hasSearched && !searchMutation.isPending && <div className="atlas-panel p-8 sm:p-10"><div className="max-w-2xl"><div className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]"><Sparkles className="h-5 w-5" /></div><h3 className="text-2xl font-extrabold">從一組關鍵字開始</h3><p className="mt-3 text-sm leading-7 text-[color:var(--atlas-muted)]">輸入角色、配對或作品名，從公開來源找到作品，並把想留下的故事收進你的書架。</p></div></div>}
           {hasSearched && results.length === 0 && !searchMutation.isPending && (
             <div className="relative overflow-hidden border border-dashed border-[#10151b]/25 bg-white/45 px-6 py-16 text-center">
               <div className="absolute right-0 top-0 h-16 w-16 border-b border-l border-[#e27d9d]/20" />
@@ -736,10 +932,10 @@ export default function Home() {
                 <div className="mb-6 inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#eff8f6] text-[#197b75]">
                   <Search className="h-6 w-6" />
                 </div>
-                <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-[#197b75]">NO VERIFIED STORIES</div>
+                <div className="text-sm font-semibold text-[color:var(--atlas-success)]">暫時沒有可驗證的公開作品</div>
                 <h3 className="mt-4 text-xl font-black tracking-tight">此查詢暫無可驗證的公開作品。</h3>
                 <p className="mt-4 text-sm leading-relaxed text-[#66757d]">
-                  可嘗試改用作品名、角色全名或不同 CP 別名。各來源的成功、無結果與可重試狀態，請查看上方 <span className="font-mono text-[10px] font-bold uppercase text-[#10151b]/55">ADAPTER CONNECTIONS</span>。
+                  可嘗試改用作品名、角色全名或不同 CP 別名。各來源的成功、無結果與可重試狀態會顯示在上方。
                 </p>
                 {platformStatuses.some(isPlatformRetryable) && <p className="mt-3 font-mono text-[10px] font-bold tracking-[0.08em] text-[#8b3e59]">受阻來源可由上方狀態卡單獨重試。</p>}
                 <Button 
@@ -754,58 +950,70 @@ export default function Home() {
             </div>
           )}
           {searchMutation.isPending && !isRetryingSinglePlatform && <div className="grid gap-4 md:grid-cols-2">{[1, 2, 3, 4].map((item) => <div key={item} className="h-64 animate-pulse border border-[#10151b]/10 bg-white/55" />)}</div>}
-          {(!searchMutation.isPending || isRetryingSinglePlatform) && results.length > 0 && displayedResults.length === 0 && <div className="border border-dashed border-[#10151b]/25 bg-white/45 px-6 py-12 text-center"><div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#e27d9d]">NO FILTER MATCH</div><p className="mt-3 text-sm text-[#66757d]">目前沒有作品符合這組前端篩選條件；可調整字數、完結狀態或排序方式。</p></div>}
+          {(!searchMutation.isPending || isRetryingSinglePlatform) && results.length > 0 && displayedResults.length === 0 && <div className="border border-dashed border-[#10151b]/25 bg-white/45 px-6 py-12 text-center"><div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#e27d9d]">NO FILTER MATCH</div><p className="mt-3 text-sm text-[#66757d]">目前沒有作品符合這組前端篩選條件；可調整分級、字數、完結狀態或排序方式。</p></div>}
           {(!searchMutation.isPending || isRetryingSinglePlatform) && results.length > 0 && (
             <div className="space-y-6">
               {searchWarning && (
                 <div className="border border-[#e27d9d]/40 bg-[#fff5f7] p-4 font-mono text-xs text-[#8b3e59]">
-                  <span className="font-bold uppercase tracking-wider">[NOTICE]</span> {searchWarning}
+                  <span className="font-semibold">提示：</span> {searchWarning}
                 </div>
               )}
               <div className="grid gap-4 md:grid-cols-2">
                 {displayedResults.map((result, index) => {
                   const meta = platformMeta(result.platform);
                   const allTags = (result.tags || "").split(",").map((tag) => tag.trim()).filter(Boolean);
-                  const relationshipTags = (result.relationships?.length ? result.relationships : allTags.filter((tag) => tag.includes("/") || tag.includes(" & "))).slice(0, 3);
-                  const characterTags = (result.characters || []).slice(0, 3);
-                  const highlightedTags = new Set([...relationshipTags, ...characterTags]);
-                  const tags = allTags.filter((tag) => !highlightedTags.has(tag)).slice(0, 4);
+                  const allRelationshipTags = result.relationships?.length ? result.relationships : allTags.filter((tag) => tag.includes("/") || tag.includes(" & "));
+                  const allCharacterTags = result.characters || [];
+                  const highlightedTags = new Set([...allRelationshipTags, ...allCharacterTags]);
+                  const allCategoryTags = allTags.filter((tag) => !highlightedTags.has(tag));
+                  const tagsExpanded = expandedTagUrls.has(result.url);
+                  const relationshipTags = tagsExpanded ? allRelationshipTags : allRelationshipTags.slice(0, 2);
+                  const characterTags = tagsExpanded ? allCharacterTags : allCharacterTags.slice(0, 1);
+                  const tags = tagsExpanded ? allCategoryTags : allCategoryTags.slice(0, 2);
+                  const hiddenTagCount = Math.max(0, allRelationshipTags.length - relationshipTags.length) + Math.max(0, allCharacterTags.length - characterTags.length) + Math.max(0, allCategoryTags.length - tags.length);
                   const bookmark = bookmarks.find((item) => item.url === result.url);
+                  const isRestricted = isRestrictedResult(result);
+                  const blacklistMatches = blacklistGroups.filter((group) => group.enabled).map((group) => ({ group, keywords: group.keywords.filter((item) => [result.title, result.summary, result.tags, ...(result.characters || []), ...(result.relationships || [])].join(" ").toLocaleLowerCase().includes(item.toLocaleLowerCase())) })).filter((item) => item.keywords.length > 0);
+                  const isMaskedByBlacklist = showFilteredResults && blacklistMatches.length > 0 && !revealedFilteredUrls.has(result.url);
                   return (
-                    <Card key={`${result.url}-${index}`} className="atlas-panel group relative rounded-none border-[#111826]/15 bg-white/80 shadow-none transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-1 hover:border-[#2d70d6]/60 hover:shadow-[0_12px_28px_rgba(17,24,38,0.1)]">
-                      <CardContent className="p-0">
+                    <Card key={`${result.url}-${index}`} className={`reader-story-card group relative ${isRestricted ? "border-[#efb4c4]" : ""}`}>
+                      <CardContent className={`p-0 transition-[filter,opacity] duration-200 ${isMaskedByBlacklist ? "pointer-events-none select-none blur-[5px] opacity-45" : ""}`}>
                         <BlueprintCover src={result.coverUrl} title={result.title} />
                         <div className="flex items-center justify-between border-b border-[#111826]/10 px-5 py-3">
                           <div className="flex items-center gap-2">
-                            <Badge className={`rounded-none border atlas-mono text-[9px] font-medium uppercase tracking-[0.14em] ${platformToneClass(meta.tone)} `}>
+                            <Badge className={`rounded-full border-0 px-2.5 py-1 text-xs font-medium ${platformToneClass(meta.tone)} `}>
                               {meta.label}
                             </Badge>
+                            {isRestricted && <Badge className="rounded-full border-0 bg-[color:var(--atlas-danger-soft)] px-2.5 py-1 text-xs font-semibold text-[color:var(--atlas-danger)]">18+ / R18</Badge>}
                             {result.source && (
                               <span className="font-mono text-[9px] uppercase tracking-wider text-[#75838b]">
                                 [{result.source}]
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-2"><button type="button" onClick={() => bookmark ? removeBookmark(result.url) : (setBookmarkTarget(result), setBookmarkDialogOpen(true))} aria-label={bookmark ? `取消收藏 ${result.title}` : `收藏 ${result.title}`} className={`inline-flex h-7 items-center gap-1 border px-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] transition-colors ${bookmark ? "border-[#e8a7bf] bg-[#ffe8f0] text-[#8b3e59] hover:bg-[#ffe3eb]" : "border-[#10151b]/12 bg-white/70 text-[#75838b] hover:border-[#e8a7bf] hover:text-[#8b3e59]"}`}>{bookmark ? <BookmarkCheck className="h-3 w-3" /> : <Bookmark className="h-3 w-3" />}{bookmark ? "SAVED" : "SAVE"}</button><span className="font-mono text-[9px] font-bold tracking-[0.12em] text-[#8b979d]">{formatDate(result.scraped_at)}</span></div>
+                          <div className="flex items-center gap-2"><button type="button" onClick={() => bookmark ? removeBookmark(result.url) : (setBookmarkTarget(result), setBookmarkDialogOpen(true))} aria-label={bookmark ? `取消收藏 ${result.title}` : `收藏 ${result.title}`} className={`inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition-colors ${bookmark ? "bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]" : "bg-[color:var(--atlas-elevated)] text-[color:var(--atlas-muted)] hover:text-[color:var(--atlas-indigo)]"}`}>{bookmark ? <BookmarkCheck className="h-3.5 w-3.5" /> : <Bookmark className="h-3.5 w-3.5" />}{bookmark ? "已收藏" : "收藏"}</button><span className="text-xs text-[color:var(--atlas-muted)]">{formatDate(result.scraped_at)}</span></div>
                         </div>
                         <div className="p-5 sm:p-6">
                           <div className="mb-4 flex items-start justify-between gap-4">
                             <h3 className="line-clamp-2 text-xl font-black leading-tight tracking-[-0.055em]">{result.title || "UNTITLED WORK"}</h3>
                             <ArrowUpRight className="mt-1 h-5 w-5 shrink-0 text-[#9ca8ad] transition-colors group-hover:text-[#2d70d6]" />
                           </div>
-                          {isNavigableAuthor(result.author) ? <button type="button" onClick={() => navigateToAuthor(result.author)} className="group/author inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-[#56646d] transition-colors hover:text-[#2d70d6] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2d70d6]" aria-label={`搜尋作者 ${result.author}`}><UserRound className="h-3.5 w-3.5 text-[#e76f51]" />BY / <span className="border-b border-transparent group-hover/author:border-[#2d70d6]">{result.author}</span></button> : <div className="font-mono text-[10px] font-bold uppercase tracking-[0.15em] text-[#75838b]">BY / {result.author || "未知創作者"}</div>}
-                          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#75838b]"><span>{result.wordCount ? `${result.wordCount} WORDS` : "WORD COUNT / 原站"}</span>{result.isComplete !== null && result.isComplete !== undefined && <span className={result.isComplete ? "text-[#197b75]" : "text-[#b46d25]"}>{result.isComplete ? "COMPLETED" : "IN PROGRESS"}</span>}{typeof result.relevanceScore === "number" && <span className="text-[#8b3e59]">RELEVANCE {result.relevanceScore}</span>}</div>
-                          <p className="mt-5 line-clamp-3 text-sm leading-6 text-[#69777f]">{result.summary || "No summary available."}</p>
+                          {isNavigableAuthor(result.author) ? <button type="button" onClick={() => navigateToAuthor(result.author)} className="group/author inline-flex items-center gap-1.5 text-sm font-medium text-[color:var(--atlas-muted)] transition-colors hover:text-[color:var(--atlas-indigo)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--atlas-indigo)]" aria-label={`搜尋作者 ${result.author}`}><UserRound className="h-3.5 w-3.5" /><span className="border-b border-transparent group-hover/author:border-current">{result.author}</span></button> : <div className="text-sm font-medium text-[color:var(--atlas-muted)]">{result.author || "未知創作者"}</div>}
+                          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[color:var(--atlas-muted)]"><span>{result.wordCount ? `${result.wordCount} 字` : "字數以原站為準"}</span>{result.isComplete !== null && result.isComplete !== undefined && <span className={result.isComplete ? "text-[color:var(--atlas-success)]" : "text-[color:var(--atlas-amber)]"}>{result.isComplete ? "已完結" : "連載中"}</span>}{typeof result.relevanceScore === "number" && <span>相關度 {result.relevanceScore}</span>}</div>
+                          <RestrictedSummary summary={result.summary || "No summary available."} shouldBlur={isRestricted && contentSafetySettings.blurRestrictedSummaries} />
                           <div className="mt-6 flex flex-wrap gap-1.5">
                             {relationshipTags.map((tag) => <span key={`relationship-${tag}`} className="border border-[#e8a7bf] bg-[#ffe8f0] px-2 py-1 font-mono text-[9px] font-semibold text-[#8b3e59]">♡ {tag}</span>)}
                             {characterTags.map((tag) => <span key={`character-${tag}`} className="border border-[#c9bcf2] bg-[#f0ecff] px-2 py-1 font-mono text-[9px] font-semibold text-[#5c4e87]">◇ {tag}</span>)}
                             {tags.map((tag) => <span key={`tag-${tag}`} className="border border-[#10151b]/10 bg-[#f3f6f5] px-2 py-1 font-mono text-[9px] font-semibold text-[#6a777e]">#{tag}</span>)}
+                            {hiddenTagCount > 0 && <button type="button" onClick={() => setExpandedTagUrls((current) => { const next = new Set(current); next.add(result.url); return next; })} title="展開完整標籤" className="border border-dashed border-[#61707a]/45 bg-white px-2 py-1 font-mono text-[9px] font-bold text-[#56646d] hover:border-[#2d70d6] hover:text-[#2d70d6]">+{hiddenTagCount} 標籤</button>}
+                            {tagsExpanded && hiddenTagCount === 0 && (allRelationshipTags.length + allCharacterTags.length + allCategoryTags.length) > 5 && <button type="button" onClick={() => setExpandedTagUrls((current) => { const next = new Set(current); next.delete(result.url); return next; })} className="border border-dashed border-[#61707a]/45 bg-white px-2 py-1 font-mono text-[9px] font-bold text-[#56646d] hover:border-[#2d70d6] hover:text-[#2d70d6]">收合標籤</button>}
                           </div>
-                          <a href={result.url} target="_blank" rel="noreferrer" onClick={(event) => void openSourceLink(event, result.url)} className="mt-6 inline-flex items-center gap-2 atlas-mono text-[10px] font-medium uppercase tracking-[0.15em] text-[#2d70d6] hover:text-[#e76f51]">
-                            READ AT SOURCE <ArrowUpRight className="h-3.5 w-3.5" />
+                          <a href={result.url} target="_blank" rel="noreferrer" onClick={(event) => void openSourceLink(event, result.url)} className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--atlas-indigo)] hover:text-[#4338ca]">
+                            前往原始作品 <ArrowUpRight className="h-3.5 w-3.5" />
                           </a>
                         </div>
                       </CardContent>
+                      {isMaskedByBlacklist && <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 border border-[#e27d9d] bg-[#fff7f9]/75 p-6 text-center backdrop-blur-sm"><div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#9b4358]">⚠️ 此作品命中避雷設定</div><div className="font-mono text-[9px] font-bold tracking-[0.08em] text-[#8b3e59]">{blacklistMatches.map((item) => item.group.name).join(" · ")}</div><div className="flex flex-wrap justify-center gap-1.5">{blacklistMatches.flatMap((item) => item.keywords.map((keyword) => <span key={`${item.group.id}-${keyword}`} className="border border-[#e8a7bf] bg-[#fff0f4] px-2 py-1 font-mono text-[9px] font-bold text-[#8b3e59]">{keyword}</span>))}</div><Button type="button" onClick={() => setRevealedFilteredUrls((current) => { const next = new Set(current); next.add(result.url); return next; })} className="h-9 rounded-none bg-[#8b3e59] font-mono text-[9px] font-bold uppercase tracking-[0.12em]">⚠️ 暫時查看這一篇</Button><span className="font-mono text-[8px] font-medium tracking-[0.08em] text-[#75838b]">不會修改全局避雷設定</span></div>}
                     </Card>
                   );
                 })}
@@ -813,12 +1021,12 @@ export default function Home() {
               {pagination.hasMore && pagination.nextPage && (
                 <div className="flex flex-col items-center gap-3 border-t border-[#10151b]/10 pt-6">
                   <div ref={loadMoreSentinelRef} className="h-px w-full" aria-hidden="true" />
-                  <span className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#197b75]">{isLoadMorePending ? "加載更多作品中..." : "向下捲動自動載入下一頁"}</span>
+                  <span className="text-sm font-medium text-[color:var(--atlas-success)]">{isLoadMorePending ? "正在載入更多作品…" : "向下捲動即可自動載入下一頁"}</span>
                   <Button type="button" onClick={loadMore} disabled={isLoadMorePending} className="min-w-56 rounded-none bg-[#10151b] px-6 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white hover:bg-[#24313a]">
                     {isLoadMorePending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowUpRight className="mr-2 h-4 w-4" />}
                     {getLoadMoreLabel(isLoadMorePending, pagination.nextPage)}
                   </Button>
-                  <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#75838b]">{results.length.toLocaleString()} LOADED / {pagination.totalWorks.toLocaleString()} TOTAL WORKS</span>
+                  <span className="text-xs text-[color:var(--atlas-muted)]">已載入 {results.length.toLocaleString()} / {pagination.totalWorks.toLocaleString()} 篇</span>
                 </div>
               )}
             </div>
@@ -833,10 +1041,11 @@ export default function Home() {
           onSave={saveBookmark}
           onRemove={removeBookmark}
         />
+        <AgeConfirmationDialog open={contentSafetySettings.ageConfirmation === "unknown"} onConfirm={confirmAge} />
         <CpMappingManagerDialog open={cpManagerOpen} mappings={cpMappings} customMappings={customCpMappings} onOpenChange={setCpManagerOpen} onChange={updateCpMappings} />
       </main>
 
-      <footer className="relative z-10 border-t border-[#10151b]/10 bg-[#eff4f2]/80"><div className="mx-auto flex max-w-[1440px] flex-col gap-3 px-5 py-6 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#738188] sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-12"><span>FANFIC // ATLAS — AGGREGATION PROTOCOL</span><span>BUILD 0.1 / ADAPTERS READY</span></div></footer>
+      <footer className="relative z-10 border-t border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)]"><div className="mx-auto flex max-w-[1440px] flex-col gap-2 px-5 py-6 text-xs text-[color:var(--atlas-muted)] sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-12"><span>Fanfic Atlas · 為你的閱讀清單留一個安靜的位置</span><span>6 個公開來源 · 本機保存個人資料</span></div></footer>
     </div>
   );
 }

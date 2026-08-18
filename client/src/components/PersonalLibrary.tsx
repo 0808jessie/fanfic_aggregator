@@ -1,4 +1,6 @@
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -11,7 +13,7 @@ import { isCustomCpMapping, upsertCpMapping, type BookmarkRecord, type BookmarkS
 import type { SearchResult } from "@/lib/searchResults";
 import { DEFAULT_TROPE_MAPPINGS } from "@/lib/tropeMappings";
 import { BlueprintCover } from "@/components/BlueprintCover";
-import { ArrowUpRight, Bookmark, Pencil, Plus, Star, Tag, Trash2 } from "lucide-react";
+import { ArrowUpRight, Bookmark, CheckSquare, Pencil, Plus, Star, Tag, Trash2 } from "lucide-react";
 import React, { useEffect, useState } from "react";
 
 type BookmarkEditorDialogProps = {
@@ -56,37 +58,37 @@ export function BookmarkEditorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="rounded-none border-[#111826]/25 bg-[#f5f1e8] p-0 sm:max-w-xl">
-        <DialogHeader className="border-b border-[#111826]/10 px-6 py-5 text-left">
-          <div className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#2d70d6]"><Bookmark className="h-3.5 w-3.5" /> READING CARD / LOCAL ONLY</div>
-          <DialogTitle className="pt-1 text-xl font-black tracking-[-0.05em]">{result?.title || "收藏作品"}</DialogTitle>
-          <DialogDescription className="text-[#64727a]">儲存在此裝置；可加入個人評分、心得與標籤。</DialogDescription>
+      <DialogContent className="rounded-2xl border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)] p-0 sm:max-w-xl">
+        <DialogHeader className="border-b border-[color:var(--atlas-line)] px-6 py-5 text-left">
+          <div className="flex items-center gap-2 text-xs font-semibold text-[color:var(--atlas-indigo)]"><Bookmark className="h-3.5 w-3.5" />儲存在這台裝置</div>
+          <DialogTitle className="pt-1 text-xl font-extrabold">{result?.title || "收藏作品"}</DialogTitle>
+          <DialogDescription className="text-[color:var(--atlas-muted)]">可加入個人評分、心得與標籤，讓下一次重讀更容易找到它。</DialogDescription>
         </DialogHeader>
         <div className="space-y-5 px-6 py-5">
           <div>
-            <div className="mb-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#6e7480]">個人評分</div>
+            <div className="mb-2 text-xs font-semibold text-[color:var(--atlas-muted)]">個人評分</div>
             <div className="flex items-center gap-1" role="radiogroup" aria-label="個人評分">
               {[1, 2, 3, 4, 5].map((value) => (
                 <button key={value} type="button" onClick={() => setRating(value)} aria-label={`${value} 星`} className="p-1 text-[#e76f51] transition-transform hover:scale-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2d70d6]">
                   <Star className="h-6 w-6" fill={value <= rating ? "currentColor" : "none"} />
                 </button>
               ))}
-              <span className="ml-2 font-mono text-[10px] font-bold tracking-[0.14em] text-[#75838b]">{rating ? `${rating} / 5` : "未評分"}</span>
+              <span className="ml-2 text-xs font-semibold text-[color:var(--atlas-muted)]">{rating ? `${rating} / 5` : "未評分"}</span>
             </div>
           </div>
-          <label className="grid gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#6e7480]">個人筆記
-            <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={4} placeholder="記下想重讀的段落、避雷或閱讀感想…" className="resize-y border border-[#111826]/15 bg-white px-3 py-3 font-sans text-sm font-normal normal-case tracking-normal text-[#111826] outline-none focus:border-[#2d70d6]" />
+          <label className="grid gap-2 text-xs font-semibold text-[color:var(--atlas-muted)]">個人筆記
+            <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={4} placeholder="記下想重讀的段落、避雷或閱讀感想…" className="resize-y rounded-xl border border-[color:var(--atlas-line)] bg-white px-3 py-3 font-sans text-sm font-normal text-[color:var(--atlas-ink)] outline-none focus:border-[color:var(--atlas-indigo)]" />
           </label>
-          <label className="grid gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#6e7480]">自訂標籤
-            <input value={tagText} onChange={(event) => setTagText(event.target.value)} placeholder="神作, 重讀, 避雷" className="h-10 border border-[#111826]/15 bg-white px-3 font-sans text-sm font-normal normal-case tracking-normal text-[#111826] outline-none focus:border-[#2d70d6]" />
+          <label className="grid gap-2 text-xs font-semibold text-[color:var(--atlas-muted)]">自訂標籤
+            <input value={tagText} onChange={(event) => setTagText(event.target.value)} placeholder="神作, 重讀, 避雷" className="h-10 rounded-xl border border-[color:var(--atlas-line)] bg-white px-3 font-sans text-sm font-normal text-[color:var(--atlas-ink)] outline-none focus:border-[color:var(--atlas-indigo)]" />
           </label>
-          <label className="grid gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#6e7480]">藏書分類
-            <select value={shelf} onChange={(event) => setShelf(event.target.value as BookmarkShelf)} className="h-10 border border-[#111826]/15 bg-white px-3 font-sans text-sm font-normal normal-case tracking-normal text-[#111826] outline-none focus:border-[#2d70d6]"><option value="to-read">待讀</option><option value="favorite">最愛</option></select>
+          <label className="grid gap-2 text-xs font-semibold text-[color:var(--atlas-muted)]">藏書分類
+            <select value={shelf} onChange={(event) => setShelf(event.target.value as BookmarkShelf)} className="h-10 rounded-xl border border-[color:var(--atlas-line)] bg-white px-3 font-sans text-sm font-normal text-[color:var(--atlas-ink)] outline-none focus:border-[color:var(--atlas-indigo)]"><option value="to-read">待讀</option><option value="favorite">最愛</option></select>
           </label>
         </div>
-        <DialogFooter className="border-t border-[#111826]/10 bg-white/40 px-6 py-4 sm:justify-between">
-          {existing ? <Button type="button" variant="ghost" onClick={() => { onRemove(existing.url); onOpenChange(false); }} className="rounded-none text-[#9b4358] hover:bg-[#fff0f4] hover:text-[#e76f51]"><Trash2 className="mr-2 h-4 w-4" />取消收藏</Button> : <span />}
-          <Button type="button" onClick={save} className="rounded-none bg-[#111826] font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-white hover:bg-[#2d70d6]">儲存閱讀卡</Button>
+        <DialogFooter className="border-t border-[color:var(--atlas-line)] bg-white/30 px-6 py-4 sm:justify-between">
+          {existing ? <Button type="button" variant="ghost" onClick={() => { onRemove(existing.url); onOpenChange(false); }} className="rounded-xl text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)] hover:text-[color:var(--atlas-danger)]"><Trash2 className="mr-2 h-4 w-4" />取消收藏</Button> : <span />}
+          <Button type="button" onClick={save} className="rounded-xl bg-[color:var(--atlas-indigo)] text-sm font-semibold text-white hover:bg-[#4338ca]">儲存閱讀卡</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -155,12 +157,33 @@ type SavedBookmarksGridProps = {
   bookmarks: BookmarkRecord[];
   onEdit: (record: BookmarkRecord) => void;
   onRemove: (url: string) => void;
+  selectionMode?: boolean;
+  selectedUrls?: Set<string>;
+  onToggleSelected?: (url: string) => void;
+  onProgressChange?: (url: string, progress: BookmarkRecord["progress"]) => void;
 };
 
-export function SavedBookmarksGrid({ bookmarks, onEdit, onRemove }: SavedBookmarksGridProps) {
+export function SavedBookmarksGrid({ bookmarks, onEdit, onRemove, selectionMode = false, selectedUrls = new Set(), onToggleSelected, onProgressChange }: SavedBookmarksGridProps) {
+  const [progressPopoverUrl, setProgressPopoverUrl] = useState<string | null>(null);
   if (!bookmarks.length) {
-    return <div className="atlas-panel relative px-6 py-16 text-center"><Bookmark className="mx-auto mb-4 h-7 w-7 text-[#2d70d6]" /><div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#2d70d6]">YOUR SHELF IS READY</div><p className="mt-3 text-sm text-[#66757d]">在作品卡片右上角選擇收藏，為下一次重讀留下線索。</p></div>;
+    return <div className="atlas-panel relative px-6 py-16 text-center"><Bookmark className="mx-auto mb-4 h-7 w-7 text-[color:var(--atlas-indigo)]" /><div className="text-base font-semibold">你的書架正等待第一本作品</div><p className="mt-3 text-sm text-[color:var(--atlas-muted)]">在作品卡片右上角選擇收藏，為下一次重讀留下線索。</p></div>;
   }
 
-  return <div className="grid gap-4 md:grid-cols-2">{bookmarks.map((bookmark) => <div key={bookmark.url} className="atlas-panel group relative overflow-hidden"><div className="flex items-center justify-between border-b border-[#111826]/10 px-5 py-3"><span className="font-mono text-[9px] font-bold uppercase tracking-[0.15em] text-[#2d70d6]">SAVED · {bookmark.result.platform}</span><div className="flex items-center text-[#e76f51]">{[1, 2, 3, 4, 5].map((star) => <Star key={star} className="h-3.5 w-3.5" fill={star <= bookmark.rating ? "currentColor" : "none"} />)}</div></div><BlueprintCover src={bookmark.result.coverUrl} title={bookmark.result.title} className="h-40" /><div className="p-5"><h3 className="line-clamp-2 text-xl font-black leading-tight tracking-[-0.055em]">{bookmark.result.title}</h3><div className="mt-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#56646d]">BY / {bookmark.result.author}</div>{bookmark.notes && <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-[#69777f]">{bookmark.notes}</p>}<div className="mt-4 flex flex-wrap gap-1.5">{bookmark.tags.map((tag) => <span key={tag} className="border border-[#b7c9ef] bg-[#e6efff] px-2 py-1 font-mono text-[9px] font-semibold text-[#45629d]">#{tag}</span>)}</div><div className="mt-6 flex items-center justify-between"><a href={bookmark.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#2d70d6] hover:text-[#e76f51]">READ AT SOURCE <ArrowUpRight className="h-3.5 w-3.5" /></a><div className="flex gap-1"><Button type="button" variant="ghost" size="icon" onClick={() => onEdit(bookmark)} aria-label={`編輯 ${bookmark.result.title} 的閱讀卡`} className="h-8 w-8 rounded-none hover:bg-[#e6efff]"><Pencil className="h-3.5 w-3.5" /></Button><Button type="button" variant="ghost" size="icon" onClick={() => onRemove(bookmark.url)} aria-label={`取消收藏 ${bookmark.result.title}`} className="h-8 w-8 rounded-none text-[#9b4358] hover:bg-[#fff0f4] hover:text-[#e76f51]"><Trash2 className="h-3.5 w-3.5" /></Button></div></div></div></div>)}</div>;
+  return <div className="grid gap-4 md:grid-cols-2">{bookmarks.map((bookmark) => {
+    const progress = bookmark.progress;
+    const statusLabel = progress.status === "finished" ? "已讀完" : progress.status === "reading" ? "閱讀中" : "未讀";
+    const updateProgress = (patch: Partial<BookmarkRecord["progress"]>) => onProgressChange?.(bookmark.url, { ...progress, ...patch });
+    const cycleStatus = () => {
+      if (progress.status === "unread") updateProgress({ status: "reading", percent: Math.max(1, progress.percent) });
+      else if (progress.status === "reading") updateProgress({ status: "finished", percent: 100 });
+      else updateProgress({ status: "unread", percent: 0 });
+    };
+    return <div key={bookmark.url} className={`reader-shelf-card group relative overflow-hidden ${selectionMode && selectedUrls.has(bookmark.url) ? "ring-2 ring-[color:var(--atlas-indigo)] ring-offset-2 ring-offset-[color:var(--atlas-bg)]" : ""}`}>
+      <div className="flex items-center justify-between border-b border-[color:var(--atlas-line)] px-5 py-3"><div className="flex items-center gap-2"><span className="rounded-full bg-[color:var(--atlas-indigo-soft)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--atlas-indigo)]">已收藏 · {bookmark.result.platform}</span>{selectionMode && <Checkbox checked={selectedUrls.has(bookmark.url)} onCheckedChange={() => onToggleSelected?.(bookmark.url)} aria-label={`選取 ${bookmark.result.title}`} className="rounded border-[color:var(--atlas-indigo)] data-[state=checked]:bg-[color:var(--atlas-indigo)]" />}</div><div className="flex items-center text-amber-500">{[1, 2, 3, 4, 5].map((star) => <Star key={star} className="h-3.5 w-3.5" fill={star <= bookmark.rating ? "currentColor" : "none"} />)}</div></div>
+      <BlueprintCover src={bookmark.result.coverUrl} title={bookmark.result.title} className="h-40" />
+      <div className="p-5"><h3 className="line-clamp-2 text-xl font-extrabold leading-tight">{bookmark.result.title}</h3><div className="mt-2 text-sm text-[color:var(--atlas-muted)]">作者 · {bookmark.result.author}</div>
+        <div className="reader-progress mt-4 p-3"><div className="flex items-center justify-between gap-3"><button type="button" onClick={cycleStatus} aria-label={`${bookmark.result.title} 閱讀狀態：${statusLabel}；點擊切換`} className="inline-flex items-center gap-1.5 rounded-full bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700 hover:bg-teal-100"><CheckSquare className="h-3.5 w-3.5" />{statusLabel}</button><Popover open={progressPopoverUrl === bookmark.url} onOpenChange={(open) => setProgressPopoverUrl(open ? bookmark.url : null)}><PopoverTrigger asChild><button type="button" aria-label={`編輯 ${bookmark.result.title} 閱讀進度`} className="text-xs font-semibold text-[color:var(--atlas-indigo)] hover:text-[#4338ca]">{progress.percent}%{progress.chapter ? ` · ${progress.chapter}` : " · 編輯進度"}</button></PopoverTrigger><PopoverContent align="end" className="w-64 border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)] p-4 shadow-[var(--atlas-shadow)]"><div className="text-sm font-semibold">閱讀進度</div><label className="mt-3 grid gap-1 text-xs text-[color:var(--atlas-muted)]">進度 %<input aria-label={`${bookmark.result.title} 閱讀進度`} type="number" min="0" max="100" value={progress.percent} onChange={(event) => { const percent = Math.max(0, Math.min(100, Number(event.target.value) || 0)); updateProgress({ percent, status: percent >= 100 ? "finished" : percent > 0 ? "reading" : "unread" }); }} className="h-8 border border-[color:var(--atlas-line)] bg-white px-2 text-xs" /></label><label className="mt-3 grid gap-1 text-xs text-[color:var(--atlas-muted)]">章節／備註<input aria-label={`${bookmark.result.title} 閱讀章節`} value={progress.chapter} onChange={(event) => updateProgress({ chapter: event.target.value })} placeholder="例：第 12 章" className="h-8 border border-[color:var(--atlas-line)] bg-white px-2 text-xs" /></label></PopoverContent></Popover></div><div className="mt-3 h-1 overflow-hidden rounded-full bg-[color:var(--atlas-line)]"><div className="h-full bg-[color:var(--atlas-indigo)] transition-[width] duration-200" style={{ width: `${progress.percent}%` }} /></div></div>
+        {bookmark.notes && <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-[color:var(--atlas-muted)]">{bookmark.notes}</p>}<div className="mt-4 flex flex-wrap gap-1.5">{bookmark.tags.map((tag) => <span key={tag} className="rounded-full bg-[color:var(--atlas-indigo-soft)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--atlas-indigo)]">#{tag}</span>)}</div><div className="mt-6 flex items-center justify-between"><a href={bookmark.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--atlas-indigo)] hover:text-[#4338ca]">前往原站閱讀 <ArrowUpRight className="h-3.5 w-3.5" /></a><div className="flex gap-1"><Button type="button" variant="ghost" size="icon" onClick={() => onEdit(bookmark)} aria-label={`編輯 ${bookmark.result.title} 的閱讀卡`} className="h-8 w-8 rounded-full hover:bg-[color:var(--atlas-indigo-soft)]"><Pencil className="h-3.5 w-3.5" /></Button><Button type="button" variant="ghost" size="icon" onClick={() => onRemove(bookmark.url)} aria-label={`取消收藏 ${bookmark.result.title}`} className="h-8 w-8 rounded-full text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)] hover:text-[color:var(--atlas-danger)]"><Trash2 className="h-3.5 w-3.5" /></Button></div></div></div>
+    </div>;
+  })}</div>;
 }

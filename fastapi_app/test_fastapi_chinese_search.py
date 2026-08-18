@@ -53,6 +53,7 @@ def test_fastapi_search_chinese_keywords_contract():
             url=f"https://archiveofourown.org/works/contract-{index}",
             tags=kw,
             summary=f"驗證 {kw} 的 UTF-8 API 回傳契約。",
+            rating="Explicit" if index == 1 else "General Audiences",
             keyword=kw,
         )
         aggregate = {"items": [fixture], "any_success": True, "total_works": 1, "total_pages": 1, "warnings": []}
@@ -73,6 +74,7 @@ def test_fastapi_search_chinese_keywords_contract():
         assert first["title"] == f"{kw} 搜尋契約作品"
         assert first["author"] == "AO3 測試作者"
         assert first["url"].startswith("https://archiveofourown.org")
+        assert first["rating"] == ("Explicit" if index == 1 else "General Audiences")
 
 
 def test_invalid_language_filter_degrades_to_all_languages():

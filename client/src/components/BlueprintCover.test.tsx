@@ -12,12 +12,12 @@ describe("BlueprintCover", () => {
     expect(image.getAttribute("loading")).toBe("lazy");
   });
 
-  it("switches to the Blueprint fallback when a third-party cover fails", () => {
+  it("switches to the reading-cover fallback when a third-party cover fails", () => {
     const { container } = render(<BlueprintCover src="https://www.doujin.com.tw/blocked-cover.jpg" title="封面測試" />);
     const cover = within(container);
 
     fireEvent.error(cover.getByRole("img", { name: "《封面測試》封面" }));
-    expect(cover.getByRole("img", { name: "封面測試 的 Blueprint 預設封面" })).toBeTruthy();
-    expect(cover.getByText("ATLAS INDEX COVER")).toBeTruthy();
+    expect(cover.getByRole("img", { name: "封面測試 的預設作品封面" })).toBeTruthy();
+    expect(cover.getByText("閱讀收藏")).toBeTruthy();
   });
 });
