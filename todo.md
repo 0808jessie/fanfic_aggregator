@@ -418,5 +418,5 @@
 - [x] 將結果卡、避雷遮罩與藏書閣重設為閱讀導向的低邊框、舒適留白與細緻互動元件
 - [x] 完成 Impeccable 品質檢查、Vitest、TypeScript、production build、cargo check 與桌面／行動視覺驗證
 - [x] 將桌面端與後端公開版本更新為 v1.1.9
-- [ ] 將 v1.1.9 視覺重構同步至 GitHub main 並推送版本標籤
-- [ ] 確認 GitHub Actions 已接收 v1.1.9 標籤建置
+- [x] 將 v1.1.9 視覺重構同步至 GitHub main 並推送版本標籤
+- [x] 確認 GitHub Actions 已接收 v1.1.9 標籤建置
