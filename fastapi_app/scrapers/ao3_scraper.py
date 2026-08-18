@@ -158,11 +158,11 @@ class AO3Scraper(BaseScraper):
                 html = response.text
                 page_text = html.casefold()
                 if any(marker in page_text for marker in ("cf-chl", "just a moment", "captcha")):
-                    self._static_terminal_warning = "AO3 靜態搜尋觸發保護頁"
-                    print("[AO3 Static] Protected response; returning bounded source warning")
+                    self._static_terminal_warning = "AO3 觸發安全驗證；請使用官方搜尋連結繼續。"
+                    print("[AO3 Static] Verification page detected; returning bounded source warning")
                     return None
                 return html
-            except (requests.RequestException, Exception) as error:
+            except Exception as error:
                 remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 0
                 if attempt == 0 and remaining_budget > 1.5:
                     print(f"[AO3 Static] Public GET failed; retrying once after 1.5s: {error}")

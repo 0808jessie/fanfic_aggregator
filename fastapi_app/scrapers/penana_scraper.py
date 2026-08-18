@@ -159,7 +159,7 @@ class PenanaScraper(BaseScraper):
 
     @staticmethod
     def _is_verification_page(html: str) -> bool:
-        page_text = html.casefold()
+        page_text = html.casefold().replace("…", "...")
         # A normal Penana document references Cloudflare static resources and
         # can contain the words ``cloudflare`` / ``cdn-cgi``. Those strings are
         # not proof of a challenge page. Block only challenge-specific markers.

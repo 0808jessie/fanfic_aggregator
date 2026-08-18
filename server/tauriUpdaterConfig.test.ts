@@ -43,14 +43,17 @@ describe("Tauri updater configuration", () => {
     expect(personalStore).toContain('"settings.json"');
   });
 
-  it("checks updates on desktop startup and asks before download, install, and relaunch", () => {
+  it("checks updates on desktop startup and opens the controlled update dialog before download, install, and relaunch", () => {
     const homePage = fs.readFileSync(path.join(projectRoot, "client", "src", "pages", "Home.tsx"), "utf8");
 
     expect(homePage).toContain('import("@tauri-apps/plugin-updater")');
     expect(homePage).toContain('import("@tauri-apps/plugin-process")');
-    expect(homePage).toContain("window.confirm(`發現新版本 v${update.version}！是否立即下載並安裝更新？`)");
-    expect(homePage).toContain("await update.downloadAndInstall()");
+    expect(homePage).toContain("const update = await check()");
+    expect(homePage).toContain("setUpdateDialogOpen(true)");
+    expect(homePage).toContain("await availableUpdate.download(");
+    expect(homePage).toContain("await availableUpdate.install()");
     expect(homePage).toContain("await relaunch()");
+    expect(homePage).toContain("目前已是最新版本");
   });
 
   it("fails CI clearly when the signing secrets are not available", () => {

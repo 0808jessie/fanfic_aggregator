@@ -8,6 +8,8 @@ import {
   BookMarked,
   ChevronDown,
   Database,
+  Eye,
+  EyeOff,
   Filter,
   History,
   Loader2,
@@ -28,6 +30,12 @@ import {
   postSidecarSearch,
   waitForSidecarReady,
 } from "@/lib/desktopApi";
+import {
+  LatestSearchRequestGate,
+  createSearchCacheKey,
+  readSearchRequestCache,
+  writeSearchRequestCache,
+} from "@/lib/searchRequestCache";
 import {
   appendUniqueResults,
   countLanguageResults,
@@ -54,7 +62,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import { BlueprintCover } from "@/components/BlueprintCover";
 import { BookshelfView } from "@/components/BookshelfView";
 import { BlacklistGroupManager } from "@/components/ExcludeKeywordEditor";
@@ -105,6 +115,15 @@ const PLATFORMS = [
   { id: "cxc", label: "CxC 創利市集", detail: "CXC.TODAY", tone: "violet" },
   { id: "pixiv", label: "Pixiv", detail: "PIXIV.NET", tone: "rose" },
 ] as const;
+
+const FALLBACK_DESKTOP_VERSION = "1.1.10";
+
+type DesktopUpdate = {
+  version: string;
+  body?: string;
+  download: (onEvent?: (event: { event: "Started"; data: { contentLength?: number } } | { event: "Progress"; data: { chunkLength: number } } | { event: "Finished" }) => void) => Promise<void>;
+  install: () => Promise<void>;
+};
 
 type PlatformId = (typeof PLATFORMS)[number]["id"];
 
@@ -199,10 +218,20 @@ export default function Home() {
   const [sidecarState, setSidecarState] = useState<"idle" | "starting" | "ready" | "error">("idle");
   const [desktopSearchPending, setDesktopSearchPending] = useState(false);
   const [desktopLoadMorePending, setDesktopLoadMorePending] = useState(false);
+  const [desktopVersion, setDesktopVersion] = useState(FALLBACK_DESKTOP_VERSION);
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
+  const [availableUpdate, setAvailableUpdate] = useState<DesktopUpdate | null>(null);
+  const [updateCheckPending, setUpdateCheckPending] = useState(false);
+  const [updateInstallPending, setUpdateInstallPending] = useState(false);
+  const [updateDownloadPercent, setUpdateDownloadPercent] = useState(0);
   const [retryingPlatformId, setRetryingPlatformId] = useState<PlatformId | null>(null);
   const searchStartedAt = useRef<number | null>(null);
   const retryingPlatformRef = useRef<PlatformId | null>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
+  const historyMenuRef = useRef<HTMLDivElement | null>(null);
+  const activeDesktopSearchAbortRef = useRef<AbortController | null>(null);
+  const searchRequestGateRef = useRef(new LatestSearchRequestGate());
+  const updaterCheckInFlightRef = useRef(false);
   const personalDataRevisionRef = useRef(0);
   const [pagination, setPagination] = useState<SearchPagination>({
     totalWorks: 0,
@@ -213,7 +242,12 @@ export default function Home() {
     hasMore: false,
   });
 
-  const handleSearchSuccess = (payload: any) => {
+  const handleSearchSuccess = (payload: any, request?: { data?: Record<string, unknown> }) => {
+      const requestId = Number(request?.data?.clientRequestId);
+      if (Number.isFinite(requestId) && requestId > 0 && !searchRequestGateRef.current.isCurrent(requestId)) return;
+      if (request?.data && request.data.forceRefresh !== true) {
+        writeSearchRequestCache(createSearchCacheKey(request.data), payload);
+      }
       const isLimited = extractIsRateLimited(payload);
       const warningMsg = extractSearchWarning(payload);
       const incoming = normalizeResults(payload);
@@ -251,7 +285,9 @@ export default function Home() {
       }
     };
 
-  const handleSearchError = (error: { message?: string }) => {
+  const handleSearchError = (error: { message?: string }, request?: { data?: Record<string, unknown> }) => {
+      const requestId = Number(request?.data?.clientRequestId);
+      if (Number.isFinite(requestId) && requestId > 0 && !searchRequestGateRef.current.isCurrent(requestId)) return;
       const retryingPlatform = retryingPlatformRef.current;
       setHasSearched(true);
       if (retryingPlatform) {
@@ -276,8 +312,8 @@ export default function Home() {
     };
 
   const searchMutation = trpc.fastapi.proxy.useMutation({
-    onSuccess: handleSearchSuccess,
-    onError: handleSearchError,
+    onSuccess: (payload, request) => handleSearchSuccess(payload, request as { data?: Record<string, unknown> }),
+    onError: (error, request) => handleSearchError(error, request as { data?: Record<string, unknown> }),
   });
 
   const handleLoadMoreSuccess = (payload: any) => {
@@ -303,24 +339,35 @@ export default function Home() {
   const isSearchPending = searchMutation.isPending || desktopSearchPending;
   const isLoadMorePending = loadMoreMutation.isPending || desktopLoadMorePending;
 
-  const requestSearch = (request: { path: string; method: "POST"; data: unknown }) => {
+  const requestSearch = (request: { path: string; method: "POST"; data: Record<string, unknown> }, requestId: number, cacheKey: string | null) => {
     if (!desktopRuntime) {
       searchMutation.mutate(request as any);
       return;
     }
 
+    activeDesktopSearchAbortRef.current?.abort();
+    const controller = new AbortController();
+    activeDesktopSearchAbortRef.current = controller;
     setDesktopSearchPending(true);
     setSidecarState("starting");
     void (async () => {
       try {
-        await waitForSidecarReady();
+        await waitForSidecarReady({ signal: controller.signal });
+        if (!searchRequestGateRef.current.isCurrent(requestId)) return;
         setSidecarState("ready");
-        handleSearchSuccess(await postSidecarSearch(request.data));
+        const payload = await postSidecarSearch(request.data, undefined, controller.signal);
+        if (!searchRequestGateRef.current.isCurrent(requestId)) return;
+        if (cacheKey) writeSearchRequestCache(cacheKey, payload);
+        handleSearchSuccess(payload);
       } catch (error) {
+        if (!searchRequestGateRef.current.isCurrent(requestId) || (error instanceof DOMException && error.name === "AbortError")) return;
         setSidecarState("error");
         handleSearchError(error instanceof Error ? error : new Error("搜尋服務暫時無法連線"));
       } finally {
-        setDesktopSearchPending(false);
+        if (searchRequestGateRef.current.isCurrent(requestId)) {
+          setDesktopSearchPending(false);
+          activeDesktopSearchAbortRef.current = null;
+        }
       }
     })();
   };
@@ -389,6 +436,10 @@ export default function Home() {
     () => Object.fromEntries(
       (["all", "zh", "zh-hant", "zh-hans", "en", "ja"] as const).map((language) => [language, countLanguageResults(results.filter((result) => !matchesExcludedKeyword(result, excludedKeywords)), language)]),
     ) as Record<LanguageFilter, number>,
+    [results, excludedKeywords],
+  );
+  const filteredResultCount = useMemo(
+    () => results.filter((result) => matchesExcludedKeyword(result, excludedKeywords)).length,
     [results, excludedKeywords],
   );
   const isRetryingSinglePlatform = isSearchPending && Boolean(retryingPlatformId);
@@ -461,6 +512,72 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, [isSearchPending]);
 
+  const checkForAppUpdate = async (origin: "startup" | "manual") => {
+    if (!desktopRuntime) {
+      if (origin === "manual") showInfoToast("更新檢查僅適用於已安裝的 Fanfic Atlas 桌面版。");
+      return;
+    }
+    if (updaterCheckInFlightRef.current) {
+      if (origin === "manual") showInfoToast("正在檢查更新，請稍候。 ");
+      return;
+    }
+
+    updaterCheckInFlightRef.current = true;
+    setUpdateCheckPending(true);
+    try {
+      const { check } = await import("@tauri-apps/plugin-updater");
+      // Tauri v2 returns an Update object or null. `available` is deprecated
+      // and therefore must not gate this prompt.
+      const update = await check();
+      if (!update) {
+        if (origin === "manual") toast.success("目前已是最新版本", { description: `Fanfic Atlas v${desktopVersion}` });
+        return;
+      }
+      setAvailableUpdate(update as DesktopUpdate);
+      setUpdateDownloadPercent(0);
+      setUpdateDialogOpen(true);
+    } catch (error) {
+      console.error("[Updater] Update check failed:", error);
+      if (origin === "manual") {
+        toast.error("暫時無法檢查更新", { description: "請確認網路連線後再試一次。" });
+      }
+    } finally {
+      updaterCheckInFlightRef.current = false;
+      setUpdateCheckPending(false);
+    }
+  };
+
+  const installAvailableUpdate = async () => {
+    if (!availableUpdate || updateInstallPending) return;
+    setUpdateInstallPending(true);
+    setUpdateDownloadPercent(0);
+    let downloadedBytes = 0;
+    let totalBytes: number | undefined;
+    try {
+      await availableUpdate.download((event) => {
+        if (event.event === "Started") {
+          downloadedBytes = 0;
+          totalBytes = event.data.contentLength;
+          setUpdateDownloadPercent(0);
+        }
+        if (event.event === "Progress") {
+          downloadedBytes += event.data.chunkLength;
+          if (totalBytes && totalBytes > 0) {
+            setUpdateDownloadPercent(Math.min(99, Math.round((downloadedBytes / totalBytes) * 100)));
+          }
+        }
+        if (event.event === "Finished") setUpdateDownloadPercent(100);
+      });
+      await availableUpdate.install();
+      const { relaunch } = await import("@tauri-apps/plugin-process");
+      await relaunch();
+    } catch (error) {
+      console.error("[Updater] Update installation failed:", error);
+      setUpdateInstallPending(false);
+      toast.error("更新未完成", { description: "下載或驗證失敗，請稍後重新檢查更新。" });
+    }
+  };
+
   useEffect(() => {
     if (!desktopRuntime) return;
     let mounted = true;
@@ -469,24 +586,8 @@ export default function Home() {
       .then(() => mounted && setSidecarState("ready"))
       .catch(() => mounted && setSidecarState("error"));
 
-    // Check Tauri updater
-    void (async () => {
-      try {
-        const { check } = await import("@tauri-apps/plugin-updater");
-        const { relaunch } = await import("@tauri-apps/plugin-process");
-        const update = await check();
-        if (update?.available) {
-          const confirmed = window.confirm(`發現新版本 v${update.version}！是否立即下載並安裝更新？`);
-          if (confirmed) {
-            toast.info(`正在下載 v${update.version} 並準備重新啟動…`, { duration: 8000 });
-            await update.downloadAndInstall();
-            await relaunch();
-          }
-        }
-      } catch (err) {
-        console.log("[Updater] Not in Tauri environment or update check skipped:", err);
-      }
-    })();
+    setDesktopVersion(FALLBACK_DESKTOP_VERSION);
+    void checkForAppUpdate("startup");
 
     return () => { mounted = false; };
   }, [desktopRuntime]);
@@ -519,6 +620,7 @@ export default function Home() {
       return;
     }
     const retryPlatform = platformOverride?.length === 1 ? platformOverride[0] : null;
+    const requestId = searchRequestGateRef.current.begin();
     personalDataRevisionRef.current += 1;
     retryingPlatformRef.current = retryPlatform;
     setActiveQuery(trimmedKeyword);
@@ -535,11 +637,23 @@ export default function Home() {
     if (!retryPlatform) {
       setPagination({ totalWorks: 0, totalPages: 0, page: 1, loadedThroughPage: 0, nextPage: null, hasMore: false });
     }
+    const requestData = { keyword: trimmedKeyword, mode: requestedMode, platforms: platformOverride ?? selectedPlatforms, page: 1, forceRefresh, customCpMappings };
+    const cacheKey = createSearchCacheKey(requestData);
+    if (!forceRefresh) {
+      if (desktopRuntime) activeDesktopSearchAbortRef.current?.abort();
+      const cachedPayload = readSearchRequestCache<unknown>(cacheKey);
+      if (cachedPayload) {
+        if (desktopRuntime) setDesktopSearchPending(false);
+        handleSearchSuccess(cachedPayload);
+        showInfoToast("已載入 15 分鐘內的本機搜尋快取。");
+        return;
+      }
+    }
     requestSearch({
       path: "/search",
       method: "POST",
-      data: { keyword: trimmedKeyword, mode: requestedMode, platforms: platformOverride ?? selectedPlatforms, page: 1, forceRefresh, customCpMappings },
-    });
+      data: { ...requestData, clientRequestId: requestId },
+    }, requestId, desktopRuntime && !forceRefresh ? cacheKey : null);
   };
 
   const retrySinglePlatform = (event: React.MouseEvent<HTMLButtonElement>, platform: PlatformId) => {
@@ -606,6 +720,15 @@ export default function Home() {
     personalDataRevisionRef.current += 1;
     setSearchHistory([]);
     clearSearchHistory();
+  };
+
+  const removeHistoryEntry = (entry: string) => {
+    personalDataRevisionRef.current += 1;
+    setSearchHistory((current) => {
+      const next = current.filter((item) => item !== entry);
+      persistSearchHistory(next);
+      return next;
+    });
   };
 
   const pinCurrentQuery = () => {
@@ -768,15 +891,14 @@ export default function Home() {
         </section>
 
         <section className="reader-command relative mt-6 px-4 py-4 sm:px-6 sm:py-5">
-          <form onSubmit={submitSearch} onFocusCapture={() => setHistoryMenuOpen(true)} className="flex flex-col gap-4 lg:flex-row lg:items-center">
-            <div className="flex flex-1 items-center gap-3"><div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${searchMode === "author" ? "bg-amber-50 text-amber-700" : "bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]"}`}>{searchMode === "author" ? <UserRound className="h-5 w-5 shrink-0" /> : <Search className="h-5 w-5 shrink-0" />}</div><div className="min-w-0 flex-1"><div className="reader-segmented mb-2 flex w-fit"><Button type="button" variant="ghost" aria-pressed={searchMode === "keyword"} onClick={() => setSearchMode("keyword")} className={`h-7 px-3 text-xs font-semibold ${searchMode === "keyword" ? "bg-white text-[color:var(--atlas-indigo)] shadow-sm" : "text-[color:var(--atlas-muted)]"}`}>關鍵字 / CP</Button><Button type="button" variant="ghost" aria-pressed={searchMode === "author"} onClick={() => setSearchMode("author")} className={`h-7 px-3 text-xs font-semibold ${searchMode === "author" ? "bg-white text-amber-700 shadow-sm" : "text-[color:var(--atlas-muted)]"}`}>作者</Button></div><Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder={searchMode === "author" ? "輸入作者暱稱、繪師或社團名..." : "輸入角色、配對、作品名或關鍵字"} className="h-10 border-0 bg-transparent px-0 text-lg font-semibold shadow-none focus-visible:ring-0 sm:text-xl" aria-label="搜尋同人作品" />{searchMode === "author" && <div className="mt-1 text-xs text-amber-700">正在搜尋作者：{keyword}</div>}</div></div>
+          <form onSubmit={submitSearch} className="flex flex-col gap-4 lg:flex-row lg:items-center">
+            <div className="flex flex-1 items-center gap-3"><div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${searchMode === "author" ? "bg-amber-50 text-amber-700" : "bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]"}`}>{searchMode === "author" ? <UserRound className="h-5 w-5 shrink-0" /> : <Search className="h-5 w-5 shrink-0" />}</div><div className="relative min-w-0 flex-1"><div className="reader-segmented mb-2 flex w-fit"><Button type="button" variant="ghost" aria-pressed={searchMode === "keyword"} onClick={() => setSearchMode("keyword")} className={`h-7 px-3 text-xs font-semibold ${searchMode === "keyword" ? "bg-white text-[color:var(--atlas-indigo)] shadow-sm" : "text-[color:var(--atlas-muted)]"}`}>關鍵字 / CP</Button><Button type="button" variant="ghost" aria-pressed={searchMode === "author"} onClick={() => setSearchMode("author")} className={`h-7 px-3 text-xs font-semibold ${searchMode === "author" ? "bg-white text-amber-700 shadow-sm" : "text-[color:var(--atlas-muted)]"}`}>作者</Button></div><Input value={keyword} onChange={(event) => { setKeyword(event.target.value); setHistoryMenuOpen(false); }} onFocus={() => setHistoryMenuOpen(true)} onBlur={(event) => { const nextFocus = event.relatedTarget; if (!(nextFocus instanceof Node) || !historyMenuRef.current?.contains(nextFocus)) setHistoryMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setHistoryMenuOpen(false); }} placeholder={searchMode === "author" ? "輸入作者暱稱、繪師或社團名..." : "輸入角色、配對、作品名或關鍵字"} className="h-10 border-0 bg-transparent px-0 text-lg font-semibold shadow-none focus-visible:ring-0 sm:text-xl" aria-label="搜尋同人作品" />{historyMenuOpen && searchHistory.length > 0 && <div ref={historyMenuRef} aria-label="最近搜尋" className="absolute left-0 right-0 top-full z-30 mt-3 overflow-hidden rounded-2xl border border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)]/95 p-2 shadow-[0_18px_42px_rgba(29,28,45,0.16)] backdrop-blur-xl"><div className="mb-1 flex items-center justify-between px-2 py-1"><span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[color:var(--atlas-muted)]"><History className="h-3.5 w-3.5" />最近搜尋</span><button type="button" onClick={() => { clearHistory(); setHistoryMenuOpen(false); }} className="rounded-lg px-2 py-1 text-xs font-semibold text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)]">清空</button></div>{searchHistory.map((entry) => <div key={entry} className="group flex items-center gap-1 rounded-xl px-2 transition-colors hover:bg-[color:var(--atlas-indigo-soft)]"><button type="button" onClick={() => { setKeyword(entry); setSearchMode("keyword"); setHistoryMenuOpen(false); runSearch(false, entry); }} className="min-w-0 flex-1 truncate py-2 text-left text-sm font-semibold text-[color:var(--atlas-ink)]">{entry}</button><button type="button" onClick={() => removeHistoryEntry(entry)} aria-label={`刪除最近搜尋 ${entry}`} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[color:var(--atlas-muted)] opacity-0 transition-opacity hover:bg-white hover:text-[color:var(--atlas-danger)] focus-visible:opacity-100 group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button></div>)}</div>}{searchMode === "author" && <div className="mt-1 text-xs text-amber-700">正在搜尋作者：{keyword}</div>}</div></div>
             <div className="flex flex-wrap items-center gap-3">
-              <Button type="button" variant="outline" onClick={() => runSearch(true)} disabled={isSearchPending || !keyword.trim()} aria-label="強制重新抓取" className="h-11 border-[#111826]/20 bg-white/80 font-mono text-[10px] font-bold uppercase tracking-[0.14em] hover:border-[#2d70d6] hover:text-[#2d70d6]"><RotateCw className={`h-4 w-4 ${isSearchPending ? "animate-spin" : ""}`} /><span className="sr-only">強制重新抓取</span></Button>
+              <Button type="button" variant="outline" onClick={() => runSearch(true)} disabled={isSearchPending || !keyword.trim()} aria-label="強制重新抓取" className="h-11 rounded-xl border-[color:var(--atlas-line)] bg-white/80 text-[color:var(--atlas-muted)] hover:border-[color:var(--atlas-indigo)] hover:text-[color:var(--atlas-indigo)]"><RotateCw className={`h-4 w-4 ${isSearchPending ? "animate-spin" : ""}`} /><span className="sr-only">強制重新抓取</span></Button>
               <Button type="submit" disabled={isSearchPending} aria-label={isSearchPending ? "SCANNING" : "RUN SEARCH"} className="h-11 min-w-36 bg-[color:var(--atlas-indigo)] px-6 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(79,70,229,0.24)] hover:bg-[#4338ca]">{isSearchPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}{isSearchPending ? "搜尋中" : "開始搜尋"}</Button>
             </div>
           </form>
-          {historyMenuOpen && searchHistory.length > 0 && <div className="relative z-20 mt-3 border-t border-[#10151b]/10 pt-3"><div className="w-full border border-[#111826]/15 bg-[#fdfbf6] p-2 shadow-[5px_5px_0_rgba(17,24,38,0.12)]"><div className="mb-1 flex items-center justify-between px-2 font-mono text-[9px] font-bold uppercase tracking-[0.13em] text-[#75838b]"><span className="inline-flex items-center gap-1"><History className="h-3 w-3" />最近 10 次搜尋</span><button type="button" onClick={clearHistory} className="text-[#9b4358] hover:underline">清除</button></div>{searchHistory.map((entry) => <button key={entry} type="button" onClick={() => { setKeyword(entry); setSearchMode("keyword"); setHistoryMenuOpen(false); runSearch(false, entry); }} className="block w-full px-2 py-2 text-left text-sm font-semibold hover:bg-[#e6efff]">{entry}</button>)}</div></div>}
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#10151b]/10 pt-3"><Button type="button" variant="outline" onClick={pinCurrentQuery} disabled={!(keyword || activeQuery).trim()} className="h-8 rounded-none border-[#e8a7bf] bg-[#fff5f7] px-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#8b3e59] hover:bg-[#ffe8f0]">⭐ 釘選目前搜尋詞</Button>{pinnedQueries.map((entry) => <button key={entry} type="button" onClick={() => { setKeyword(entry); setSearchMode("keyword"); runSearch(false, entry); }} className="border border-[#e8a7bf] bg-[#ffe8f0] px-2.5 py-1.5 font-mono text-[10px] font-bold text-[#8b3e59] hover:bg-[#fff5f7]">{entry}</button>)}</div>
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[color:var(--atlas-line)] pt-3"><Button type="button" variant="outline" onClick={pinCurrentQuery} disabled={!(keyword || activeQuery).trim()} className="h-8 rounded-full border-[color:var(--atlas-danger-line)] bg-[color:var(--atlas-danger-soft)] px-3 text-xs font-semibold text-[color:var(--atlas-danger)] hover:bg-[#ffe4eb]">釘選目前搜尋詞</Button>{pinnedQueries.map((entry) => <button key={entry} type="button" onClick={() => { setKeyword(entry); setSearchMode("keyword"); runSearch(false, entry); }} className="rounded-full bg-[color:var(--atlas-indigo-soft)] px-3 py-1.5 text-xs font-semibold text-[color:var(--atlas-indigo)] hover:bg-white">{entry}</button>)}</div>
           <div className="mt-3 border-t border-[#10151b]/10 pt-3">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div className="flex min-w-0 flex-wrap items-center gap-3">
@@ -816,14 +938,14 @@ export default function Home() {
                   <option value="relevance">相關度最高</option><option value="updated">最新更新</option><option value="words">字數最多</option>
                 </select>
               </label>
-              <BlacklistGroupManager groups={blacklistGroups} showFilteredResults={showFilteredResults} onGroupsChange={updateBlacklistGroups} onShowFilteredResultsChange={(value) => { setShowFilteredResults(value); if (!value) setRevealedFilteredUrls(new Set()); }} />
+              <BlacklistGroupManager groups={blacklistGroups} onGroupsChange={updateBlacklistGroups} />
               {contentSafetySettings.ageConfirmation === "adult" && <label className="flex items-center gap-3 border border-[#efb4c4] bg-[#fff7f9] px-3 py-3 lg:col-span-4"><Checkbox checked={contentSafetySettings.blurRestrictedSummaries} onCheckedChange={(value) => setSensitiveSummaryBlur(value === true)} aria-label="敏感內容模糊" className="rounded-none border-[#9b4358] data-[state=checked]:bg-[#9b4358]" /><span><span className="block font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#9b4358]">敏感內容模糊</span><span className="mt-1 block text-xs text-[#69777f]">限制級作品的摘要預設模糊，點擊後才會展開。</span></span></label>}
               <div className="flex items-end lg:col-span-4"><Button type="button" variant="outline" onClick={saveCurrentFilters} className="h-10 rounded-none border-[#10151b]/15 bg-white/65 font-mono text-[10px] font-bold uppercase tracking-[0.13em] hover:border-[#45b9b2] hover:bg-[#d9f8f5] hover:text-[#197b75]"><Save className="mr-2 h-3.5 w-3.5" />設為預設篩選</Button><span className="ml-3 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#8b979d]">保留字數、完結與排序偏好</span></div>
             </div>
           )}
         </section>
 
-        <section className="mt-10 flex flex-col gap-3 border-b border-[color:var(--atlas-line)] pb-5 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="text-3xl font-extrabold sm:text-4xl">{activeView === "bookmarks" ? `藏書閣 · ${bookmarks.length.toLocaleString()} 本` : searchMutation.isPending ? "正在尋找作品" : hasSearched ? pagination.totalWorks > 0 ? `找到 ${pagination.totalWorks.toLocaleString()} 篇作品` : "暫時沒有可驗證的作品" : "開始探索"}</h2>{activeView === "search" && searchMode === "author" && <div className="mt-2 flex items-center gap-2 text-sm text-amber-700"><UserRound className="h-3.5 w-3.5" /> 搜尋作者：{activeQuery || keyword}</div>}{activeView === "search" && hasSearched && pagination.totalWorks > 0 && <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[color:var(--atlas-muted)]"><span>已載入第 {pagination.loadedThroughPage} / {pagination.totalPages} 頁</span><span>顯示 {displayedResults.length} / {results.length} 筆</span>{excludedKeywords.length > 0 && <span className="text-[color:var(--atlas-danger)]">避雷中：{excludedKeywords.length} 詞</span>}{completedElapsedMs !== null && <span className="text-[color:var(--atlas-success)]">{(completedElapsedMs / 1000).toFixed(1)} 秒完成</span>}</div>}</div><div className="text-xs text-[color:var(--atlas-muted)]">{activeView === "bookmarks" ? desktopRuntime ? "只保留在這台裝置" : "保留在這個瀏覽器" : `${selectedPlatforms.length} 個來源已啟用`}</div></section>
+        <section className="mt-10 flex flex-col gap-3 border-b border-[color:var(--atlas-line)] pb-5 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="text-3xl font-extrabold sm:text-4xl">{activeView === "bookmarks" ? `藏書閣 · ${bookmarks.length.toLocaleString()} 本` : searchMutation.isPending ? "正在尋找作品" : hasSearched ? pagination.totalWorks > 0 ? `找到 ${pagination.totalWorks.toLocaleString()} 篇作品` : "暫時沒有可驗證的作品" : "開始探索"}</h2>{activeView === "search" && searchMode === "author" && <div className="mt-2 flex items-center gap-2 text-sm text-amber-700"><UserRound className="h-3.5 w-3.5" /> 搜尋作者：{activeQuery || keyword}</div>}{activeView === "search" && hasSearched && pagination.totalWorks > 0 && <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[color:var(--atlas-muted)]"><span>已載入第 {pagination.loadedThroughPage} / {pagination.totalPages} 頁</span><span>顯示 {displayedResults.length} / {results.length} 筆</span>{excludedKeywords.length > 0 && <span className="text-[color:var(--atlas-danger)]">避雷中：{excludedKeywords.length} 詞</span>}{completedElapsedMs !== null && <span className="text-[color:var(--atlas-success)]">{(completedElapsedMs / 1000).toFixed(1)} 秒完成</span>}</div>}</div><div className="flex flex-wrap items-center gap-2"><div className="text-xs text-[color:var(--atlas-muted)]">{activeView === "bookmarks" ? desktopRuntime ? "只保留在這台裝置" : "保留在這個瀏覽器" : `${selectedPlatforms.length} 個來源已啟用`}</div>{activeView === "search" && hasSearched && filteredResultCount > 0 && <Button type="button" variant="outline" aria-label="顯示已避雷作品" aria-pressed={showFilteredResults} onClick={() => setShowFilteredResults((current) => { const next = !current; if (!next) setRevealedFilteredUrls(new Set()); return next; })} className={`h-9 rounded-full border px-3 text-xs font-semibold ${showFilteredResults ? "border-[color:var(--atlas-amber)] bg-[color:var(--atlas-amber-soft)] text-[color:var(--atlas-amber)]" : "border-[color:var(--atlas-danger-line)] bg-white text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)]"}`}>{showFilteredResults ? <EyeOff className="mr-1.5 h-3.5 w-3.5" /> : <Eye className="mr-1.5 h-3.5 w-3.5" />}{showFilteredResults ? "隱藏已避雷作品" : "顯示已避雷作品"}<span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-current px-1.5 py-0.5 text-[10px] font-bold text-white">{filteredResultCount}</span></Button>}</div></section>
 
         {activeView === "search" && hasSearched && platformStatuses.length > 0 && (
           <section aria-label="平台連線狀態" className="atlas-panel relative mt-5 overflow-hidden p-4 sm:p-5">
@@ -840,7 +962,7 @@ export default function Home() {
                 const officialSearch = status.platformId === "ao3"
                   ? {
                       href: `https://archiveofourown.org/works/search?commit=Search&work_search%5Bquery%5D=${encodeURIComponent(currentQuery)}`,
-                      label: "在 AO3 官網搜尋",
+                      label: "前往 AO3 搜尋本詞",
                     }
                   : status.platformId === "penana"
                     ? {
@@ -855,7 +977,7 @@ export default function Home() {
                     : isBlocked || status.status === "error"
                       ? "border-[#efb4c4] bg-[#fff0f4] text-[#9b4358]"
                       : "border-[#d5d8da] bg-[#f5f6f4] text-[#65737a]";
-                const stateLabel = isSuccess ? "已連線" : isCooldown ? "冷卻限制中" : isBlocked ? "觸發人機保護" : status.status === "error" ? "連線逾時" : "無公開結果";
+                const stateLabel = isSuccess ? "已連線" : isCooldown ? "冷卻限制中" : isBlocked ? "需要安全驗證" : status.status === "error" ? "連線逾時" : "無公開結果";
                 const isActiveFilter = activePlatformFilter === status.platformId;
                 const isRetryingThisPlatform = isSearchPending && retryingPlatformId === status.platformId;
                 return (
@@ -922,6 +1044,9 @@ export default function Home() {
               onProgressChange={updateBookmarkProgress}
               onExportAll={exportAllPersonalData}
               onImportAll={importAllPersonalData}
+              desktopVersion={desktopRuntime ? desktopVersion : undefined}
+              updateCheckPending={updateCheckPending}
+              onCheckForUpdates={desktopRuntime ? () => void checkForAppUpdate("manual") : undefined}
             />
           ) : <>
           {!hasSearched && !searchMutation.isPending && <div className="atlas-panel p-8 sm:p-10"><div className="max-w-2xl"><div className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]"><Sparkles className="h-5 w-5" /></div><h3 className="text-2xl font-extrabold">從一組關鍵字開始</h3><p className="mt-3 text-sm leading-7 text-[color:var(--atlas-muted)]">輸入角色、配對或作品名，從公開來源找到作品，並把想留下的故事收進你的書架。</p></div></div>}
@@ -1043,6 +1168,26 @@ export default function Home() {
         />
         <AgeConfirmationDialog open={contentSafetySettings.ageConfirmation === "unknown"} onConfirm={confirmAge} />
         <CpMappingManagerDialog open={cpManagerOpen} mappings={cpMappings} customMappings={customCpMappings} onOpenChange={setCpManagerOpen} onChange={updateCpMappings} />
+        <Dialog open={updateDialogOpen} onOpenChange={(open) => { if (!updateInstallPending) setUpdateDialogOpen(open); }}>
+          <DialogContent showCloseButton={!updateInstallPending} overlayClassName="bg-[color:var(--atlas-ink)]/32 backdrop-blur-md" className="max-w-lg rounded-3xl border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)] p-0 shadow-[0_28px_80px_rgba(34,31,57,0.26)]">
+            <DialogHeader className="border-b border-[color:var(--atlas-line)] px-6 pb-5 pt-6 sm:px-8">
+              <div className="mb-3 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]"><RotateCw className={`h-5 w-5 ${updateInstallPending ? "animate-spin" : ""}`} /></div>
+              <DialogTitle className="text-2xl font-extrabold tracking-[-0.035em]">發現新版本 v{availableUpdate?.version}</DialogTitle>
+              <DialogDescription className="mt-2 text-sm leading-6 text-[color:var(--atlas-muted)]">目前使用 v{desktopVersion}。更新會在下載與驗證完成後自動重新啟動應用程式。</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 px-6 py-5 sm:px-8">
+              <div className="rounded-2xl bg-[color:var(--atlas-elevated)] p-4">
+                <div className="text-sm font-semibold text-[color:var(--atlas-ink)]">這次更新內容</div>
+                <p className="mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap text-sm leading-6 text-[color:var(--atlas-muted)]">{availableUpdate?.body?.trim() || "本次版本包含穩定性修正與體驗改善。"}</p>
+              </div>
+              {updateInstallPending && <div aria-live="polite"><div className="mb-2 flex items-center justify-between text-xs font-semibold text-[color:var(--atlas-indigo)]"><span>{updateDownloadPercent >= 100 ? "正在安裝更新…" : "正在下載並驗證更新…"}</span><span>{updateDownloadPercent}%</span></div><Progress value={updateDownloadPercent} className="h-2 bg-[color:var(--atlas-indigo-soft)] [&>div]:bg-[color:var(--atlas-indigo)]" /></div>}
+            </div>
+            <DialogFooter className="border-t border-[color:var(--atlas-line)] px-6 py-5 sm:px-8">
+              {!updateInstallPending && <Button type="button" variant="outline" onClick={() => setUpdateDialogOpen(false)} className="rounded-xl border-[color:var(--atlas-line)] bg-white/70">稍後再說</Button>}
+              <Button type="button" onClick={() => void installAvailableUpdate()} disabled={updateInstallPending} className="min-w-40 rounded-xl bg-[color:var(--atlas-indigo)] text-white shadow-[0_10px_22px_rgba(79,70,229,0.24)] hover:bg-[#4338ca]">{updateInstallPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCw className="mr-2 h-4 w-4" />}{updateInstallPending ? "準備重新啟動" : "立即更新並重啟"}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
 
       <footer className="relative z-10 border-t border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)]"><div className="mx-auto flex max-w-[1440px] flex-col gap-2 px-5 py-6 text-xs text-[color:var(--atlas-muted)] sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-12"><span>Fanfic Atlas · 為你的閱讀清單留一個安靜的位置</span><span>6 個公開來源 · 本機保存個人資料</span></div></footer>

@@ -198,7 +198,18 @@ export function parseWordCount(value: string | null | undefined): number {
   return digits ? Number(digits) : 0;
 }
 
-/** Prefer source metadata and only infer a broad category when it is absent. */
+const SIMPLIFIED_MARKERS = /[这后发复里为国书爱见听说车门云东台风万与]/g;
+const TRADITIONAL_MARKERS = /[這後髮複裡為國書愛見聽說車門雲東臺風萬與]/g;
+
+function markerCount(text: string, expression: RegExp): number {
+  return text.match(expression)?.length || 0;
+}
+
+/**
+ * Prefer source metadata, then infer from the work text held in memory.
+ * These heuristics intentionally run only after a search response is received;
+ * changing language controls must never participate in the crawler request.
+ */
 export function resultLanguage(result: SearchResult): Exclude<LanguageFilter, "all"> | "unknown" {
   const language = (result.language || "").trim().toLocaleLowerCase();
   if (language === "unknown") return "unknown";
@@ -208,12 +219,19 @@ export function resultLanguage(result: SearchResult): Exclude<LanguageFilter, "a
   if (/(zh|chinese|中文|華文|华文)/.test(language)) return "zh";
   if (/(en|english|英文)/.test(language)) return "en";
 
-  const text = `${result.title} ${result.summary} ${result.tags}`;
-  if (/[ぁ-んァ-ヶ]/.test(text)) return "ja";
-  if (/[后发复里为这国书爱见]/.test(text)) return "zh-hans";
-  if (/[臺這個與為國書愛見]/.test(text)) return "zh-hant";
+  const text = [result.title, result.summary, result.tags, result.relationships?.join(" "), result.characters?.join(" ")]
+    .filter(Boolean)
+    .join(" ");
+  if (!text.trim()) return "unknown";
+  if (/[ぁ-んァ-ヶｧ-ﾝ]/.test(text)) return "ja";
+
+  const simplifiedCount = markerCount(text, SIMPLIFIED_MARKERS);
+  const traditionalCount = markerCount(text, TRADITIONAL_MARKERS);
+  if (simplifiedCount > traditionalCount && simplifiedCount > 0) return "zh-hans";
+  if (traditionalCount > simplifiedCount && traditionalCount > 0) return "zh-hant";
   if (/[\u3400-\u9fff]/.test(text)) return "zh";
-  return "en";
+  if (/[A-Za-z]/.test(text)) return "en";
+  return "unknown";
 }
 
 export function matchesLanguageFilter(result: SearchResult, filter: LanguageFilter = "all"): boolean {
@@ -251,8 +269,11 @@ export function matchesExcludedKeyword(result: SearchResult, excludedKeywords: s
 }
 
 export function isRestrictedResult(result: SearchResult): boolean {
-  const classification = [result.rating, result.tags].filter(Boolean).join(" ").toLocaleLowerCase();
-  return /\b(explicit|mature|r[-\s]?18|18\+|r18g)\b|限制級|成人向|僅限成人/.test(classification);
+  const classification = [result.rating, result.tags, result.title, result.summary]
+    .filter(Boolean)
+    .join(" ")
+    .toLocaleLowerCase();
+  return /\b(explicit|mature|nsfw|nc[-\s]?17|r[-\s]?18|18\+|r18g)\b|限制級|成人向|僅限成人|十八禁|18禁/.test(classification);
 }
 
 export function matchesRatingFilter(result: SearchResult, filter: RatingFilter | undefined): boolean {

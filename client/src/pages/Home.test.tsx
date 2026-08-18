@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
 import React from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "./Home";
+import { clearSearchRequestCache } from "@/lib/searchRequestCache";
 
 const mockState = vi.hoisted(() => ({
   nextHookId: 0,
@@ -12,6 +13,7 @@ const mockState = vi.hoisted(() => ({
   responsePlatformStatuses: [] as unknown[],
   retryPayload: null as Record<string, unknown> | null,
   primaryPayload: null as Record<string, unknown> | null,
+  mutationCalls: 0,
 }));
 
 vi.mock("sonner", () => ({
@@ -24,10 +26,11 @@ vi.mock("@/lib/trpc", async () => {
     trpc: {
       fastapi: {
         proxy: {
-          useMutation: (options: { onSuccess?: (payload: unknown) => void; onError?: (error: Error) => void }) => {
+          useMutation: (options: { onSuccess?: (payload: unknown, variables?: unknown) => void; onError?: (error: Error, variables?: unknown) => void }) => {
             const [hookId] = React.useState(() => mockState.nextHookId++);
             const [isPending, setIsPending] = React.useState(false);
             const mutate = (variables?: unknown) => {
+              mockState.mutationCalls += 1;
               mockState.lastVariables = variables;
               setIsPending(true);
               window.setTimeout(() => {
@@ -61,7 +64,7 @@ vi.mock("@/lib/trpc", async () => {
                       nextPage: null,
                       hasMore: false,
                     };
-                options.onSuccess?.(payload);
+                options.onSuccess?.(payload, variables);
                 setIsPending(false);
               }, 20);
             };
@@ -79,12 +82,14 @@ afterEach(() => {
 
 beforeEach(() => {
   window.localStorage.setItem("sui-read-content-safety-settings", JSON.stringify({ ageConfirmation: "adult", blurRestrictedSummaries: true }));
+  clearSearchRequestCache();
   mockState.nextHookId = 0;
   mockState.lastVariables = null;
   mockState.responseWarning = null;
   mockState.responsePlatformStatuses = [];
   mockState.retryPayload = null;
   mockState.primaryPayload = null;
+  mockState.mutationCalls = 0;
 });
 
 describe("Home pagination interactions", () => {
@@ -122,6 +127,44 @@ describe("Home pagination interactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "R18" }));
     expect(screen.getByText("限制級作品")).toBeTruthy();
     expect(screen.queryByText("全年齡作品")).toBeNull();
+  });
+
+  it("switches language and rating only against the loaded result array without another crawler request", async () => {
+    mockState.primaryPayload = {
+      items: [
+        { title: "這是繁體作品", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/813", tags: "General", summary: "繁體摘要", scraped_at: "2026-01-01T00:00:00Z" },
+        { title: "これはR18作品", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/814", tags: "NSFW", summary: "成人向摘要", scraped_at: "2026-01-01T00:00:00Z" },
+      ], totalWorks: 2, totalPages: 1, page: 1, loadedThroughPage: 1, nextPage: null, hasMore: false,
+    };
+    render(<Home />);
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "作品" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+    await waitFor(() => expect(screen.getByText("這是繁體作品")).toBeTruthy());
+    const callsAfterSearch = mockState.mutationCalls;
+
+    fireEvent.click(screen.getByRole("button", { name: "繁體" }));
+    expect(screen.getByText("這是繁體作品")).toBeTruthy();
+    expect(screen.queryByText("これはR18作品")).toBeNull();
+    expect(mockState.mutationCalls).toBe(callsAfterSearch);
+
+    fireEvent.click(within(screen.getByLabelText("語言快速篩選")).getByRole("button", { name: "全部" }));
+    fireEvent.click(screen.getByRole("button", { name: "R18" }));
+    expect(screen.getByText("これはR18作品")).toBeTruthy();
+    expect(screen.queryByText("這是繁體作品")).toBeNull();
+    expect(mockState.mutationCalls).toBe(callsAfterSearch);
+  });
+
+  it("reuses an identical successful search from the fifteen-minute browser cache without another mutation", async () => {
+    render(<Home />);
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "快取測試" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+    await waitFor(() => expect(screen.getByText("PAGE ONE")).toBeTruthy());
+    const callsAfterFirstSearch = mockState.mutationCalls;
+
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+
+    expect(screen.getByText("PAGE ONE")).toBeTruthy();
+    expect(mockState.mutationCalls).toBe(callsAfterFirstSearch);
   });
 
   it("renders the crafted reading workspace before a query", () => {
@@ -178,7 +221,7 @@ describe("Home pagination interactions", () => {
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "義忍" } });
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
 
-    await waitFor(() => expect(mockState.lastVariables).toEqual({
+    await waitFor(() => expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
       data: { keyword: "義忍", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: false, customCpMappings: [] },
@@ -187,7 +230,7 @@ describe("Home pagination interactions", () => {
     expect(screen.getByText("冷卻限制中")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "重試 在水裡寫字" }));
-    expect(mockState.lastVariables).toEqual({
+    expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
       data: { keyword: "義忍", mode: "keyword", platforms: ["waterwriter"], page: 1, forceRefresh: true, customCpMappings: [] },
@@ -204,7 +247,7 @@ describe("Home pagination interactions", () => {
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "義忍" } });
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "重試 AO3" })).toBeTruthy());
-    expect(screen.getByRole("link", { name: "在 AO3 官網搜尋" }).getAttribute("href")).toBe(
+    expect(screen.getByRole("link", { name: "前往 AO3 搜尋本詞" }).getAttribute("href")).toBe(
       "https://archiveofourown.org/works/search?commit=Search&work_search%5Bquery%5D=%E7%BE%A9%E5%BF%8D",
     );
     expect(screen.getByRole("link", { name: "在 Penana 官網搜尋" }).getAttribute("href")).toBe(
@@ -212,7 +255,7 @@ describe("Home pagination interactions", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "重試 AO3" }));
-    expect(mockState.lastVariables).toEqual({
+    expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
       data: { keyword: "義忍", mode: "keyword", platforms: ["ao3"], page: 1, forceRefresh: true, customCpMappings: [] },
@@ -220,7 +263,7 @@ describe("Home pagination interactions", () => {
 
     await waitFor(() => expect((screen.getByRole("button", { name: "重試 Penana" }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "重試 Penana" }));
-    expect(mockState.lastVariables).toEqual({
+    expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
       data: { keyword: "義忍", mode: "keyword", platforms: ["penana"], page: 1, forceRefresh: true, customCpMappings: [] },
@@ -253,7 +296,7 @@ describe("Home pagination interactions", () => {
     expect(screen.getByText("正在搜尋作者：Mizuki Studio")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
 
-    await waitFor(() => expect(mockState.lastVariables).toEqual({
+    await waitFor(() => expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
       data: { keyword: "Mizuki Studio", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: false, customCpMappings: [] },
@@ -328,7 +371,7 @@ describe("Home pagination interactions", () => {
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "花" } });
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
 
-    await waitFor(() => expect(mockState.lastVariables).toEqual({
+    await waitFor(() => expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
       data: { keyword: "花", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: false, customCpMappings: [] },
@@ -387,7 +430,7 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "搜尋作者 Atlas Creator" })).toBeTruthy());
 
     fireEvent.click(screen.getByRole("button", { name: "搜尋作者 Atlas Creator" }));
-    await waitFor(() => expect(mockState.lastVariables).toEqual({
+    await waitFor(() => expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
       data: { keyword: "Atlas Creator", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: false, customCpMappings: [] },

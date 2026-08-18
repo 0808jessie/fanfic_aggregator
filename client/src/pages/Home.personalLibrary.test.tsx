@@ -4,6 +4,7 @@ import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "./Home";
+import { clearSearchRequestCache } from "@/lib/searchRequestCache";
 
 vi.mock("sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn(), message: vi.fn() },
@@ -53,6 +54,7 @@ vi.mock("@/lib/trpc", async () => {
 describe("Home personal reading tools", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    clearSearchRequestCache();
     window.localStorage.setItem("sui-read-content-safety-settings", JSON.stringify({ ageConfirmation: "adult", blurRestrictedSummaries: true }));
   });
   afterEach(() => cleanup());
@@ -63,8 +65,12 @@ describe("Home personal reading tools", () => {
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "月光" } });
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
     await waitFor(() => expect(screen.getByText("義忍閱讀測試")).toBeTruthy());
-    fireEvent.focus(screen.getByLabelText("搜尋同人作品"));
-    expect(screen.getByText("最近 10 次搜尋")).toBeTruthy();
+    const searchInput = screen.getByLabelText("搜尋同人作品");
+    fireEvent.blur(searchInput);
+    fireEvent.focus(searchInput);
+    await waitFor(() => expect(screen.getByText("最近搜尋")).toBeTruthy());
+    fireEvent.change(searchInput, { target: { value: "新輸入的關鍵字" } });
+    expect(screen.queryByText("最近搜尋")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /收藏 義忍閱讀測試/ }));
     fireEvent.click(screen.getByRole("button", { name: "5 星" }));
@@ -78,6 +84,7 @@ describe("Home personal reading tools", () => {
     expect(screen.getAllByText("#重讀").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getAllByRole("button", { name: /CP 詞庫管理/ })[0]);
+    expect(document.querySelector("[data-slot='dialog-content']")?.className).toContain("rounded-3xl");
     fireEvent.change(screen.getByLabelText("中文縮寫"), { target: { value: "黑邪" } });
     fireEvent.change(screen.getByLabelText("AO3 關係標籤"), { target: { value: "Heiyan/Wu Xie" } });
     fireEvent.change(screen.getByLabelText("繁中本地關鍵字"), { target: { value: "黑邪 吳邪" } });
@@ -86,7 +93,7 @@ describe("Home personal reading tools", () => {
     expect(screen.getByText("Heiyan/Wu Xie")).toBeTruthy();
     expect(screen.getByText("黑邪 吳邪")).toBeTruthy();
     expect(window.localStorage.getItem("sui-read-custom-cp-map")).toContain("黑邪");
-    expect(screen.getByText("TROPE / WORLD INDEX")).toBeTruthy();
+    expect(screen.getByText("題材與世界觀詞庫")).toBeTruthy();
     expect(screen.getByText("ABO / 歐米茄")).toBeTruthy();
     expect(screen.getByText("Alpha/Beta/Omega Dynamics")).toBeTruthy();
   });
@@ -106,7 +113,7 @@ describe("Home personal reading tools", () => {
     expect(screen.getByText("通用避雷")).toBeTruthy();
     await waitFor(() => expect(screen.queryByText("義忍閱讀測試")).toBeNull());
 
-    fireEvent.click(screen.getByLabelText("顯示被過濾作品"));
+    fireEvent.click(screen.getByRole("button", { name: "顯示已避雷作品" }));
     await waitFor(() => expect(screen.getByText("⚠️ 此作品命中避雷設定")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "⚠️ 暫時查看這一篇" }));
     await waitFor(() => expect(screen.getByText("義忍閱讀測試")).toBeTruthy());

@@ -43,24 +43,35 @@ export async function waitForSidecarReady({
   attempts = 20,
   retryDelayMs = 300,
   configuredBase,
+  signal,
 }: {
   fetchImpl?: FetchLike;
   attempts?: number;
   retryDelayMs?: number;
   configuredBase?: string;
+  signal?: AbortSignal;
 } = {}): Promise<void> {
   let lastError: unknown;
   const healthUrl = createSidecarUrl("/fastapi-status", {}, configuredBase);
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (signal?.aborted) throw new DOMException("搜尋已由較新的關鍵字取代", "AbortError");
     try {
-      const response = await fetchImpl(healthUrl, { method: "GET", cache: "no-store" });
+      const response = await fetchImpl(healthUrl, { method: "GET", cache: "no-store", signal });
       if (response.ok) return;
       lastError = new Error(`Sidecar health check returned HTTP ${response.status}`);
     } catch (error) {
       lastError = error;
     }
-    if (attempt < attempts) await new Promise(resolve => window.setTimeout(resolve, retryDelayMs));
+    if (attempt < attempts) {
+      await new Promise<void>((resolve, reject) => {
+        const timer = window.setTimeout(resolve, retryDelayMs);
+        signal?.addEventListener("abort", () => {
+          window.clearTimeout(timer);
+          reject(new DOMException("搜尋已由較新的關鍵字取代", "AbortError"));
+        }, { once: true });
+      });
+    }
   }
 
   const detail = lastError instanceof Error ? lastError.message : "unknown startup failure";
@@ -70,11 +81,13 @@ export async function waitForSidecarReady({
 export async function postSidecarSearch<T>(
   payload: unknown,
   configuredBase?: string,
+  signal?: AbortSignal,
 ): Promise<T> {
   const response = await globalThis.fetch(createSidecarUrl("/search", {}, configuredBase), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+    signal,
   });
   if (!response.ok) throw new Error(`搜尋引擎回傳 HTTP ${response.status}`);
   return response.json() as Promise<T>;

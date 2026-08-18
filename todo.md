@@ -420,3 +420,20 @@
 - [x] 將桌面端與後端公開版本更新為 v1.1.9
 - [x] 將 v1.1.9 視覺重構同步至 GitHub main 並推送版本標籤
 - [x] 確認 GitHub Actions 已接收 v1.1.9 標籤建置
+- [x] 強化語言與分級的前端判定，並驗證切換不重送任何搜尋請求
+- [x] 將最近搜尋改為搜尋框聚焦才展開、輸入或離焦即收合的下拉選單
+- [x] 將已避雷作品切換與命中計數移至搜尋結果可見位置
+- [x] 以現代閱讀工作區 token 重構 CP 詞庫與釘選標籤 Dialog
+- [x] 補足互動回歸測試、TypeScript、production build、Tauri 編譯與響應式視覺驗收
+- [x] 盤點搜尋請求與 AO3 受阻處理，確認不實作安全驗證規避或 Cookie 同步
+- [x] 建立 15 分鐘前端查詢快取、請求去重與過期回應保護，避免高頻關鍵字造成請求堆疊
+- [x] 保留所有平台結果，將 AO3 受阻明確顯示為可行動的官方搜尋直達降級
+- [x] 補足快取、過期回應與受阻來源回歸測試，完成 TypeScript、production build 與 Tauri 編譯驗證
+- [x] 盤點 Tauri Updater 設定、前端啟動流程與 GitHub Release 動態清單契約
+- [x] 建立可見的新版更新 Dialog，支援啟動檢查、版本資訊、更新說明、下載進度、安裝與重啟
+- [x] 在閱讀工作區加入手動檢查更新入口與目前桌面版本顯示
+- [x] 補足 Updater 流程與設定回歸測試，完成 TypeScript、production build 與 Tauri 編譯驗證
+- [x] 將 Tauri、FastAPI 與前端桌面版本資訊同步更新為 v1.1.10
+- [x] 執行 v1.1.10 完整測試、production build 與 Tauri 編譯驗證
+- [ ] 將 v1.1.10 發行內容同步 GitHub main 並推送版本標籤
+- [ ] 確認 GitHub Actions 已開始建立 macOS 與 Windows 安裝檔

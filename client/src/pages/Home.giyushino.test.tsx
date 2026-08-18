@@ -83,7 +83,7 @@ describe("Home Page Traditional Chinese '義忍' Search", () => {
     expect(screen.getByText("相關度 100")).toBeTruthy();
     expect(screen.getByText("已完結")).toBeTruthy();
     expect(screen.getByText(/.* 秒完成/)).toBeTruthy();
-    expect(mockState.lastVariables).toEqual({
+    expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
       data: { keyword: "義忍", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: false, customCpMappings: [] },
@@ -95,7 +95,7 @@ describe("Home Page Traditional Chinese '義忍' Search", () => {
     expect(screen.getByLabelText("排序方式")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "強制重新抓取" }));
-    await waitFor(() => expect(mockState.lastVariables).toEqual({
+    await waitFor(() => expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
       data: { keyword: "義忍", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: true, customCpMappings: [] },

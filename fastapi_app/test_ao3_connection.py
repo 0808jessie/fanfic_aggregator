@@ -70,3 +70,25 @@ def test_ao3_retries_403_once_with_low_frequency_backoff():
     assert fake_session.calls == 2
     sleep.assert_called_once_with(1.8)
     assert scraper._static_terminal_warning == "AO3 靜態搜尋暫時不可用（HTTP 403）"
+
+
+def test_ao3_verification_page_returns_a_source_warning_without_attempting_to_bypass_it():
+    class VerificationResponse:
+        status_code = 200
+        text = "<html><title>Just a moment…</title></html>"
+
+        def raise_for_status(self):
+            return None
+
+    class FakeSession:
+        def get(self, url: str, timeout: float):
+            return VerificationResponse()
+
+    scraper = AO3Scraper()
+    scraper._http_session = FakeSession()
+    scraper._static_deadline = monotonic() + 5
+
+    result = scraper._fetch_static_search_html("義忍", 1)
+
+    assert result is None
+    assert scraper._static_terminal_warning == "AO3 觸發安全驗證；請使用官方搜尋連結繼續。"

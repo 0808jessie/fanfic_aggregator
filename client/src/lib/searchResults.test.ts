@@ -170,6 +170,19 @@ describe("search result safety contract", () => {
     expect(filterAndSortResults([traditional, simplified, japanese], "作品", { ...baseFilters, language: "ja" })).toEqual([japanese]);
   });
 
+  it("infers traditional, simplified, Japanese, and English from loaded work text when source metadata is absent", () => {
+    const traditional = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/46", title: "這個故事與你有關", language: null };
+    const simplified = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/47", title: "这个故事与你有关", language: null };
+    const japanese = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/48", title: "ふたりの物語", language: null };
+    const english = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/49", title: "A quiet winter story", language: null };
+    const base = { wordCount: "all" as const, completion: "all" as const, sort: "relevance" as const };
+
+    expect(filterAndSortResults([traditional, simplified, japanese, english], "story", { ...base, language: "zh-hant" })).toEqual([traditional]);
+    expect(filterAndSortResults([traditional, simplified, japanese, english], "story", { ...base, language: "zh-hans" })).toEqual([simplified]);
+    expect(filterAndSortResults([traditional, simplified, japanese, english], "story", { ...base, language: "ja" })).toEqual([japanese]);
+    expect(filterAndSortResults([traditional, simplified, japanese, english], "story", { ...base, language: "en" })).toEqual([english]);
+  });
+
   it("keeps explicitly unknown-language works in all results but out of language-specific filters", () => {
     const unknown = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/44", language: "unknown" };
     const traditional = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/45", language: "zh-TW" };
@@ -202,6 +215,16 @@ describe("search result safety contract", () => {
     expect(isRestrictedResult(pixivR18)).toBe(true);
     expect(filterAndSortResults([general, explicit, pixivR18], "work", { ...base, rating: "safe" })).toEqual([general]);
     expect(filterAndSortResults([general, explicit, pixivR18], "work", { ...base, rating: "r18" })).toEqual([explicit, pixivR18]);
+  });
+
+  it("treats NSFW, NC-17, and adult text markers as R18 in the local filter pipeline", () => {
+    const nsfw = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/94", tags: "NSFW, romance" };
+    const nc17 = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/95", rating: "NC-17" };
+    const adultSummary = { ...verifiedAo3Result, url: "https://archiveofourown.org/works/96", summary: "僅限成人閱讀的內容" };
+
+    expect(isRestrictedResult(nsfw)).toBe(true);
+    expect(isRestrictedResult(nc17)).toBe(true);
+    expect(isRestrictedResult(adultSummary)).toBe(true);
   });
 
   it("sorts filtered results by newest update or highest word count locally", () => {
