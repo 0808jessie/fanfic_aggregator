@@ -123,7 +123,7 @@ const PLATFORMS = [
   { id: "kadokado", label: "KadoKado 角角者", detail: "KADOKADO.COM.TW · 索引導流", tone: "amber" },
 ] as const;
 
-const FALLBACK_DESKTOP_VERSION = "1.2.1";
+const FALLBACK_DESKTOP_VERSION = "1.2.2";
 const UPDATER_MANIFEST_URL = "https://github.com/0808jessie/fanfic_aggregator/releases/latest/download/latest.json";
 
 type DesktopUpdate = {
@@ -207,7 +207,7 @@ function completePlatformStatuses(
       label: platform.label,
       status: wasSelected ? "error" : "empty",
       itemCount: 0,
-      warning: wasSelected ? "本次未收到來源回應，請單獨重試。" : "本次搜尋未啟用此來源。",
+      warning: wasSelected ? "本次未收到來源回應，請單獨重試。" : "本次搜尋尚未選取此來源；於進階篩選啟用後才會查詢。",
       translatedQuery: query,
     };
   });
@@ -1005,33 +1005,35 @@ export default function Home() {
           {desktopRuntime && sidecarState !== "ready" && <div className={`mt-3 border-t border-[#10151b]/10 pt-3 font-mono text-[10px] font-bold tracking-[0.13em] ${sidecarState === "error" ? "text-[#9b4358]" : "text-[#197b75]"}`} aria-live="polite">{sidecarState === "error" ? "搜尋引擎尚未就緒；系統會在搜尋時再次嘗試連線。" : "正在啟動搜尋引擎..."}</div>}
           {isSearchPending && <div className="mt-3 border-t border-[#10151b]/10 pt-3" aria-live="polite"><div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] font-bold tracking-[0.11em] text-[#197b75]"><Loader2 className="h-3.5 w-3.5 animate-spin" />{desktopRuntime && sidecarState === "starting" ? "正在等待搜尋引擎就緒..." : isRetryingSinglePlatform && retryingPlatformId ? `正在重試 ${platformMeta(retryingPlatformId).label} · 僅更新此來源` : `正在查詢 ${sourceProgress.total} 個來源 · ${sourceProgress.responded} 已回應 · ${sourceProgress.pending} 查詢中 · ${sourceProgress.blocked} 受阻`}<span className="text-[#75838b]">· {(elapsedMs / 1000).toFixed(1)} 秒</span></div><div className="mt-2 h-1 overflow-hidden bg-[#d6e5e1]"><div className="h-full w-2/5 animate-pulse bg-[#45b9b2]" /></div></div>}
           {showFilters && (
-            <div className="mt-4 grid gap-5 border-t border-[#10151b]/10 pt-4 lg:grid-cols-[1.25fr_repeat(3,0.75fr)]">
-              <div>
-                <div className="mb-2 flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#61707a]"><Filter className="h-3.5 w-3.5" /> SOURCE ADAPTERS</div>
-                <div className="flex flex-wrap gap-2">{PLATFORMS.map((platform) => { const active = selectedPlatforms.includes(platform.id); return <label key={platform.id} className={`group flex cursor-pointer items-center gap-2 border px-3 py-2 font-mono text-[10px] font-bold uppercase tracking-[0.13em] transition-colors ${active ? platform.tone === "cyan" ? "border-[#5acbc4] bg-[#d9f8f5] text-[#126762]" : "border-[#ec9db8] bg-[#ffe3eb] text-[#8b3e59]" : "border-[#10151b]/15 bg-white/50 text-[#86929a]"}`}><Checkbox checked={active} onCheckedChange={() => togglePlatform(platform.id)} aria-label={`搜尋 ${platform.label}`} className="rounded-none border-[#10151b]/30 data-[state=checked]:border-[#10151b] data-[state=checked]:bg-[#10151b] data-[state=checked]:text-white" />{platform.label}</label>; })}</div>
+            <div aria-label="進階篩選面板" className="mt-4 grid gap-4 border-t border-[#10151b]/10 pt-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+              <div className="min-w-0 rounded-xl border border-[#10151b]/10 bg-white/45 p-3">
+                <div className="mb-3 flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#61707a]"><Filter className="h-3.5 w-3.5" /> SOURCE ADAPTERS</div>
+                <div className="grid grid-cols-3 gap-2">{PLATFORMS.map((platform) => { const active = selectedPlatforms.includes(platform.id); return <label key={platform.id} className={`group flex min-w-0 cursor-pointer items-center gap-1.5 border px-2 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.07em] transition-colors ${active ? platform.tone === "cyan" ? "border-[#5acbc4] bg-[#d9f8f5] text-[#126762]" : "border-[#ec9db8] bg-[#ffe3eb] text-[#8b3e59]" : "border-[#10151b]/15 bg-white/50 text-[#86929a]"}`}><Checkbox checked={active} onCheckedChange={() => togglePlatform(platform.id)} aria-label={`搜尋 ${platform.label}`} className="shrink-0 rounded-none border-[#10151b]/30 data-[state=checked]:border-[#10151b] data-[state=checked]:bg-[#10151b] data-[state=checked]:text-white" /><span className="truncate" title={platform.label}>{platform.label}</span></label>; })}</div>
               </div>
-              <label className="grid gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#61707a]">字數區間
-                <select value={wordCountFilter} onChange={(event) => setWordCountFilter(event.target.value as WordCountFilter)} className="h-10 border border-[#10151b]/15 bg-white px-3 text-[#10151b] outline-none focus:border-[#45b9b2]">
-                  <option value="all">全部</option><option value="short">1,000 字以下</option><option value="medium">1,000–10,000 字</option><option value="long">10,000 字以上</option>
-                </select>
-              </label>
-              <label className="grid gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#61707a]">完結狀態
-                <select value={completionFilter} onChange={(event) => setCompletionFilter(event.target.value as CompletionFilter)} className="h-10 border border-[#10151b]/15 bg-white px-3 text-[#10151b] outline-none focus:border-[#45b9b2]">
-                  <option value="all">全部</option><option value="complete">僅看已完結</option><option value="ongoing">僅看連載中</option>
-                </select>
-              </label>
-              <label className="grid gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-[#61707a]">排序方式
-                <select value={sortMode} onChange={(event) => setSortMode(event.target.value as ResultSortMode)} className="h-10 border border-[#10151b]/15 bg-white px-3 text-[#10151b] outline-none focus:border-[#45b9b2]">
-                  <option value="relevance">相關度最高</option><option value="updated">最新更新</option><option value="words">字數最多</option>
-                </select>
-              </label>
-              <label className="flex items-center gap-3 border border-[#b7c9ef] bg-[#f4f7ff] px-3 py-3 lg:col-span-2">
+              <div className="grid min-w-0 grid-cols-1 gap-3 rounded-xl border border-[#10151b]/10 bg-white/45 p-3 sm:grid-cols-3">
+                <label className="grid gap-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.11em] text-[#61707a]">字數區間
+                  <select value={wordCountFilter} onChange={(event) => setWordCountFilter(event.target.value as WordCountFilter)} className="h-9 min-w-0 border border-[#10151b]/15 bg-white px-2 text-xs normal-case tracking-normal text-[#10151b] outline-none focus:border-[#45b9b2]">
+                    <option value="all">全部</option><option value="short">1,000 字以下</option><option value="medium">1,000–10,000 字</option><option value="long">10,000 字以上</option>
+                  </select>
+                </label>
+                <label className="grid gap-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.11em] text-[#61707a]">完結狀態
+                  <select value={completionFilter} onChange={(event) => setCompletionFilter(event.target.value as CompletionFilter)} className="h-9 min-w-0 border border-[#10151b]/15 bg-white px-2 text-xs normal-case tracking-normal text-[#10151b] outline-none focus:border-[#45b9b2]">
+                    <option value="all">全部</option><option value="complete">僅看已完結</option><option value="ongoing">僅看連載中</option>
+                  </select>
+                </label>
+                <label className="grid gap-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.11em] text-[#61707a]">排序方式
+                  <select value={sortMode} onChange={(event) => setSortMode(event.target.value as ResultSortMode)} className="h-9 min-w-0 border border-[#10151b]/15 bg-white px-2 text-xs normal-case tracking-normal text-[#10151b] outline-none focus:border-[#45b9b2]">
+                    <option value="relevance">相關度最高</option><option value="updated">最新更新</option><option value="words">字數最多</option>
+                  </select>
+                </label>
+              </div>
+              <label className="flex items-center gap-3 border border-[#b7c9ef] bg-[#f4f7ff] px-3 py-2.5 xl:col-span-full">
                 <Checkbox checked={hideBookmarkedResults} onCheckedChange={(value) => updateHideBookmarkedResults(value === true)} aria-label="隱藏已在藏書閣作品" className="rounded-none border-[#2d70d6] data-[state=checked]:bg-[#2d70d6]" />
-                <span><span className="block font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#245da9]">隱藏已在藏書閣作品</span><span className="mt-1 block text-xs text-[#69777f]">只在目前裝置即時比對 URL；不會重新搜尋。{bookmarks.length ? ` 已比對 ${bookmarks.length} 本藏書。` : ""}</span></span>
+                <span><span className="block font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#245da9]">隱藏已在藏書閣作品</span><span className="mt-0.5 block text-xs text-[#69777f]">只在目前裝置即時比對 URL；不會重新搜尋。{bookmarks.length ? ` 已比對 ${bookmarks.length} 本藏書。` : ""}</span></span>
               </label>
-              <BlacklistGroupManager groups={blacklistGroups} onGroupsChange={updateBlacklistGroups} />
-              {contentSafetySettings.ageConfirmation === "adult" && <label className="flex items-center gap-3 border border-[#efb4c4] bg-[#fff7f9] px-3 py-3 lg:col-span-4"><Checkbox checked={contentSafetySettings.blurRestrictedSummaries} onCheckedChange={(value) => setSensitiveSummaryBlur(value === true)} aria-label="敏感內容模糊" className="rounded-none border-[#9b4358] data-[state=checked]:bg-[#9b4358]" /><span><span className="block font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#9b4358]">敏感內容模糊</span><span className="mt-1 block text-xs text-[#69777f]">限制級作品的摘要預設模糊，點擊後才會展開。</span></span></label>}
-              <div className="flex items-end lg:col-span-4"><Button type="button" variant="outline" onClick={saveCurrentFilters} className="h-10 rounded-none border-[#10151b]/15 bg-white/65 font-mono text-[10px] font-bold uppercase tracking-[0.13em] hover:border-[#45b9b2] hover:bg-[#d9f8f5] hover:text-[#197b75]"><Save className="mr-2 h-3.5 w-3.5" />設為預設篩選</Button><span className="ml-3 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#8b979d]">保留字數、完結、排序與藏書閣隱藏偏好</span></div>
+              <div className="xl:col-span-full"><BlacklistGroupManager groups={blacklistGroups} onGroupsChange={updateBlacklistGroups} /></div>
+              {contentSafetySettings.ageConfirmation === "adult" && <label className="flex items-center gap-3 border border-[#efb4c4] bg-[#fff7f9] px-3 py-2.5 xl:col-span-full"><Checkbox checked={contentSafetySettings.blurRestrictedSummaries} onCheckedChange={(value) => setSensitiveSummaryBlur(value === true)} aria-label="敏感內容模糊" className="rounded-none border-[#9b4358] data-[state=checked]:bg-[#9b4358]" /><span><span className="block font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#9b4358]">敏感內容模糊</span><span className="mt-0.5 block text-xs text-[#69777f]">限制級作品的摘要預設模糊，點擊後才會展開。</span></span></label>}
+              <div className="flex flex-wrap items-center gap-3 xl:col-span-full"><Button type="button" variant="outline" onClick={saveCurrentFilters} className="h-9 rounded-none border-[#10151b]/15 bg-white/65 font-mono text-[10px] font-bold uppercase tracking-[0.13em] hover:border-[#45b9b2] hover:bg-[#d9f8f5] hover:text-[#197b75]"><Save className="mr-2 h-3.5 w-3.5" />設為預設篩選</Button><span className="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#8b979d]">保留字數、完結、排序與藏書閣隱藏偏好</span></div>
             </div>
           )}
         </section>
@@ -1068,7 +1070,8 @@ export default function Home() {
                     : isBlocked || status.status === "error"
                       ? "border-[#efb4c4] bg-[#fff0f4] text-[#9b4358]"
                       : "border-[#d5d8da] bg-[#f5f6f4] text-[#65737a]";
-                const stateLabel = isSuccess ? "已連線" : isCooldown ? "冷卻限制中" : isBlocked ? status.platformId === "ao3" ? "AO3 需要安全驗證" : "需要安全驗證" : status.status === "error" ? "連線逾時" : status.warning === "本次搜尋未啟用此來源。" ? "未啟用" : "無公開結果";
+                const isNotEnabled = status.warning?.startsWith("本次搜尋尚未選取此來源") === true;
+                const stateLabel = isSuccess ? "已連線" : isCooldown ? "冷卻限制中" : isBlocked ? status.platformId === "ao3" ? "AO3 公開索引受阻" : "公開索引受阻" : status.status === "error" ? "連線逾時" : isNotEnabled ? "尚未選取" : "無公開結果";
                 const isActiveFilter = activePlatformFilter === status.platformId;
                 const isRetryingThisPlatform = isSearchPending && retryingPlatformId === status.platformId;
                 return (
@@ -1086,7 +1089,7 @@ export default function Home() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="atlas-mono text-[10px] font-medium uppercase tracking-[0.12em]">{status.label}</div>
-                        <div className="mt-1 font-mono text-[9px] font-bold tracking-[0.08em]">{stateLabel}{isSuccess ? ` · ${status.itemCount} 筆` : ""}{isActiveFilter ? " · FILTER ACTIVE" : ""}</div>
+                        <div className="mt-1 font-mono text-[9px] font-bold tracking-[0.08em]">{stateLabel}{isSuccess ? ` · ${status.itemCount} 筆` : ""}{isActiveFilter && isSuccess ? " · 正在篩選" : ""}</div>
                       </div>
                       {isPlatformRetryable(status) && (
                         <Button
@@ -1114,16 +1117,14 @@ export default function Home() {
                             void openExternalUrl(
                               event,
                               officialSearch.href,
-                              status.platformId === "ao3"
-                                ? "已開啟官方 AO3 搜尋；若完成官方驗證，請回到此處按「重試 AO3」。"
-                                : undefined,
+                              status.platformId === "ao3" ? "已開啟官方 AO3 搜尋。" : undefined,
                             );
                           }}
                           className="inline-flex items-center gap-1 border border-current px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] hover:bg-white/70"
                         >
                           {officialSearch.label} <ArrowUpRight className="h-3 w-3" />
                         </a>
-                        {status.platformId === "ao3" && <p className="mt-1.5 text-[10px] leading-4 opacity-80">請在官方頁依其流程完成安全驗證後，回來按「重試 AO3」。本應用程式僅提供官方搜尋與單一來源重試，不會使用背景 Webview、讀取或保存驗證 Cookie。</p>}
+                        {status.platformId === "ao3" && <p className="mt-1.5 text-[10px] leading-4 opacity-80">官方頁的登入或驗證狀態不會同步至本應用程式；這裡只會以獨立公開索引請求重試，不會讀取或保存 Cookie。</p>}
                       </div>
                     )}
                     <div className="mt-2 truncate atlas-mono text-[9px] opacity-70" title={status.translatedQuery}>QUERY / {status.translatedQuery}</div>

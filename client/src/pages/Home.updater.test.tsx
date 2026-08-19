@@ -98,12 +98,12 @@ describe("Tauri updater interaction", () => {
     });
     updaterState.install.mockResolvedValue(undefined);
     updaterState.relaunch.mockResolvedValue(undefined);
-    updaterState.check.mockResolvedValue({ version: "1.2.1", body: "修正公開來源連線診斷", download: updaterState.download, install: updaterState.install });
+    updaterState.check.mockResolvedValue({ version: "1.2.2", body: "重構藏書閣與進階篩選面板", download: updaterState.download, install: updaterState.install });
 
     render(<Home />);
 
-    await waitFor(() => expect(screen.getByText("發現新版本 v1.2.1")).toBeTruthy());
-    expect(screen.getByText("修正公開來源連線診斷")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("發現新版本 v1.2.2")).toBeTruthy());
+    expect(screen.getByText("重構藏書閣與進階篩選面板")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "立即更新並重啟" }));
 
     await waitFor(() => expect(updaterState.relaunch).toHaveBeenCalledOnce());
@@ -117,7 +117,7 @@ describe("Tauri updater interaction", () => {
     await waitFor(() => expect(updaterState.check).toHaveBeenCalledOnce());
 
     fireEvent.click(screen.getByRole("button", { name: /藏書閣 \/ 收藏夾/ }));
-    expect(screen.getByText("v1.2.1")).toBeTruthy();
+    expect(screen.getByText("v1.2.2")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "檢查更新" }));
 
     await waitFor(() => expect(updaterState.check).toHaveBeenCalledTimes(2));

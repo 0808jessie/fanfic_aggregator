@@ -49,4 +49,14 @@ describe("BookshelfView interaction polish", () => {
     fireEvent.click(screen.getByRole("button", { name: /閱讀狀態：未讀/ }));
     expect(onProgressChange).toHaveBeenCalledWith(bookmark.url, { status: "reading", percent: 1, chapter: "" });
   });
+
+  it("switches the bookshelf between three-column cards and compact list view with a persisted preference", () => {
+    render(<BookshelfView bookmarks={[bookmark]} onEdit={vi.fn()} onRemove={vi.fn()} onImport={vi.fn()} onBatchRemove={vi.fn()} onBatchUpdate={vi.fn()} onProgressChange={vi.fn()} onExportAll={vi.fn()} onImportAll={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: "藏書閣卡片模式" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "藏書閣條列模式" }));
+
+    expect(screen.getByRole("button", { name: "藏書閣條列模式" }).getAttribute("aria-pressed")).toBe("true");
+    expect(window.localStorage.getItem("fanfic-atlas-bookshelf-view")).toBe("list");
+  });
 });
