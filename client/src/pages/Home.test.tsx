@@ -301,7 +301,7 @@ describe("Home pagination interactions", () => {
     expect(screen.getByRole("link", { name: "前往 AO3 搜尋本詞" }).getAttribute("href")).toBe(
       "https://archiveofourown.org/works/search?commit=Search&work_search%5Bquery%5D=%E7%BE%A9%E5%BF%8D",
     );
-    expect(screen.getByText("請在官方頁依其流程完成安全驗證後，回來按「重試」。本應用程式不會讀取或保存驗證 Cookie。")).toBeTruthy();
+    expect(screen.getByText("請在官方頁依其流程完成安全驗證後，回來按「重試 AO3」。本應用程式僅提供官方搜尋與單一來源重試，不會使用背景 Webview、讀取或保存驗證 Cookie。")).toBeTruthy();
     expect(screen.getByRole("link", { name: "在 Penana 官網搜尋" }).getAttribute("href")).toBe(
       "https://www.penana.com/search?t=story&search=%E7%BE%A9%E5%BF%8D",
     );

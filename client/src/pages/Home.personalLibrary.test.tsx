@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "./Home";
 import { clearSearchRequestCache } from "@/lib/searchRequestCache";
 
+const mockState = vi.hoisted(() => ({ mutationCalls: 0 }));
+
 vi.mock("sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn(), message: vi.fn() },
 }));
@@ -21,6 +23,7 @@ vi.mock("@/lib/trpc", async () => {
             return {
               isPending,
               mutate: () => {
+                mockState.mutationCalls += 1;
                 setIsPending(true);
                 window.setTimeout(() => {
                   options.onSuccess?.({
@@ -55,6 +58,7 @@ describe("Home personal reading tools", () => {
   beforeEach(() => {
     window.localStorage.clear();
     clearSearchRequestCache();
+    mockState.mutationCalls = 0;
     window.localStorage.setItem("sui-read-content-safety-settings", JSON.stringify({ ageConfirmation: "adult", blurRestrictedSummaries: true }));
   });
   afterEach(() => cleanup());
@@ -117,5 +121,28 @@ describe("Home personal reading tools", () => {
     await waitFor(() => expect(screen.getByText("⚠️ 此作品命中避雷設定")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "⚠️ 暫時查看這一篇" }));
     await waitFor(() => expect(screen.getByText("義忍閱讀測試")).toBeTruthy());
+  });
+
+  it("hides saved works locally without issuing another crawler request and persists the preference", async () => {
+    render(<Home />);
+
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "月光" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+    await waitFor(() => expect(screen.getByText("義忍閱讀測試")).toBeTruthy());
+    const requestsAfterSearch = mockState.mutationCalls;
+
+    fireEvent.click(screen.getByRole("button", { name: /收藏 義忍閱讀測試/ }));
+    fireEvent.click(screen.getByRole("button", { name: "儲存閱讀卡" }));
+    fireEvent.click(screen.getByRole("button", { name: /進階篩選/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "隱藏已在藏書閣作品" }));
+
+    await waitFor(() => expect(screen.queryByText("義忍閱讀測試")).toBeNull());
+    expect(screen.getByText("藏書閣隱藏：1 篇")).toBeTruthy();
+    expect(mockState.mutationCalls).toBe(requestsAfterSearch);
+    expect(JSON.parse(window.localStorage.getItem("sui-read-filter-preset") || "{}")).toMatchObject({ hideBookmarked: true });
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "隱藏已在藏書閣作品" }));
+    await waitFor(() => expect(screen.getByText("義忍閱讀測試")).toBeTruthy());
+    expect(mockState.mutationCalls).toBe(requestsAfterSearch);
   });
 });

@@ -54,7 +54,7 @@ export const DEFAULT_CP_MAPPINGS: CpMapping[] = [
   { alias: "佐櫻", ao3Query: "Uchiha Sasuke/Haruno Sakura", localQuery: "佐櫻 宇智波佐助 春野櫻" },
 ];
 
-const DEFAULT_FILTERS: ResultViewFilters = { wordCount: "all", completion: "all", sort: "relevance" };
+const DEFAULT_FILTERS: ResultViewFilters = { wordCount: "all", completion: "all", sort: "relevance", hideBookmarked: false };
 const canUseStorage = () => typeof window !== "undefined" && Boolean(window.localStorage);
 function readJson<T>(key: string, fallback: T): T { if (!canUseStorage()) return fallback; try { const value = window.localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback; } catch { return fallback; } }
 function writeJson<T>(key: string, value: T): void { if (canUseStorage()) window.localStorage.setItem(key, JSON.stringify(value)); persistDesktopPersonalValue(key, value); }
@@ -192,7 +192,7 @@ function normalizeContentSafetySettings(value: Partial<ContentSafetySettings> | 
 }
 export function loadContentSafetySettings(): ContentSafetySettings { return normalizeContentSafetySettings(readJson<Partial<ContentSafetySettings>>(CONTENT_SAFETY_SETTINGS_STORAGE_KEY, DEFAULT_CONTENT_SAFETY_SETTINGS)); }
 export function persistContentSafetySettings(settings: ContentSafetySettings): void { writeJson(CONTENT_SAFETY_SETTINGS_STORAGE_KEY, normalizeContentSafetySettings(settings)); }
-function normalizeFilterPreset(value: Partial<ResultViewFilters>): ResultViewFilters { return { wordCount: value.wordCount === "short" || value.wordCount === "medium" || value.wordCount === "long" ? value.wordCount : "all", completion: value.completion === "complete" || value.completion === "ongoing" ? value.completion : "all", sort: value.sort === "updated" || value.sort === "words" ? value.sort : "relevance" }; }
+function normalizeFilterPreset(value: Partial<ResultViewFilters>): ResultViewFilters { return { wordCount: value.wordCount === "short" || value.wordCount === "medium" || value.wordCount === "long" ? value.wordCount : "all", completion: value.completion === "complete" || value.completion === "ongoing" ? value.completion : "all", sort: value.sort === "updated" || value.sort === "words" ? value.sort : "relevance", hideBookmarked: value.hideBookmarked === true }; }
 export function loadFilterPreset(): ResultViewFilters { return normalizeFilterPreset(readJson<Partial<ResultViewFilters>>(FILTER_PRESET_STORAGE_KEY, DEFAULT_FILTERS)); }
 export function persistFilterPreset(filters: ResultViewFilters): void { writeJson(FILTER_PRESET_STORAGE_KEY, filters); }
 

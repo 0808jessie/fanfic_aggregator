@@ -105,7 +105,9 @@ describe("personal library local storage helpers", () => {
 
   it("validates and restores saved filter preferences", () => {
     persistFilterPreset({ wordCount: "long", completion: "complete", sort: "updated" });
-    expect(loadFilterPreset()).toEqual({ wordCount: "long", completion: "complete", sort: "updated" });
+    expect(loadFilterPreset()).toEqual({ wordCount: "long", completion: "complete", sort: "updated", hideBookmarked: false });
+    persistFilterPreset({ wordCount: "all", completion: "all", sort: "relevance", hideBookmarked: true });
+    expect(loadFilterPreset()).toMatchObject({ hideBookmarked: true });
   });
 
   it("filters bookshelf records and round-trips JSON import/export safely", () => {

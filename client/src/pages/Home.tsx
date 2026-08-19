@@ -120,7 +120,7 @@ const PLATFORMS = [
   { id: "pixiv", label: "Pixiv", detail: "PIXIV.NET", tone: "rose" },
 ] as const;
 
-const FALLBACK_DESKTOP_VERSION = "1.1.13";
+const FALLBACK_DESKTOP_VERSION = "1.1.14";
 const UPDATER_MANIFEST_URL = "https://github.com/0808jessie/fanfic_aggregator/releases/latest/download/latest.json";
 
 type DesktopUpdate = {
@@ -255,6 +255,7 @@ export default function Home() {
   const [wordCountFilter, setWordCountFilter] = useState<WordCountFilter>("all");
   const [completionFilter, setCompletionFilter] = useState<CompletionFilter>("all");
   const [sortMode, setSortMode] = useState<ResultSortMode>("relevance");
+  const [hideBookmarkedResults, setHideBookmarkedResults] = useState(() => loadFilterPreset().hideBookmarked === true);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [completedElapsedMs, setCompletedElapsedMs] = useState<number | null>(null);
   const [sidecarState, setSidecarState] = useState<"idle" | "starting" | "ready" | "error">("idle");
@@ -398,7 +399,8 @@ export default function Home() {
     [selectedPlatforms],
   );
 
-  const displayedResults = useMemo(
+  const bookmarkUrls = useMemo(() => new Set(bookmarks.map((bookmark) => bookmark.url.trim())), [bookmarks]);
+  const locallyFilteredResults = useMemo(
     () => filterAndSortResults(
       activePlatformFilter
         ? results.filter((result) => platformMeta(result.platform).id === activePlatformFilter)
@@ -407,6 +409,14 @@ export default function Home() {
       { wordCount: wordCountFilter, completion: completionFilter, sort: sortMode, language: selectedLanguage, excludedKeywords: showFilteredResults ? [] : excludedKeywords, rating: contentSafetySettings.ageConfirmation === "minor" ? "safe" : ratingFilter },
     ),
     [results, activePlatformFilter, activeQuery, keyword, wordCountFilter, completionFilter, sortMode, selectedLanguage, excludedKeywords, showFilteredResults, ratingFilter, contentSafetySettings.ageConfirmation],
+  );
+  const hiddenBookmarkedResultCount = useMemo(
+    () => hideBookmarkedResults ? locallyFilteredResults.filter((result) => bookmarkUrls.has(result.url.trim())).length : 0,
+    [hideBookmarkedResults, locallyFilteredResults, bookmarkUrls],
+  );
+  const displayedResults = useMemo(
+    () => hideBookmarkedResults ? locallyFilteredResults.filter((result) => !bookmarkUrls.has(result.url.trim())) : locallyFilteredResults,
+    [hideBookmarkedResults, locallyFilteredResults, bookmarkUrls],
   );
   const localResultPageCount = Math.max(1, Math.ceil(displayedResults.length / resultsPerPage));
   const visibleResults = useMemo(
@@ -424,6 +434,7 @@ export default function Home() {
     Boolean(activePlatformFilter),
     selectedPlatforms.length !== PLATFORMS.length,
     excludedKeywords.length > 0,
+    hideBookmarkedResults,
   ].filter(Boolean).length;
   const activeFilterChips = useMemo(() => {
     const chips: Array<{ id: string; label: string; clear: () => void }> = [];
@@ -438,8 +449,9 @@ export default function Home() {
     if (activePlatformFilter) chips.push({ id: "result-platform", label: `${platformMeta(activePlatformFilter).label} 結果`, clear: () => setActivePlatformFilter(null) });
     if (selectedPlatforms.length !== PLATFORMS.length) chips.push({ id: "sources", label: `${selectedPlatforms.length} 個來源`, clear: () => setSelectedPlatforms(PLATFORMS.map((platform) => platform.id)) });
     if (excludedKeywords.length > 0 && !showFilteredResults) chips.push({ id: "blacklist", label: "避雷生效中", clear: () => setShowFilteredResults(true) });
+    if (hideBookmarkedResults) chips.push({ id: "bookmarks", label: `隱藏已收藏${hiddenBookmarkedResultCount ? ` ${hiddenBookmarkedResultCount} 篇` : ""}`, clear: () => setHideBookmarkedResults(false) });
     return chips;
-  }, [selectedLanguage, wordCountFilter, completionFilter, sortMode, contentSafetySettings.ageConfirmation, ratingFilter, activePlatformFilter, selectedPlatforms.length, excludedKeywords.length, showFilteredResults]);
+  }, [selectedLanguage, wordCountFilter, completionFilter, sortMode, contentSafetySettings.ageConfirmation, ratingFilter, activePlatformFilter, selectedPlatforms.length, excludedKeywords.length, showFilteredResults, hideBookmarkedResults, hiddenBookmarkedResultCount]);
   const languageCounts = useMemo(
     () => Object.fromEntries(
       (["all", "zh", "zh-hant", "zh-hans", "en", "ja"] as const).map((language) => [language, countLanguageResults(results.filter((result) => !matchesExcludedKeyword(result, excludedKeywords)), language)]),
@@ -479,6 +491,7 @@ export default function Home() {
     setWordCountFilter(preset.wordCount);
     setCompletionFilter(preset.completion);
     setSortMode(preset.sort);
+    setHideBookmarkedResults(preset.hideBookmarked === true);
     let mounted = true;
     const initialRevision = personalDataRevisionRef.current;
     void hydratePersonalLibrary().then((snapshot) => {
@@ -496,13 +509,14 @@ export default function Home() {
       setWordCountFilter(snapshot.filterPreset.wordCount);
       setCompletionFilter(snapshot.filterPreset.completion);
       setSortMode(snapshot.filterPreset.sort);
+      setHideBookmarkedResults(snapshot.filterPreset.hideBookmarked === true);
     });
     return () => { mounted = false; };
   }, []);
 
   useEffect(() => {
     setLocalResultPage(1);
-  }, [activeQuery, activePlatformFilter, selectedLanguage, wordCountFilter, completionFilter, sortMode, ratingFilter, showFilteredResults, resultsPerPage, pagination.page]);
+  }, [activeQuery, activePlatformFilter, selectedLanguage, wordCountFilter, completionFilter, sortMode, ratingFilter, showFilteredResults, hideBookmarkedResults, bookmarks, resultsPerPage, pagination.page]);
 
   useEffect(() => {
     window.localStorage.setItem("fanfic-atlas-result-view", resultViewMode);
@@ -889,8 +903,14 @@ export default function Home() {
 
   const saveCurrentFilters = () => {
     personalDataRevisionRef.current += 1;
-    persistFilterPreset({ wordCount: wordCountFilter, completion: completionFilter, sort: sortMode });
+    persistFilterPreset({ wordCount: wordCountFilter, completion: completionFilter, sort: sortMode, hideBookmarked: hideBookmarkedResults });
     toast.success("已設為預設篩選", { description: "下次開啟網站時會自動帶入這組設定。" });
+  };
+
+  const updateHideBookmarkedResults = (next: boolean) => {
+    personalDataRevisionRef.current += 1;
+    setHideBookmarkedResults(next);
+    persistFilterPreset({ wordCount: wordCountFilter, completion: completionFilter, sort: sortMode, hideBookmarked: next });
   };
 
   const resetAllFilters = () => {
@@ -903,8 +923,9 @@ export default function Home() {
     setSelectedPlatforms(PLATFORMS.map((platform) => platform.id));
     setRatingFilter(contentSafetySettings.ageConfirmation === "minor" ? "safe" : "all");
     setShowFilteredResults(false);
+    setHideBookmarkedResults(false);
     setRevealedFilteredUrls(new Set());
-    persistFilterPreset({ wordCount: "all", completion: "all", sort: "relevance" });
+    persistFilterPreset({ wordCount: "all", completion: "all", sort: "relevance", hideBookmarked: false });
     toast.success("已清除本次搜尋篩選", { description: "全局避雷分組與內容保護設定維持生效。" });
   };
 
@@ -1001,14 +1022,18 @@ export default function Home() {
                   <option value="relevance">相關度最高</option><option value="updated">最新更新</option><option value="words">字數最多</option>
                 </select>
               </label>
+              <label className="flex items-center gap-3 border border-[#b7c9ef] bg-[#f4f7ff] px-3 py-3 lg:col-span-2">
+                <Checkbox checked={hideBookmarkedResults} onCheckedChange={(value) => updateHideBookmarkedResults(value === true)} aria-label="隱藏已在藏書閣作品" className="rounded-none border-[#2d70d6] data-[state=checked]:bg-[#2d70d6]" />
+                <span><span className="block font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#245da9]">隱藏已在藏書閣作品</span><span className="mt-1 block text-xs text-[#69777f]">只在目前裝置即時比對 URL；不會重新搜尋。{bookmarks.length ? ` 已比對 ${bookmarks.length} 本藏書。` : ""}</span></span>
+              </label>
               <BlacklistGroupManager groups={blacklistGroups} onGroupsChange={updateBlacklistGroups} />
               {contentSafetySettings.ageConfirmation === "adult" && <label className="flex items-center gap-3 border border-[#efb4c4] bg-[#fff7f9] px-3 py-3 lg:col-span-4"><Checkbox checked={contentSafetySettings.blurRestrictedSummaries} onCheckedChange={(value) => setSensitiveSummaryBlur(value === true)} aria-label="敏感內容模糊" className="rounded-none border-[#9b4358] data-[state=checked]:bg-[#9b4358]" /><span><span className="block font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#9b4358]">敏感內容模糊</span><span className="mt-1 block text-xs text-[#69777f]">限制級作品的摘要預設模糊，點擊後才會展開。</span></span></label>}
-              <div className="flex items-end lg:col-span-4"><Button type="button" variant="outline" onClick={saveCurrentFilters} className="h-10 rounded-none border-[#10151b]/15 bg-white/65 font-mono text-[10px] font-bold uppercase tracking-[0.13em] hover:border-[#45b9b2] hover:bg-[#d9f8f5] hover:text-[#197b75]"><Save className="mr-2 h-3.5 w-3.5" />設為預設篩選</Button><span className="ml-3 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#8b979d]">保留字數、完結與排序偏好</span></div>
+              <div className="flex items-end lg:col-span-4"><Button type="button" variant="outline" onClick={saveCurrentFilters} className="h-10 rounded-none border-[#10151b]/15 bg-white/65 font-mono text-[10px] font-bold uppercase tracking-[0.13em] hover:border-[#45b9b2] hover:bg-[#d9f8f5] hover:text-[#197b75]"><Save className="mr-2 h-3.5 w-3.5" />設為預設篩選</Button><span className="ml-3 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#8b979d]">保留字數、完結、排序與藏書閣隱藏偏好</span></div>
             </div>
           )}
         </section>
 
-        <section className="mt-10 flex flex-col gap-3 border-b border-[color:var(--atlas-line)] pb-5 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="text-3xl font-extrabold sm:text-4xl">{activeView === "bookmarks" ? `藏書閣 · ${bookmarks.length.toLocaleString()} 本` : searchMutation.isPending ? "正在尋找作品" : hasSearched ? pagination.totalWorks > 0 ? `找到 ${pagination.totalWorks.toLocaleString()} 篇作品` : "暫時沒有可驗證的作品" : "開始探索"}</h2>{activeView === "search" && searchMode === "author" && <div className="mt-2 flex items-center gap-2 text-sm text-amber-700"><UserRound className="h-3.5 w-3.5" /> 搜尋作者：{activeQuery || keyword}</div>}{activeView === "search" && hasSearched && pagination.totalWorks > 0 && <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[color:var(--atlas-muted)]"><span>已載入第 {pagination.loadedThroughPage} / {pagination.totalPages} 頁</span><span>顯示 {displayedResults.length} / {results.length} 筆</span>{excludedKeywords.length > 0 && <span className="text-[color:var(--atlas-danger)]">避雷中：{excludedKeywords.length} 詞</span>}{completedElapsedMs !== null && <span className="text-[color:var(--atlas-success)]">{(completedElapsedMs / 1000).toFixed(1)} 秒完成</span>}</div>}</div><div className="flex flex-wrap items-center gap-2"><div className="text-xs text-[color:var(--atlas-muted)]">{activeView === "bookmarks" ? desktopRuntime ? "只保留在這台裝置" : "保留在這個瀏覽器" : `${selectedPlatforms.length} 個來源已啟用`}</div>{activeView === "search" && hasSearched && filteredResultCount > 0 && <Button type="button" variant="outline" aria-label="顯示已避雷作品" aria-pressed={showFilteredResults} onClick={() => setShowFilteredResults((current) => { const next = !current; if (!next) setRevealedFilteredUrls(new Set()); return next; })} className={`h-9 rounded-full border px-3 text-xs font-semibold ${showFilteredResults ? "border-[color:var(--atlas-amber)] bg-[color:var(--atlas-amber-soft)] text-[color:var(--atlas-amber)]" : "border-[color:var(--atlas-danger-line)] bg-white text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)]"}`}>{showFilteredResults ? <EyeOff className="mr-1.5 h-3.5 w-3.5" /> : <Eye className="mr-1.5 h-3.5 w-3.5" />}{showFilteredResults ? "隱藏已避雷作品" : "顯示已避雷作品"}<span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-current px-1.5 py-0.5 text-[10px] font-bold text-white">{filteredResultCount}</span></Button>}</div></section>
+        <section className="mt-10 flex flex-col gap-3 border-b border-[color:var(--atlas-line)] pb-5 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="text-3xl font-extrabold sm:text-4xl">{activeView === "bookmarks" ? `藏書閣 · ${bookmarks.length.toLocaleString()} 本` : searchMutation.isPending ? "正在尋找作品" : hasSearched ? pagination.totalWorks > 0 ? `找到 ${pagination.totalWorks.toLocaleString()} 篇作品` : "暫時沒有可驗證的作品" : "開始探索"}</h2>{activeView === "search" && searchMode === "author" && <div className="mt-2 flex items-center gap-2 text-sm text-amber-700"><UserRound className="h-3.5 w-3.5" /> 搜尋作者：{activeQuery || keyword}</div>}{activeView === "search" && hasSearched && pagination.totalWorks > 0 && <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[color:var(--atlas-muted)]"><span>已載入第 {pagination.loadedThroughPage} / {pagination.totalPages} 頁</span><span>顯示 {displayedResults.length} / {results.length} 筆</span>{hideBookmarkedResults && <span className="text-[color:var(--atlas-indigo)]">藏書閣隱藏：{hiddenBookmarkedResultCount} 篇</span>}{excludedKeywords.length > 0 && <span className="text-[color:var(--atlas-danger)]">避雷中：{excludedKeywords.length} 詞</span>}{completedElapsedMs !== null && <span className="text-[color:var(--atlas-success)]">{(completedElapsedMs / 1000).toFixed(1)} 秒完成</span>}</div>}</div><div className="flex flex-wrap items-center gap-2"><div className="text-xs text-[color:var(--atlas-muted)]">{activeView === "bookmarks" ? desktopRuntime ? "只保留在這台裝置" : "保留在這個瀏覽器" : `${selectedPlatforms.length} 個來源已啟用`}</div>{activeView === "search" && hasSearched && filteredResultCount > 0 && <Button type="button" variant="outline" aria-label="顯示已避雷作品" aria-pressed={showFilteredResults} onClick={() => setShowFilteredResults((current) => { const next = !current; if (!next) setRevealedFilteredUrls(new Set()); return next; })} className={`h-9 rounded-full border px-3 text-xs font-semibold ${showFilteredResults ? "border-[color:var(--atlas-amber)] bg-[color:var(--atlas-amber-soft)] text-[color:var(--atlas-amber)]" : "border-[color:var(--atlas-danger-line)] bg-white text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)]"}`}>{showFilteredResults ? <EyeOff className="mr-1.5 h-3.5 w-3.5" /> : <Eye className="mr-1.5 h-3.5 w-3.5" />}{showFilteredResults ? "隱藏已避雷作品" : "顯示已避雷作品"}<span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-current px-1.5 py-0.5 text-[10px] font-bold text-white">{filteredResultCount}</span></Button>}</div></section>
 
         {activeView === "search" && hasSearched && platformStatuses.length > 0 && (
           <section aria-label="平台連線狀態" className="atlas-panel relative mt-5 overflow-hidden p-4 sm:p-5">
@@ -1095,7 +1120,7 @@ export default function Home() {
                         >
                           {officialSearch.label} <ArrowUpRight className="h-3 w-3" />
                         </a>
-                        {status.platformId === "ao3" && <p className="mt-1.5 text-[10px] leading-4 opacity-80">請在官方頁依其流程完成安全驗證後，回來按「重試」。本應用程式不會讀取或保存驗證 Cookie。</p>}
+                        {status.platformId === "ao3" && <p className="mt-1.5 text-[10px] leading-4 opacity-80">請在官方頁依其流程完成安全驗證後，回來按「重試 AO3」。本應用程式僅提供官方搜尋與單一來源重試，不會使用背景 Webview、讀取或保存驗證 Cookie。</p>}
                       </div>
                     )}
                     <div className="mt-2 truncate atlas-mono text-[9px] opacity-70" title={status.translatedQuery}>QUERY / {status.translatedQuery}</div>

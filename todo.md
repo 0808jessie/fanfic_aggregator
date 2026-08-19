@@ -460,5 +460,17 @@
 - [x] 驗證 GitHub 公開 Release 的 latest.json 與簽名資產可匿名下載，完成桌面 Updater 端點實測
 - [x] 將桌面外部連結統一改用已註冊的 Tauri 原生外連能力，涵蓋 AO3／Penana 官方搜尋及原始作品連結
 - [x] 強化 AO3／Penana 公開搜尋的來源級逾時、受阻偵測與官方搜尋降級，不擷取或注入驗證 Cookie
-- [ ] 執行完整前後端、Tauri 與公開 Release 驗證，發布新的桌面更新版本
-- [ ] 將已退役的 macos-13 Intel 發行 runner 改為有效 GitHub-hosted runner，完成 Intel macOS 更新資產發布
+- [x] 執行完整前後端、Tauri 與公開 Release 驗證，發布新的桌面更新版本
+- [x] 將已退役的 macos-13 Intel 發行 runner 改為有效 GitHub-hosted runner，完成 Intel macOS 更新資產發布
+- [x] 盤點搜尋結果、進階篩選與 AppData／localStorage 藏書閣資料，定義已收藏作品的本地比對鍵
+- [x] 新增可持久化的「隱藏已在藏書閣作品」開關與可見筆數回饋，確保切換不重新爬蟲且分頁正確
+- [x] 補足藏書閣隱藏篩選回歸測試，以及 AO3 受阻時的官方搜尋與單一來源重試引導測試
+- [x] 強化 AO3 合規受阻狀態與官方搜尋降級，不實作隱藏 Webview、驗證 Cookie 擷取或防護規避
+- [x] 執行前端、FastAPI 與 Tauri 建置驗證並保存可發布修復狀態
+- [x] 重新執行目前穩定版本的完整 Vitest、pytest、production build 與 cargo check，保存發布前檢查點
+- [ ] 將已驗證穩定版本提交並推送至 GitHub main，確認桌面 Release 工作流程已接收變更
+- [ ] 將穩定功能版本一致升至 v1.1.14，推送版本標籤以觸發新的跨平台簽名 Release
+- [ ] 研究巴哈姆特創作大廳公開搜尋頁與可驗證資料欄位，避免使用登入、背景瀏覽器或存取限制規避
+- [ ] 新增巴哈姆特創作大廳獨立 Adapter、可信網址驗證、來源級逾時與公開結果資料映射
+- [ ] 將巴哈姆特來源整合至搜尋介面與平台狀態，補足不影響既有來源的前後端回歸測試
+- [ ] 規劃 POPO 與 KadoKado 的後續純索引導流 Adapter，待巴哈姆特驗證完成後再分階段接入

@@ -48,6 +48,7 @@ export type ResultViewFilters = {
   wordCount: WordCountFilter;
   completion: CompletionFilter;
   sort: ResultSortMode;
+  hideBookmarked?: boolean;
   language?: LanguageFilter;
   excludedKeywords?: string[];
   rating?: RatingFilter;
