@@ -120,7 +120,8 @@ const PLATFORMS = [
   { id: "pixiv", label: "Pixiv", detail: "PIXIV.NET", tone: "rose" },
 ] as const;
 
-const FALLBACK_DESKTOP_VERSION = "1.1.11";
+const FALLBACK_DESKTOP_VERSION = "1.1.12";
+const UPDATER_MANIFEST_URL = "https://github.com/0808jessie/fanfic_aggregator/releases/latest/download/latest.json";
 
 type DesktopUpdate = {
   version: string;
@@ -164,6 +165,12 @@ function describeUpdaterCheckError(error: unknown) {
     return { title: "無法連線至更新服務", description: "請確認網路可存取 GitHub Releases，或稍後再次檢查更新。" };
   }
   return { title: "暫時無法檢查更新", description: "更新服務回應異常；詳細原因已記錄於桌面應用程式日誌。" };
+}
+
+function extractUpdaterHttpStatus(error: unknown) {
+  const rawMessage = error instanceof Error ? error.message : String(error || "");
+  const match = rawMessage.match(/\b(?:HTTP\s*)?(4\d\d|5\d\d)\b/i);
+  return match ? Number(match[1]) : null;
 }
 
 function formatDate(value: string) {
@@ -548,7 +555,12 @@ export default function Home() {
       setUpdateDialogOpen(true);
     } catch (error) {
       const diagnostic = describeUpdaterCheckError(error);
-      console.error("[Updater] Update check failed", { error, diagnostic, endpoint: "https://github.com/0808jessie/fanfic_aggregator/releases/latest/download/latest.json" });
+      console.error("[Updater] Update check failed", {
+        endpoint: UPDATER_MANIFEST_URL,
+        statusCode: extractUpdaterHttpStatus(error),
+        diagnostic,
+        error,
+      });
       if (origin === "manual") {
         toast.error(diagnostic.title, { description: diagnostic.description });
       }
@@ -732,15 +744,20 @@ export default function Home() {
     toast.success("已更新閱讀清單");
   };
 
-  const openSourceLink = async (event: React.MouseEvent<HTMLAnchorElement>, url: string) => {
+  const openExternalUrl = async (
+    event: React.MouseEvent<HTMLAnchorElement>,
+    url: string,
+    successMessage?: string,
+  ) => {
     if (!isTauriDesktopRuntime()) return;
 
     event.preventDefault();
     try {
       const { openUrl } = await import("@tauri-apps/plugin-opener");
       await openUrl(url);
+      if (successMessage) showInfoToast(successMessage);
     } catch (error) {
-      console.error("[Source Opener] Failed to open an external source:", error);
+      console.error("[External Opener] Failed to open an external source:", { url, error });
       showInfoToast("無法以系統瀏覽器開啟來源，請稍後重試。");
     }
   };
@@ -1066,7 +1083,13 @@ export default function Home() {
                           aria-label={officialSearch.label}
                           onClick={(event) => {
                             event.stopPropagation();
-                            if (status.platformId === "ao3") showInfoToast("已開啟官方 AO3 搜尋；若完成官方驗證，請回到此處按「重試 AO3」。");
+                            void openExternalUrl(
+                              event,
+                              officialSearch.href,
+                              status.platformId === "ao3"
+                                ? "已開啟官方 AO3 搜尋；若完成官方驗證，請回到此處按「重試 AO3」。"
+                                : undefined,
+                            );
                           }}
                           className="inline-flex items-center gap-1 border border-current px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] hover:bg-white/70"
                         >
@@ -1198,7 +1221,7 @@ export default function Home() {
                           </div>
                           {resultViewMode === "cards" && <RestrictedSummary summary={result.summary || "No summary available."} shouldBlur={isRestricted && contentSafetySettings.blurRestrictedSummaries} />}
                           </div>
-                          <a href={result.url} target="_blank" rel="noreferrer" onClick={(event) => void openSourceLink(event, result.url)} className={`${resultViewMode === "list" ? "md:justify-self-end" : "mt-6"} inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--atlas-indigo)] hover:text-[#4338ca]`}>
+                          <a href={result.url} target="_blank" rel="noreferrer" onClick={(event) => void openExternalUrl(event, result.url)} className={`${resultViewMode === "list" ? "md:justify-self-end" : "mt-6"} inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--atlas-indigo)] hover:text-[#4338ca]`}>
                             前往原始作品 <ArrowUpRight className="h-3.5 w-3.5" />
                           </a>
                         </div>

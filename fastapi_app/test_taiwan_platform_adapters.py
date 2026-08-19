@@ -265,7 +265,7 @@ def test_penana_uses_ordinary_public_finder_headers_without_browser_fallback():
     assert headers["Sec-Fetch-User"] == "?1"
     assert headers["Upgrade-Insecure-Requests"] == "1"
     assert request.call_args.kwargs["params"] == {"t": "story", "search": "fanfiction"}
-    assert request.call_args.kwargs["timeout"] == 30.0
+    assert request.call_args.kwargs["timeout"] == PenanaScraper.public_search_timeout_seconds == 12.0
 
 
 def test_penana_http_timeout_returns_source_warning_without_browser_navigation():

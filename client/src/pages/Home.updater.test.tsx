@@ -7,6 +7,8 @@ const updaterState = vi.hoisted(() => ({
   download: vi.fn(),
   install: vi.fn(),
   relaunch: vi.fn(),
+  openUrl: vi.fn(),
+  postSidecarSearch: vi.fn(),
   toastError: vi.fn(),
 }));
 
@@ -17,7 +19,7 @@ vi.mock("sonner", () => ({
 vi.mock("@/lib/desktopApi", () => ({
   isTauriDesktopRuntime: () => true,
   waitForSidecarReady: vi.fn().mockResolvedValue(undefined),
-  postSidecarSearch: vi.fn(),
+  postSidecarSearch: updaterState.postSidecarSearch,
 }));
 
 vi.mock("@tauri-apps/plugin-updater", () => ({
@@ -28,15 +30,42 @@ vi.mock("@tauri-apps/plugin-process", () => ({
   relaunch: updaterState.relaunch,
 }));
 
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openUrl: updaterState.openUrl,
+}));
+
 vi.mock("@/lib/trpc", async () => {
   const React = await import("react");
   return {
     trpc: {
       fastapi: {
         proxy: {
-          useMutation: () => {
+          useMutation: (options: { onSuccess?: (payload: unknown, request?: unknown) => void }) => {
             const [isPending] = React.useState(false);
-            return { mutate: vi.fn(), isPending };
+            return {
+              mutate: vi.fn((request) => {
+                const response = {
+                  items: [{
+                    title: "AO3 外連測試作品",
+                    author: "Test Author",
+                    platform: "AO3",
+                    url: "https://archiveofourown.org/works/9001",
+                    tags: "General",
+                    summary: "",
+                    scraped_at: "2026-01-01T00:00:00Z",
+                  }],
+                  totalWorks: 1,
+                  totalPages: 1,
+                  page: 1,
+                  loadedThroughPage: 1,
+                  nextPage: null,
+                  hasMore: false,
+                };
+                options.onSuccess?.(response, request);
+                return response;
+              }),
+              isPending,
+            };
           },
         },
       },
@@ -54,6 +83,8 @@ describe("Tauri updater interaction", () => {
     updaterState.download.mockReset();
     updaterState.install.mockReset();
     updaterState.relaunch.mockReset();
+    updaterState.openUrl.mockReset();
+    updaterState.postSidecarSearch.mockReset();
     updaterState.toastError.mockReset();
   });
 
@@ -86,7 +117,7 @@ describe("Tauri updater interaction", () => {
     await waitFor(() => expect(updaterState.check).toHaveBeenCalledOnce());
 
     fireEvent.click(screen.getByRole("button", { name: /藏書閣 \/ 收藏夾/ }));
-    expect(screen.getByText("v1.1.11")).toBeTruthy();
+    expect(screen.getByText("v1.1.12")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "檢查更新" }));
 
     await waitFor(() => expect(updaterState.check).toHaveBeenCalledTimes(2));
@@ -101,5 +132,55 @@ describe("Tauri updater interaction", () => {
     fireEvent.click(screen.getByRole("button", { name: "檢查更新" }));
 
     await waitFor(() => expect(updaterState.toastError).toHaveBeenCalledWith("無法連線至更新服務", expect.objectContaining({ description: expect.stringContaining("GitHub Releases") })));
+  });
+
+  it("logs the updater manifest URL and HTTP status for a failed manual check", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    updaterState.check.mockResolvedValueOnce(null).mockRejectedValueOnce(new Error("HTTP 404 latest.json"));
+    render(<Home />);
+    await waitFor(() => expect(updaterState.check).toHaveBeenCalledOnce());
+
+    fireEvent.click(screen.getByRole("button", { name: /藏書閣 \/ 收藏夾/ }));
+    fireEvent.click(screen.getByRole("button", { name: "檢查更新" }));
+
+    await waitFor(() => expect(consoleError).toHaveBeenCalledWith(
+      "[Updater] Update check failed",
+      expect.objectContaining({
+        endpoint: "https://github.com/0808jessie/fanfic_aggregator/releases/latest/download/latest.json",
+        statusCode: 404,
+      }),
+    ));
+    consoleError.mockRestore();
+  });
+
+  it("opens a work source in the system browser when running as a desktop app", async () => {
+    updaterState.check.mockResolvedValue(null);
+    updaterState.openUrl.mockResolvedValue(undefined);
+    updaterState.postSidecarSearch.mockResolvedValue({
+      items: [{
+        title: "AO3 外連測試作品",
+        author: "Test Author",
+        platform: "AO3",
+        url: "https://archiveofourown.org/works/9001",
+        tags: "General",
+        summary: "",
+        scraped_at: "2026-01-01T00:00:00Z",
+      }],
+      totalWorks: 1,
+      totalPages: 1,
+      page: 1,
+      loadedThroughPage: 1,
+      nextPage: null,
+      hasMore: false,
+    });
+    render(<Home />);
+
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "義忍" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+
+    const sourceLink = await screen.findByRole("link", { name: /前往原始作品/ });
+    fireEvent.click(sourceLink);
+
+    await waitFor(() => expect(updaterState.openUrl).toHaveBeenCalledWith("https://archiveofourown.org/works/9001"));
   });
 });

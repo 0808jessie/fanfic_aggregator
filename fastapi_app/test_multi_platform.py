@@ -59,7 +59,7 @@ def test_platform_status_translates_cp_query_and_detects_cooldown():
     assert adapter_index.ADAPTER_TIMEOUT_SECONDS == 15.0
     assert adapter_index.PLATFORM_TIMEOUT_SECONDS == {
         "ao3": 8.0,
-        "penana": 18.0,
+        "penana": 12.0,
         "cxc": 15.0,
         "doujin": 15.0,
         "waterwriter": 15.0,

@@ -21,7 +21,7 @@ describe("Tauri updater configuration", () => {
     expect(capabilities.permissions).toEqual(expect.arrayContaining(["updater:default", "process:default", "opener:default", "store:default"]));
   });
 
-  it("registers the opener plugin so desktop source links use the system browser", () => {
+  it("registers the opener plugin so desktop source and official-search links use the system browser", () => {
     const cargoManifest = fs.readFileSync(path.join(projectRoot, "src-tauri", "Cargo.toml"), "utf8");
     const rustEntry = fs.readFileSync(path.join(projectRoot, "src-tauri", "src", "lib.rs"), "utf8");
     const homePage = fs.readFileSync(path.join(projectRoot, "client", "src", "pages", "Home.tsx"), "utf8");
@@ -29,7 +29,8 @@ describe("Tauri updater configuration", () => {
     expect(cargoManifest).toContain('tauri-plugin-opener = "2"');
     expect(rustEntry).toContain("tauri_plugin_opener::init()");
     expect(homePage).toContain('@tauri-apps/plugin-opener');
-    expect(homePage).toContain("openSourceLink");
+    expect(homePage).toContain("openExternalUrl");
+    expect(homePage).toContain("await openUrl(url)");
   });
 
   it("registers Tauri Store for AppData-backed personal data", () => {
@@ -54,6 +55,8 @@ describe("Tauri updater configuration", () => {
     expect(homePage).toContain("await availableUpdate.install()");
     expect(homePage).toContain("await relaunch()");
     expect(homePage).toContain("目前已是最新版本");
+    expect(homePage).toContain("UPDATER_MANIFEST_URL");
+    expect(homePage).toContain("statusCode: extractUpdaterHttpStatus(error)");
   });
 
   it("fails CI clearly when the signing secrets are not available", () => {

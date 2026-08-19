@@ -18,6 +18,10 @@ class PenanaScraper(BaseScraper):
 
     base_url = "https://www.penana.com"
     detail_enrichment_limit = 3
+    # Keep the public Finder response below its aggregation deadline. A slow
+    # or challenged source must return its own status without retaining a
+    # worker that can outlive the useful search result window.
+    public_search_timeout_seconds = 12.0
     search_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -69,7 +73,7 @@ class PenanaScraper(BaseScraper):
                 params={"t": "story", "search": keyword},
                 headers=self.search_headers,
                 impersonate="chrome120",
-                timeout=30.0,
+                timeout=self.public_search_timeout_seconds,
             )
             if response.status_code in (403, 520, 521, 522, 525):
                 retry_after = response.headers.get("Retry-After") if getattr(response, "headers", None) else None
