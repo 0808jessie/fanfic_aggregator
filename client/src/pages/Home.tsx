@@ -120,7 +120,7 @@ const PLATFORMS = [
   { id: "pixiv", label: "Pixiv", detail: "PIXIV.NET", tone: "rose" },
 ] as const;
 
-const FALLBACK_DESKTOP_VERSION = "1.1.12";
+const FALLBACK_DESKTOP_VERSION = "1.1.13";
 const UPDATER_MANIFEST_URL = "https://github.com/0808jessie/fanfic_aggregator/releases/latest/download/latest.json";
 
 type DesktopUpdate = {

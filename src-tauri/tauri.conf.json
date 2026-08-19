@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/schema.json",
   "productName": "Fanfic Atlas",
-  "version": "1.1.12",
+  "version": "1.1.13",
   "identifier": "com.fanfic.atlas.app",
   "build": {
     "beforeDevCommand": "pnpm dev",

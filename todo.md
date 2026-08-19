@@ -461,3 +461,4 @@
 - [x] 將桌面外部連結統一改用已註冊的 Tauri 原生外連能力，涵蓋 AO3／Penana 官方搜尋及原始作品連結
 - [x] 強化 AO3／Penana 公開搜尋的來源級逾時、受阻偵測與官方搜尋降級，不擷取或注入驗證 Cookie
 - [ ] 執行完整前後端、Tauri 與公開 Release 驗證，發布新的桌面更新版本
+- [ ] 將已退役的 macos-13 Intel 發行 runner 改為有效 GitHub-hosted runner，完成 Intel macOS 更新資產發布

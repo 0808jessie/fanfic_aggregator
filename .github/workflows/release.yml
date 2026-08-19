@@ -17,7 +17,9 @@ jobs:
           - platform: macos-14
             target_triple: aarch64-apple-darwin
             binary_name: api-server-aarch64-apple-darwin
-          - platform: macos-13
+          # macos-13 was retired by GitHub Actions. Keep an Intel build for
+          # existing desktop users on the supported macOS 15 runner image.
+          - platform: macos-15-intel
             target_triple: x86_64-apple-darwin
             binary_name: api-server-x86_64-apple-darwin
           - platform: windows-latest

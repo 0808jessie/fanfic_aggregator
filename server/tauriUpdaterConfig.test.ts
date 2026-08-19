@@ -65,5 +65,7 @@ describe("Tauri updater configuration", () => {
     expect(workflow).toContain("Verify updater signing material");
     expect(workflow).toContain("TAURI_SIGNING_PRIVATE_KEY");
     expect(workflow).toContain("tauri-apps/tauri-action@v1");
+    expect(workflow).toContain("platform: macos-15-intel");
+    expect(workflow).not.toContain("platform: macos-13");
   });
 });
