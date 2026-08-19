@@ -56,7 +56,7 @@ LOCAL_CP_PLATFORM_IDS = frozenset(("doujin", "waterwriter"))
 # return their own state instead of holding the full cross-platform response.
 ADAPTER_TIMEOUT_SECONDS = 15.0
 PLATFORM_TIMEOUT_SECONDS: dict[str, float] = {
-    "ao3": 20.0,
+    "ao3": 8.0,
     "penana": 18.0,
     "cxc": 15.0,
     "doujin": 15.0,

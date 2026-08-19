@@ -4,10 +4,10 @@ import { z } from "zod";
 import { publicProcedure, router } from "./_core/trpc";
 import { FASTAPI_BASE_URL, FASTAPI_SOCKET_PATH, FASTAPI_USES_UNIX_SOCKET } from "./fastapiService";
 
-// Source aggregation allows each external platform up to a 5s connect + 10s
-// read budget. Keep the proxy above that bounded window so it can return
-// partial results rather than replacing them with a global error envelope.
-const FASTAPI_PROXY_TIMEOUT_MS = 20_000;
+// AO3 is isolated to eight seconds, while other public sources retain their
+// own bounded budgets. Leave a small aggregation margin so FastAPI can relay
+// partial source states instead of replacing them with a global error envelope.
+const FASTAPI_PROXY_TIMEOUT_MS = 25_000;
 const PLATFORM_LABELS: Record<string, string> = {
   ao3: "AO3",
   cxc: "CxC 創利市集",

@@ -63,9 +63,11 @@ class AO3Scraper(BaseScraper):
         "Cookie": "view_adult=true; accepted_tos=2018",
     }
     static_cookies = {"view_adult": "true", "accepted_tos": "2018"}
-    static_connect_timeout_seconds = 10
-    static_read_timeout_seconds = 30
-    static_search_budget_seconds = 30
+    # AO3 is deliberately kept within a short source-level budget. A protected
+    # or stalled public page must never hold the full multi-platform response.
+    static_connect_timeout_seconds = 3
+    static_read_timeout_seconds = 8
+    static_search_budget_seconds = 8
     max_boolean_query_length = 220
 
     def __init__(self):
@@ -141,8 +143,12 @@ class AO3Scraper(BaseScraper):
                 print("[AO3 Static] Shared HTTP budget exhausted; returning bounded source warning")
                 return None
             try:
+                request_timeout = min(
+                    self.static_read_timeout_seconds,
+                    max(0.1, remaining_budget),
+                )
                 with self._session_lock:
-                    response = self._get_http_session().get(url, timeout=30.0)
+                    response = self._get_http_session().get(url, timeout=request_timeout)
                 remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 4.0
                 if response.status_code in (403, 429, 503, 525) and attempt == 0:
                     retry_delay = 1.8 if response.status_code in (403, 429) else 0.6

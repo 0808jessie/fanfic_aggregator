@@ -7,10 +7,11 @@ const updaterState = vi.hoisted(() => ({
   download: vi.fn(),
   install: vi.fn(),
   relaunch: vi.fn(),
+  toastError: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
-  toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), message: vi.fn() },
+  toast: { error: updaterState.toastError, success: vi.fn(), info: vi.fn(), message: vi.fn() },
 }));
 
 vi.mock("@/lib/desktopApi", () => ({
@@ -53,6 +54,7 @@ describe("Tauri updater interaction", () => {
     updaterState.download.mockReset();
     updaterState.install.mockReset();
     updaterState.relaunch.mockReset();
+    updaterState.toastError.mockReset();
   });
 
   afterEach(() => cleanup());
@@ -84,9 +86,20 @@ describe("Tauri updater interaction", () => {
     await waitFor(() => expect(updaterState.check).toHaveBeenCalledOnce());
 
     fireEvent.click(screen.getByRole("button", { name: /藏書閣 \/ 收藏夾/ }));
-    expect(screen.getByText("v1.1.10")).toBeTruthy();
+    expect(screen.getByText("v1.1.11")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "檢查更新" }));
 
     await waitFor(() => expect(updaterState.check).toHaveBeenCalledTimes(2));
+  });
+
+  it("explains a network failure when a manual update check cannot reach the manifest", async () => {
+    updaterState.check.mockResolvedValueOnce(null).mockRejectedValueOnce(new Error("network fetch failed"));
+    render(<Home />);
+    await waitFor(() => expect(updaterState.check).toHaveBeenCalledOnce());
+
+    fireEvent.click(screen.getByRole("button", { name: /藏書閣 \/ 收藏夾/ }));
+    fireEvent.click(screen.getByRole("button", { name: "檢查更新" }));
+
+    await waitFor(() => expect(updaterState.toastError).toHaveBeenCalledWith("無法連線至更新服務", expect.objectContaining({ description: expect.stringContaining("GitHub Releases") })));
   });
 });

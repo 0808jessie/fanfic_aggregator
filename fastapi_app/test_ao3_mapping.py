@@ -109,9 +109,9 @@ def test_ao3_adult_content_cookie_and_open_search_parameters_are_explicit():
     assert AO3Scraper.static_cookies == {"view_adult": "true", "accepted_tos": "2018"}
     assert AO3Scraper.static_headers["Cookie"] == "view_adult=true; accepted_tos=2018"
     assert "Chrome/120" in AO3Scraper.static_headers["User-Agent"]
-    assert AO3Scraper.static_connect_timeout_seconds == 10
-    assert AO3Scraper.static_read_timeout_seconds == 30
-    assert AO3Scraper.static_search_budget_seconds == 30
+    assert AO3Scraper.static_connect_timeout_seconds == 3
+    assert AO3Scraper.static_read_timeout_seconds == 8
+    assert AO3Scraper.static_search_budget_seconds == 8
 
 
 def test_ao3_total_works_reads_only_explicit_result_heading():

@@ -58,7 +58,7 @@ def test_platform_status_translates_cp_query_and_detects_cooldown():
     assert adapter_index.translated_query_for_platform("doujin", "哨兵嚮導") == "哨兵嚮導"
     assert adapter_index.ADAPTER_TIMEOUT_SECONDS == 15.0
     assert adapter_index.PLATFORM_TIMEOUT_SECONDS == {
-        "ao3": 20.0,
+        "ao3": 8.0,
         "penana": 18.0,
         "cxc": 15.0,
         "doujin": 15.0,
@@ -176,6 +176,32 @@ def test_parallel_search_returns_partial_results_when_one_adapter_exceeds_deadli
     assert [item.platform for item in aggregate["items"]] == ["AO3"]
     assert statuses["ao3"].status == "success"
     assert statuses["waterwriter"].status in ("error", "empty")
+
+
+def test_ao3_timeout_is_isolated_without_discarding_other_platform_results():
+    class SlowAO3:
+        def __init__(self):
+            self.last_warning = None
+
+        def scrape(self, keyword: str, page: int = 1):
+            time.sleep(0.5)
+            return []
+
+    adapter_index._SOURCE_CACHE.clear()
+    try:
+        with patch.object(adapter_index, "SCRAPERS", {"ao3": SlowAO3, "cxc": FakeCxCSuccess}), patch.dict(
+            adapter_index.PLATFORM_TIMEOUT_SECONDS,
+            {"ao3": 0.001},
+            clear=False,
+        ):
+            aggregate = adapter_index.parallel_search_platforms(["ao3", "cxc"], "花", page=1)
+    finally:
+        adapter_index._SOURCE_CACHE.clear()
+
+    statuses = {status.platformId: status for status in aggregate["platform_statuses"]}
+    assert [item.platform for item in aggregate["items"]] == ["CxC 創利市集"]
+    assert statuses["ao3"].status == "error"
+    assert statuses["cxc"].status == "success"
 
 
 def test_source_cache_marks_fast_follow_up_and_force_refresh_bypasses_it():

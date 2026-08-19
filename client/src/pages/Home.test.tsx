@@ -38,10 +38,22 @@ vi.mock("@/lib/trpc", async () => {
                   && Array.isArray((variables as { data?: { platforms?: unknown } } | undefined)?.data?.platforms)
                   && (variables as { data?: { platforms?: string[] } }).data?.platforms?.length === 1
                   && (variables as { data?: { platforms?: string[] } }).data?.platforms?.[0] === "waterwriter";
+                const requestedPage = Number((variables as { data?: { page?: number } } | undefined)?.data?.page ?? 1);
+                const pagedPrimaryPayload = requestedPage === 2
+                  ? {
+                      items: [{ title: "PAGE TWO", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/9002", tags: "", summary: "", scraped_at: "2026-01-01T00:00:00Z" }],
+                      totalWorks: 60, totalPages: 3, page: 2, loadedThroughPage: 2, nextPage: 3, hasMore: true,
+                    }
+                  : requestedPage === 3
+                    ? {
+                        items: [{ title: "PAGE THREE", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/9003", tags: "", summary: "", scraped_at: "2026-01-01T00:00:00Z" }],
+                        totalWorks: 60, totalPages: 3, page: 3, loadedThroughPage: 3, nextPage: null, hasMore: false,
+                      }
+                    : null;
                 const payload = retryingWaterwriter && mockState.retryPayload
                   ? mockState.retryPayload
                   : hookId === 0
-                  ? mockState.primaryPayload ?? {
+                  ? pagedPrimaryPayload ?? mockState.primaryPayload ?? {
                       items: [{ title: "PAGE ONE", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/9001", tags: "富岡義勇/胡蝶忍, Post-Canon", relationships: ["富岡義勇/胡蝶忍"], characters: ["富岡義勇", "胡蝶忍"], summary: "", scraped_at: "2026-01-01T00:00:00Z" }],
                       totalWorks: 60,
                       totalPages: 3,
@@ -177,7 +189,7 @@ describe("Home pagination interactions", () => {
     expect(screen.getByRole("button", { name: "RUN SEARCH" })).toBeTruthy();
   });
 
-  it("shows totalWorks and appends a page while displaying the loading label", async () => {
+  it("shows totalWorks and switches source pages without appending prior page cards", async () => {
     render(<Home />);
 
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "月光" } });
@@ -188,15 +200,54 @@ describe("Home pagination interactions", () => {
     const relationshipTag = screen.getByText("♡ 富岡義勇/胡蝶忍");
     expect(relationshipTag.className).toContain("bg-[#ffe8f0]");
     expect(screen.getByText("◇ 富岡義勇")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "LOAD MORE / PAGE 3" })).toBeTruthy();
+    expect(screen.getByText("第 1 / 3 頁")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "LOAD MORE / PAGE 3" }));
-    expect((screen.getByRole("button", { name: "正在翻頁載入中..." }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
 
-    await waitFor(() => expect(screen.getByText("PAGE THREE")).toBeTruthy());
-    expect(screen.getAllByText("PAGE ONE", { exact: true })).toHaveLength(1);
-    expect(screen.getByText("已載入第 3 / 3 頁")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "LOAD MORE / PAGE 3" })).toBeNull();
+    await waitFor(() => expect(screen.getByText("PAGE TWO")).toBeTruthy());
+    expect(screen.queryByText("PAGE ONE")).toBeNull();
+    expect(screen.getByText("第 2 / 3 頁")).toBeTruthy();
+    expect(mockState.lastVariables).toMatchObject({ data: { page: 2 } });
+  });
+
+  it("switches result views, pages locally, and offers a smooth return-to-top control", async () => {
+    mockState.primaryPayload = {
+      items: Array.from({ length: 26 }, (_, index) => ({
+        title: `LOCAL RESULT ${index + 1}`,
+        author: "Author",
+        platform: "AO3",
+        url: `https://archiveofourown.org/works/local-${index + 1}`,
+        tags: "General, Canon, 義忍, 現代 AU, Slow burn",
+        summary: "摘要",
+        scraped_at: "2026-01-01T00:00:00Z",
+      })),
+      totalWorks: 26, totalPages: 1, page: 1, loadedThroughPage: 1, nextPage: null, hasMore: false,
+    };
+    const scrollTo = vi.fn();
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 360 });
+    Object.defineProperty(window, "scrollTo", { configurable: true, value: scrollTo });
+    render(<Home />);
+
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "分頁" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+    await waitFor(() => expect(screen.getByText("LOCAL RESULT 1")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "條列模式" }));
+    expect(screen.getByRole("button", { name: "條列模式" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.change(screen.getByDisplayValue("24 篇"), { target: { value: "12" } });
+    expect(screen.getByText("第 1 / 3 頁")).toBeTruthy();
+    expect(screen.getAllByText("#General")).toHaveLength(12);
+    expect(screen.getAllByRole("button", { name: "+3 標籤" })).toHaveLength(12);
+    fireEvent.click(screen.getAllByRole("button", { name: "+3 標籤" })[0]);
+    expect(screen.getByText("#Slow burn")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "收合標籤" }));
+    expect(screen.queryByText("#Slow burn")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
+    expect(screen.getByText("LOCAL RESULT 13")).toBeTruthy();
+
+    fireEvent.scroll(window);
+    fireEvent.click(screen.getByRole("button", { name: "回到頂部搜尋列" }));
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
   });
 
   it("keeps verified results clear of a single platform diagnostic", async () => {
@@ -250,6 +301,7 @@ describe("Home pagination interactions", () => {
     expect(screen.getByRole("link", { name: "前往 AO3 搜尋本詞" }).getAttribute("href")).toBe(
       "https://archiveofourown.org/works/search?commit=Search&work_search%5Bquery%5D=%E7%BE%A9%E5%BF%8D",
     );
+    expect(screen.getByText("請在官方頁依其流程完成安全驗證後，回來按「重試」。本應用程式不會讀取或保存驗證 Cookie。")).toBeTruthy();
     expect(screen.getByRole("link", { name: "在 Penana 官網搜尋" }).getAttribute("href")).toBe(
       "https://www.penana.com/search?t=story&search=%E7%BE%A9%E5%BF%8D",
     );

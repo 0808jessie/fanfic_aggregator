@@ -1,17 +1,22 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import React from "react";
 import {
+  ArrowUp,
   ArrowUpRight,
   BookOpen,
   Bookmark,
   BookmarkCheck,
   BookMarked,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Database,
   Eye,
   EyeOff,
   Filter,
   History,
+  LayoutGrid,
+  List,
   Loader2,
   Search,
   RotateCw,
@@ -44,7 +49,6 @@ import {
   extractSearchPagination,
   extractSearchWarning,
   filterAndSortResults,
-  getLoadMoreLabel,
   isPlatformRetryable,
   isRestrictedResult,
   normalizeResults,
@@ -116,7 +120,7 @@ const PLATFORMS = [
   { id: "pixiv", label: "Pixiv", detail: "PIXIV.NET", tone: "rose" },
 ] as const;
 
-const FALLBACK_DESKTOP_VERSION = "1.1.10";
+const FALLBACK_DESKTOP_VERSION = "1.1.11";
 
 type DesktopUpdate = {
   version: string;
@@ -126,6 +130,9 @@ type DesktopUpdate = {
 };
 
 type PlatformId = (typeof PLATFORMS)[number]["id"];
+type ResultViewMode = "cards" | "list";
+
+const RESULT_PAGE_SIZES = [12, 24, 36] as const;
 
 function platformMeta(platform: string) {
   const normalized = platform.toLowerCase();
@@ -142,6 +149,21 @@ function platformToneClass(tone: (typeof PLATFORMS)[number]["tone"]) {
 function showInfoToast(message: string) {
   const info = (toast as unknown as { message?: (value: string) => void }).message;
   info?.(message);
+}
+
+function describeUpdaterCheckError(error: unknown) {
+  const rawMessage = error instanceof Error ? error.message : String(error || "未知錯誤");
+  const message = rawMessage.toLocaleLowerCase();
+  if (message.includes("signature") || message.includes("pubkey") || message.includes("minisign")) {
+    return { title: "更新清單簽名無法驗證", description: "請確認安裝的版本與官方 Release 使用同一組更新簽名金鑰。" };
+  }
+  if (message.includes("latest.json") || message.includes("404") || message.includes("manifest")) {
+    return { title: "找不到更新清單", description: "GitHub Release 尚未提供 latest.json，請稍後再試或檢查該版本的 Release 資產。" };
+  }
+  if (message.includes("network") || message.includes("fetch") || message.includes("timeout") || message.includes("connect")) {
+    return { title: "無法連線至更新服務", description: "請確認網路可存取 GitHub Releases，或稍後再次檢查更新。" };
+  }
+  return { title: "暫時無法檢查更新", description: "更新服務回應異常；詳細原因已記錄於桌面應用程式日誌。" };
 }
 
 function formatDate(value: string) {
@@ -181,6 +203,12 @@ function completePlatformStatuses(
   });
 }
 
+function resultPageWindow(current: number, total: number) {
+  if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1);
+  const candidates = new Set([1, total, current - 1, current, current + 1]);
+  return Array.from(candidates).filter((page) => page >= 1 && page <= total).sort((a, b) => a - b);
+}
+
 export default function Home() {
   const [keyword, setKeyword] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
@@ -202,6 +230,13 @@ export default function Home() {
   const [excludedKeywords, setExcludedKeywords] = useState<string[]>([]);
   const [blacklistGroups, setBlacklistGroups] = useState<BlacklistGroup[]>([]);
   const [showFilteredResults, setShowFilteredResults] = useState(false);
+  const [resultViewMode, setResultViewMode] = useState<ResultViewMode>(() => window.localStorage.getItem("fanfic-atlas-result-view") === "list" ? "list" : "cards");
+  const [resultsPerPage, setResultsPerPage] = useState<number>(() => {
+    const saved = Number(window.localStorage.getItem("fanfic-atlas-results-per-page"));
+    return RESULT_PAGE_SIZES.includes(saved as (typeof RESULT_PAGE_SIZES)[number]) ? saved : 24;
+  });
+  const [localResultPage, setLocalResultPage] = useState(1);
+  const [showScrollToTop, setShowScrollToTop] = useState(false);
   const [revealedFilteredUrls, setRevealedFilteredUrls] = useState<Set<string>>(new Set());
   const [expandedTagUrls, setExpandedTagUrls] = useState<Set<string>>(new Set());
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>(() => loadContentSafetySettings().ageConfirmation === "adult" ? "all" : "safe");
@@ -217,7 +252,6 @@ export default function Home() {
   const [completedElapsedMs, setCompletedElapsedMs] = useState<number | null>(null);
   const [sidecarState, setSidecarState] = useState<"idle" | "starting" | "ready" | "error">("idle");
   const [desktopSearchPending, setDesktopSearchPending] = useState(false);
-  const [desktopLoadMorePending, setDesktopLoadMorePending] = useState(false);
   const [desktopVersion, setDesktopVersion] = useState(FALLBACK_DESKTOP_VERSION);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<DesktopUpdate | null>(null);
@@ -227,7 +261,6 @@ export default function Home() {
   const [retryingPlatformId, setRetryingPlatformId] = useState<PlatformId | null>(null);
   const searchStartedAt = useRef<number | null>(null);
   const retryingPlatformRef = useRef<PlatformId | null>(null);
-  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   const historyMenuRef = useRef<HTMLDivElement | null>(null);
   const activeDesktopSearchAbortRef = useRef<AbortController | null>(null);
   const searchRequestGateRef = useRef(new LatestSearchRequestGate());
@@ -316,28 +349,8 @@ export default function Home() {
     onError: (error, request) => handleSearchError(error, request as { data?: Record<string, unknown> }),
   });
 
-  const handleLoadMoreSuccess = (payload: any) => {
-      const incoming = normalizeResults(payload);
-      setResults((current) => appendUniqueResults(current, incoming));
-      setPlatformStatuses(extractPlatformStatuses(payload));
-      setPagination(extractSearchPagination(payload));
-      const warningMsg = extractSearchWarning(payload);
-      if (warningMsg) setSearchWarning(warningMsg);
-    };
-
-  const handleLoadMoreError = (error: { message?: string }) => {
-      setSearchWarning(error.message || "翻頁載入失敗，請稍後再試。");
-      toast.error("翻頁載入失敗", { description: error.message || "請稍後再試。" });
-    };
-
-  const loadMoreMutation = trpc.fastapi.proxy.useMutation({
-    onSuccess: handleLoadMoreSuccess,
-    onError: handleLoadMoreError,
-  });
-
   const desktopRuntime = isTauriDesktopRuntime();
   const isSearchPending = searchMutation.isPending || desktopSearchPending;
-  const isLoadMorePending = loadMoreMutation.isPending || desktopLoadMorePending;
 
   const requestSearch = (request: { path: string; method: "POST"; data: Record<string, unknown> }, requestId: number, cacheKey: string | null) => {
     if (!desktopRuntime) {
@@ -372,26 +385,6 @@ export default function Home() {
     })();
   };
 
-  const requestLoadMore = (request: { path: string; method: "POST"; data: unknown }) => {
-    if (!desktopRuntime) {
-      loadMoreMutation.mutate(request as any);
-      return;
-    }
-
-    setDesktopLoadMorePending(true);
-    void (async () => {
-      try {
-        await waitForSidecarReady();
-        setSidecarState("ready");
-        handleLoadMoreSuccess(await postSidecarSearch(request.data));
-      } catch (error) {
-        setSidecarState("error");
-        handleLoadMoreError(error instanceof Error ? error : new Error("翻頁載入失敗"));
-      } finally {
-        setDesktopLoadMorePending(false);
-      }
-    })();
-  };
 
   const selectedLabels = useMemo(
     () => selectedPlatforms.map((platform) => platform.toUpperCase()).join(" + "),
@@ -408,6 +401,14 @@ export default function Home() {
     ),
     [results, activePlatformFilter, activeQuery, keyword, wordCountFilter, completionFilter, sortMode, selectedLanguage, excludedKeywords, showFilteredResults, ratingFilter, contentSafetySettings.ageConfirmation],
   );
+  const localResultPageCount = Math.max(1, Math.ceil(displayedResults.length / resultsPerPage));
+  const visibleResults = useMemo(
+    () => displayedResults.slice((localResultPage - 1) * resultsPerPage, localResultPage * resultsPerPage),
+    [displayedResults, localResultPage, resultsPerPage],
+  );
+  const usesSourcePagination = pagination.totalPages > 1;
+  const unifiedCurrentPage = usesSourcePagination ? pagination.page : localResultPage;
+  const unifiedPageCount = usesSourcePagination ? pagination.totalPages : localResultPageCount;
   const activeFilterCount = [
     selectedLanguage !== "all",
     wordCountFilter !== "all",
@@ -493,14 +494,23 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const sentinel = loadMoreSentinelRef.current;
-    if (typeof IntersectionObserver === "undefined" || !sentinel || activeView !== "search" || !pagination.hasMore || !pagination.nextPage || isLoadMorePending || !activeQuery) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0]?.isIntersecting) loadMore();
-    }, { rootMargin: "260px 0px" });
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [activeView, pagination.hasMore, pagination.nextPage, isLoadMorePending, activeQuery, results.length]);
+    setLocalResultPage(1);
+  }, [activeQuery, activePlatformFilter, selectedLanguage, wordCountFilter, completionFilter, sortMode, ratingFilter, showFilteredResults, resultsPerPage, pagination.page]);
+
+  useEffect(() => {
+    window.localStorage.setItem("fanfic-atlas-result-view", resultViewMode);
+  }, [resultViewMode]);
+
+  useEffect(() => {
+    window.localStorage.setItem("fanfic-atlas-results-per-page", String(resultsPerPage));
+  }, [resultsPerPage]);
+
+  useEffect(() => {
+    const updateScrollButton = () => setShowScrollToTop(window.scrollY > 300);
+    updateScrollButton();
+    window.addEventListener("scroll", updateScrollButton, { passive: true });
+    return () => window.removeEventListener("scroll", updateScrollButton);
+  }, []);
 
   useEffect(() => {
     if (!isSearchPending) return;
@@ -537,9 +547,10 @@ export default function Home() {
       setUpdateDownloadPercent(0);
       setUpdateDialogOpen(true);
     } catch (error) {
-      console.error("[Updater] Update check failed:", error);
+      const diagnostic = describeUpdaterCheckError(error);
+      console.error("[Updater] Update check failed", { error, diagnostic, endpoint: "https://github.com/0808jessie/fanfic_aggregator/releases/latest/download/latest.json" });
       if (origin === "manual") {
-        toast.error("暫時無法檢查更新", { description: "請確認網路連線後再試一次。" });
+        toast.error(diagnostic.title, { description: diagnostic.description });
       }
     } finally {
       updaterCheckInFlightRef.current = false;
@@ -668,14 +679,49 @@ export default function Home() {
     runSearch(false);
   };
 
-  function loadMore() {
-    if (!pagination.nextPage || isLoadMorePending || !activeQuery) return;
-    requestLoadMore({
-      path: "/search",
-      method: "POST",
-      data: { keyword: activeQuery, mode: searchMode, platforms: selectedPlatforms, page: pagination.nextPage, forceRefresh: false, customCpMappings },
-    });
-  }
+  const goToSourcePage = (page: number) => {
+    if (!activeQuery || page < 1 || page > pagination.totalPages || page === pagination.page || isSearchPending) return;
+    const requestId = searchRequestGateRef.current.begin();
+    searchStartedAt.current = performance.now();
+    setElapsedMs(0);
+    setCompletedElapsedMs(null);
+    setSearchWarning(null);
+    const requestData = { keyword: activeQuery, mode: searchMode, platforms: selectedPlatforms, page, forceRefresh: false, customCpMappings };
+    const cacheKey = createSearchCacheKey(requestData);
+    const cachedPayload = readSearchRequestCache<unknown>(cacheKey);
+    if (cachedPayload) {
+      handleSearchSuccess(cachedPayload);
+      showInfoToast("已載入此頁的本機搜尋快取。");
+      return;
+    }
+    requestSearch({ path: "/search", method: "POST", data: { ...requestData, clientRequestId: requestId } }, requestId, desktopRuntime ? cacheKey : null);
+  };
+
+  const goToUnifiedPage = (page: number) => {
+    if (usesSourcePagination) {
+      goToSourcePage(page);
+      return;
+    }
+    setLocalResultPage(page);
+  };
+
+  const goToPreviousUnifiedPage = () => {
+    if (localResultPage > 1) {
+      setLocalResultPage((page) => page - 1);
+      return;
+    }
+    if (usesSourcePagination) goToSourcePage(pagination.page - 1);
+  };
+
+  const goToNextUnifiedPage = () => {
+    if (localResultPage < localResultPageCount) {
+      setLocalResultPage((page) => page + 1);
+      return;
+    }
+    if (usesSourcePagination) goToSourcePage(pagination.page + 1);
+  };
+
+  const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
   const saveBookmark = (value: { result: SearchResult; rating: number; notes: string; tags: string[]; shelf: "to-read" | "favorite" }) => {
     personalDataRevisionRef.current += 1;
@@ -977,7 +1023,7 @@ export default function Home() {
                     : isBlocked || status.status === "error"
                       ? "border-[#efb4c4] bg-[#fff0f4] text-[#9b4358]"
                       : "border-[#d5d8da] bg-[#f5f6f4] text-[#65737a]";
-                const stateLabel = isSuccess ? "已連線" : isCooldown ? "冷卻限制中" : isBlocked ? "需要安全驗證" : status.status === "error" ? "連線逾時" : "無公開結果";
+                const stateLabel = isSuccess ? "已連線" : isCooldown ? "冷卻限制中" : isBlocked ? status.platformId === "ao3" ? "AO3 需要安全驗證" : "需要安全驗證" : status.status === "error" ? "連線逾時" : "無公開結果";
                 const isActiveFilter = activePlatformFilter === status.platformId;
                 const isRetryingThisPlatform = isSearchPending && retryingPlatformId === status.platformId;
                 return (
@@ -1012,16 +1058,22 @@ export default function Home() {
                       )}
                     </div>
                     {isBlocked && officialSearch && currentQuery && (
-                      <a
-                        href={officialSearch.href}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label={officialSearch.label}
-                        onClick={(event) => event.stopPropagation()}
-                        className="mt-2 inline-flex items-center gap-1 border border-current px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] hover:bg-white/70"
-                      >
-                        {officialSearch.label} <ArrowUpRight className="h-3 w-3" />
-                      </a>
+                      <div className="mt-2">
+                        <a
+                          href={officialSearch.href}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label={officialSearch.label}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (status.platformId === "ao3") showInfoToast("已開啟官方 AO3 搜尋；若完成官方驗證，請回到此處按「重試 AO3」。");
+                          }}
+                          className="inline-flex items-center gap-1 border border-current px-2 py-1 font-mono text-[8px] font-bold uppercase tracking-[0.08em] hover:bg-white/70"
+                        >
+                          {officialSearch.label} <ArrowUpRight className="h-3 w-3" />
+                        </a>
+                        {status.platformId === "ao3" && <p className="mt-1.5 text-[10px] leading-4 opacity-80">請在官方頁依其流程完成安全驗證後，回來按「重試」。本應用程式不會讀取或保存驗證 Cookie。</p>}
+                      </div>
                     )}
                     <div className="mt-2 truncate atlas-mono text-[9px] opacity-70" title={status.translatedQuery}>QUERY / {status.translatedQuery}</div>
                     {status.warning && <div className="mt-1 line-clamp-2 font-mono text-[8px] leading-4 opacity-75" title={status.warning}>{status.warning}</div>}
@@ -1083,8 +1135,19 @@ export default function Home() {
                   <span className="font-semibold">提示：</span> {searchWarning}
                 </div>
               )}
-              <div className="grid gap-4 md:grid-cols-2">
-                {displayedResults.map((result, index) => {
+              <div className="flex flex-col gap-3 border-b border-[color:var(--atlas-line)] pb-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="reader-segmented flex w-fit items-center gap-1 p-1" role="group" aria-label="搜尋結果檢視模式">
+                  <Button type="button" variant="ghost" aria-pressed={resultViewMode === "cards"} onClick={() => setResultViewMode("cards")} className={`h-8 rounded-lg px-3 text-xs font-semibold ${resultViewMode === "cards" ? "bg-white text-[color:var(--atlas-indigo)] shadow-sm" : "text-[color:var(--atlas-muted)]"}`}><LayoutGrid className="mr-1.5 h-3.5 w-3.5" />卡片模式</Button>
+                  <Button type="button" variant="ghost" aria-pressed={resultViewMode === "list"} onClick={() => setResultViewMode("list")} className={`h-8 rounded-lg px-3 text-xs font-semibold ${resultViewMode === "list" ? "bg-white text-[color:var(--atlas-indigo)] shadow-sm" : "text-[color:var(--atlas-muted)]"}`}><List className="mr-1.5 h-3.5 w-3.5" />條列模式</Button>
+                </div>
+                <label className="flex items-center gap-2 text-xs font-semibold text-[color:var(--atlas-muted)]">每頁顯示
+                  <select value={resultsPerPage} onChange={(event) => setResultsPerPage(Number(event.target.value))} className="h-8 rounded-lg border border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)] px-2 text-xs font-semibold text-[color:var(--atlas-ink)] outline-none focus:border-[color:var(--atlas-indigo)]">
+                    {RESULT_PAGE_SIZES.map((size) => <option key={size} value={size}>{size} 篇</option>)}
+                  </select>
+                </label>
+              </div>
+              <div id="search-results" className={resultViewMode === "cards" ? "grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3" : "space-y-3"}>
+                {visibleResults.map((result, index) => {
                   const meta = platformMeta(result.platform);
                   const allTags = (result.tags || "").split(",").map((tag) => tag.trim()).filter(Boolean);
                   const allRelationshipTags = result.relationships?.length ? result.relationships : allTags.filter((tag) => tag.includes("/") || tag.includes(" & "));
@@ -1101,10 +1164,10 @@ export default function Home() {
                   const blacklistMatches = blacklistGroups.filter((group) => group.enabled).map((group) => ({ group, keywords: group.keywords.filter((item) => [result.title, result.summary, result.tags, ...(result.characters || []), ...(result.relationships || [])].join(" ").toLocaleLowerCase().includes(item.toLocaleLowerCase())) })).filter((item) => item.keywords.length > 0);
                   const isMaskedByBlacklist = showFilteredResults && blacklistMatches.length > 0 && !revealedFilteredUrls.has(result.url);
                   return (
-                    <Card key={`${result.url}-${index}`} className={`reader-story-card group relative ${isRestricted ? "border-[#efb4c4]" : ""}`}>
+                    <Card key={`${result.url}-${index}`} className={`reader-story-card group relative ${resultViewMode === "list" ? "overflow-hidden" : ""} ${isRestricted ? "border-[#efb4c4]" : ""}`}>
                       <CardContent className={`p-0 transition-[filter,opacity] duration-200 ${isMaskedByBlacklist ? "pointer-events-none select-none blur-[5px] opacity-45" : ""}`}>
-                        <BlueprintCover src={result.coverUrl} title={result.title} />
-                        <div className="flex items-center justify-between border-b border-[#111826]/10 px-5 py-3">
+                        {resultViewMode === "cards" && result.coverUrl && <BlueprintCover src={result.coverUrl} title={result.title} />}
+                        <div className={`flex items-center justify-between border-b border-[#111826]/10 ${resultViewMode === "list" ? "px-4 py-2.5" : "px-5 py-3"}`}>
                           <div className="flex items-center gap-2">
                             <Badge className={`rounded-full border-0 px-2.5 py-1 text-xs font-medium ${platformToneClass(meta.tone)} `}>
                               {meta.label}
@@ -1118,22 +1181,24 @@ export default function Home() {
                           </div>
                           <div className="flex items-center gap-2"><button type="button" onClick={() => bookmark ? removeBookmark(result.url) : (setBookmarkTarget(result), setBookmarkDialogOpen(true))} aria-label={bookmark ? `取消收藏 ${result.title}` : `收藏 ${result.title}`} className={`inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition-colors ${bookmark ? "bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]" : "bg-[color:var(--atlas-elevated)] text-[color:var(--atlas-muted)] hover:text-[color:var(--atlas-indigo)]"}`}>{bookmark ? <BookmarkCheck className="h-3.5 w-3.5" /> : <Bookmark className="h-3.5 w-3.5" />}{bookmark ? "已收藏" : "收藏"}</button><span className="text-xs text-[color:var(--atlas-muted)]">{formatDate(result.scraped_at)}</span></div>
                         </div>
-                        <div className="p-5 sm:p-6">
-                          <div className="mb-4 flex items-start justify-between gap-4">
-                            <h3 className="line-clamp-2 text-xl font-black leading-tight tracking-[-0.055em]">{result.title || "UNTITLED WORK"}</h3>
+                        <div className={resultViewMode === "list" ? "grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1.5fr)_minmax(10rem,0.7fr)_auto] md:items-center" : "p-5 sm:p-6"}>
+                          <div className={resultViewMode === "list" ? "min-w-0" : ""}>
+                          <div className={resultViewMode === "list" ? "flex items-start justify-between gap-3" : "mb-4 flex items-start justify-between gap-4"}>
+                            <h3 className={`line-clamp-2 font-black leading-tight tracking-[-0.045em] ${resultViewMode === "list" ? "text-base" : "text-xl"}`}>{result.title || "UNTITLED WORK"}</h3>
                             <ArrowUpRight className="mt-1 h-5 w-5 shrink-0 text-[#9ca8ad] transition-colors group-hover:text-[#2d70d6]" />
                           </div>
                           {isNavigableAuthor(result.author) ? <button type="button" onClick={() => navigateToAuthor(result.author)} className="group/author inline-flex items-center gap-1.5 text-sm font-medium text-[color:var(--atlas-muted)] transition-colors hover:text-[color:var(--atlas-indigo)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--atlas-indigo)]" aria-label={`搜尋作者 ${result.author}`}><UserRound className="h-3.5 w-3.5" /><span className="border-b border-transparent group-hover/author:border-current">{result.author}</span></button> : <div className="text-sm font-medium text-[color:var(--atlas-muted)]">{result.author || "未知創作者"}</div>}
                           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[color:var(--atlas-muted)]"><span>{result.wordCount ? `${result.wordCount} 字` : "字數以原站為準"}</span>{result.isComplete !== null && result.isComplete !== undefined && <span className={result.isComplete ? "text-[color:var(--atlas-success)]" : "text-[color:var(--atlas-amber)]"}>{result.isComplete ? "已完結" : "連載中"}</span>}{typeof result.relevanceScore === "number" && <span>相關度 {result.relevanceScore}</span>}</div>
-                          <RestrictedSummary summary={result.summary || "No summary available."} shouldBlur={isRestricted && contentSafetySettings.blurRestrictedSummaries} />
-                          <div className="mt-6 flex flex-wrap gap-1.5">
+                          <div className={`${resultViewMode === "list" ? "mt-3" : "mt-6"} flex flex-wrap gap-1.5`} aria-label={`${result.title} 的標籤`}>
                             {relationshipTags.map((tag) => <span key={`relationship-${tag}`} className="border border-[#e8a7bf] bg-[#ffe8f0] px-2 py-1 font-mono text-[9px] font-semibold text-[#8b3e59]">♡ {tag}</span>)}
                             {characterTags.map((tag) => <span key={`character-${tag}`} className="border border-[#c9bcf2] bg-[#f0ecff] px-2 py-1 font-mono text-[9px] font-semibold text-[#5c4e87]">◇ {tag}</span>)}
                             {tags.map((tag) => <span key={`tag-${tag}`} className="border border-[#10151b]/10 bg-[#f3f6f5] px-2 py-1 font-mono text-[9px] font-semibold text-[#6a777e]">#{tag}</span>)}
                             {hiddenTagCount > 0 && <button type="button" onClick={() => setExpandedTagUrls((current) => { const next = new Set(current); next.add(result.url); return next; })} title="展開完整標籤" className="border border-dashed border-[#61707a]/45 bg-white px-2 py-1 font-mono text-[9px] font-bold text-[#56646d] hover:border-[#2d70d6] hover:text-[#2d70d6]">+{hiddenTagCount} 標籤</button>}
-                            {tagsExpanded && hiddenTagCount === 0 && (allRelationshipTags.length + allCharacterTags.length + allCategoryTags.length) > 5 && <button type="button" onClick={() => setExpandedTagUrls((current) => { const next = new Set(current); next.delete(result.url); return next; })} className="border border-dashed border-[#61707a]/45 bg-white px-2 py-1 font-mono text-[9px] font-bold text-[#56646d] hover:border-[#2d70d6] hover:text-[#2d70d6]">收合標籤</button>}
+                            {tagsExpanded && hiddenTagCount === 0 && (allRelationshipTags.length + allCharacterTags.length + allCategoryTags.length) > 0 && <button type="button" onClick={() => setExpandedTagUrls((current) => { const next = new Set(current); next.delete(result.url); return next; })} className="border border-dashed border-[#61707a]/45 bg-white px-2 py-1 font-mono text-[9px] font-bold text-[#56646d] hover:border-[#2d70d6] hover:text-[#2d70d6]">收合標籤</button>}
                           </div>
-                          <a href={result.url} target="_blank" rel="noreferrer" onClick={(event) => void openSourceLink(event, result.url)} className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--atlas-indigo)] hover:text-[#4338ca]">
+                          {resultViewMode === "cards" && <RestrictedSummary summary={result.summary || "No summary available."} shouldBlur={isRestricted && contentSafetySettings.blurRestrictedSummaries} />}
+                          </div>
+                          <a href={result.url} target="_blank" rel="noreferrer" onClick={(event) => void openSourceLink(event, result.url)} className={`${resultViewMode === "list" ? "md:justify-self-end" : "mt-6"} inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--atlas-indigo)] hover:text-[#4338ca]`}>
                             前往原始作品 <ArrowUpRight className="h-3.5 w-3.5" />
                           </a>
                         </div>
@@ -1143,17 +1208,7 @@ export default function Home() {
                   );
                 })}
               </div>
-              {pagination.hasMore && pagination.nextPage && (
-                <div className="flex flex-col items-center gap-3 border-t border-[#10151b]/10 pt-6">
-                  <div ref={loadMoreSentinelRef} className="h-px w-full" aria-hidden="true" />
-                  <span className="text-sm font-medium text-[color:var(--atlas-success)]">{isLoadMorePending ? "正在載入更多作品…" : "向下捲動即可自動載入下一頁"}</span>
-                  <Button type="button" onClick={loadMore} disabled={isLoadMorePending} className="min-w-56 rounded-none bg-[#10151b] px-6 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-white hover:bg-[#24313a]">
-                    {isLoadMorePending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ArrowUpRight className="mr-2 h-4 w-4" />}
-                    {getLoadMoreLabel(isLoadMorePending, pagination.nextPage)}
-                  </Button>
-                  <span className="text-xs text-[color:var(--atlas-muted)]">已載入 {results.length.toLocaleString()} / {pagination.totalWorks.toLocaleString()} 篇</span>
-                </div>
-              )}
+              {(localResultPageCount > 1 || pagination.totalPages > 1) && <div className="flex flex-col gap-3 border-t border-[color:var(--atlas-line)] pt-6 sm:flex-row sm:items-center sm:justify-between" aria-label="搜尋結果分頁"><div><div className="text-sm font-semibold text-[color:var(--atlas-ink)]">第 {unifiedCurrentPage} / {unifiedPageCount} 頁{usesSourcePagination && localResultPageCount > 1 ? <span className="ml-2 text-xs font-medium text-[color:var(--atlas-muted)]">· 本頁區段 {localResultPage} / {localResultPageCount}</span> : null}</div><div className="mt-1 text-xs text-[color:var(--atlas-muted)]">顯示 {Math.min((localResultPage - 1) * resultsPerPage + 1, displayedResults.length)}–{Math.min(localResultPage * resultsPerPage, displayedResults.length)} / {displayedResults.length} 筆{usesSourcePagination ? " · 切換來源頁時會優先使用本機快取" : ""}</div></div><div className="flex flex-wrap items-center gap-1"><Button type="button" variant="outline" size="icon" aria-label="上一頁" disabled={(localResultPage === 1 && (!usesSourcePagination || pagination.page === 1)) || isSearchPending} onClick={goToPreviousUnifiedPage} className="h-9 w-9 rounded-lg border-[color:var(--atlas-line)] bg-white/70"><ChevronLeft className="h-4 w-4" /></Button>{resultPageWindow(unifiedCurrentPage, unifiedPageCount).map((page, index, pages) => <React.Fragment key={page}>{index > 0 && page - pages[index - 1] > 1 && <span className="px-1 text-xs text-[color:var(--atlas-muted)]">…</span>}<Button type="button" variant={page === unifiedCurrentPage ? "default" : "outline"} size="icon" aria-current={page === unifiedCurrentPage ? "page" : undefined} disabled={isSearchPending} onClick={() => goToUnifiedPage(page)} className={`h-9 w-9 rounded-lg ${page === unifiedCurrentPage ? "bg-[color:var(--atlas-indigo)] text-white hover:bg-[#4338ca]" : "border-[color:var(--atlas-line)] bg-white/70"}`}>{page}</Button></React.Fragment>)}<Button type="button" variant="outline" size="icon" aria-label="下一頁" disabled={(localResultPage === localResultPageCount && (!usesSourcePagination || pagination.page === pagination.totalPages)) || isSearchPending} onClick={goToNextUnifiedPage} className="h-9 w-9 rounded-lg border-[color:var(--atlas-line)] bg-white/70"><ChevronRight className="h-4 w-4" /></Button></div></div>}
             </div>
           )}
           </>}
@@ -1190,6 +1245,7 @@ export default function Home() {
         </Dialog>
       </main>
 
+      {showScrollToTop && <Button type="button" onClick={scrollToTop} aria-label="回到頂部搜尋列" className="fixed bottom-6 right-5 z-40 h-12 rounded-full bg-[color:var(--atlas-indigo)] px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(79,70,229,0.28)] transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:bg-[#4338ca] focus-visible:ring-2 focus-visible:ring-[color:var(--atlas-indigo)] focus-visible:ring-offset-2 sm:bottom-8 sm:right-8"><ArrowUp className="mr-1.5 h-4 w-4" />回頂部</Button>}
       <footer className="relative z-10 border-t border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)]"><div className="mx-auto flex max-w-[1440px] flex-col gap-2 px-5 py-6 text-xs text-[color:var(--atlas-muted)] sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-12"><span>Fanfic Atlas · 為你的閱讀清單留一個安靜的位置</span><span>6 個公開來源 · 本機保存個人資料</span></div></footer>
     </div>
   );
