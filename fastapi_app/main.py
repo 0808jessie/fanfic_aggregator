@@ -16,7 +16,7 @@ from constants.cp_tags import CP_CACHE_ALIASES, CP_TAG_MAP, build_custom_cp_map
 from relevance import rank_results
 from scrapers.index import SCRAPERS, parallel_search_platforms
 
-app = FastAPI(title="Fanfic Atlas Search API", version="1.1.14")
+app = FastAPI(title="Fanfic Atlas Search API", version="1.2.0")
 app.add_middleware(
     CORSMiddleware,
     # The packaged desktop WebView is served from tauri://localhost, while the
@@ -144,6 +144,9 @@ def is_real_platform_url(url: str, platform: str | None = None) -> bool:
             "在水裡寫字": ("slashtw.space",),
             "penana": ("penana.com",),
             "pixiv": ("pixiv.net",),
+            "巴哈姆特創作大廳": ("home.gamer.com.tw",),
+            "popo 原創市集": ("popo.tw",),
+            "kadokado 角角者": ("www.kadokado.com.tw",),
         }
         hosts = allowed_hosts.get(platform.lower())
         if hosts and not any(host in normalized_url for host in hosts):
@@ -211,22 +214,22 @@ def get_cached_results(db: Session, keyword: str, platforms: list[str], ignore_t
 
 @app.get("/fastapi-status")
 def fastapi_status() -> dict[str, str]:
-    return {"status": "ok", "service": "fastapi-search", "version": "1.1.14"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.2.0"}
 
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "fastapi-search", "version": "1.1.14"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.2.0"}
 
 
 @app.api_route("/api/health", methods=["GET", "HEAD"])
 def api_health_check():
-    return {"status": "ok", "service": "fastapi-search", "version": "1.1.14"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.2.0"}
 
 
 @app.get("/")
 def read_root() -> dict[str, str]:
-    return {"status": "ok", "service":"fastapi-search", "version": "1.1.14"}
+    return {"status": "ok", "service":"fastapi-search", "version": "1.2.0"}
 
 
 @app.get("/platforms")
@@ -238,6 +241,9 @@ def list_platforms() -> list[dict[str, str]]:
         {"id": "waterwriter", "label": "在水裡寫字", "status": "best-effort"},
         {"id": "penana", "label": "Penana", "status": "best-effort"},
         {"id": "pixiv", "label": "Pixiv", "status": "best-effort"},
+        {"id": "bahamut", "label": "巴哈姆特創作大廳", "status": "best-effort"},
+        {"id": "popo", "label": "POPO 原創市集", "status": "best-effort"},
+        {"id": "kadokado", "label": "KadoKado 角角者", "status": "best-effort"},
     ]
 
 

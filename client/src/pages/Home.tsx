@@ -118,9 +118,12 @@ const PLATFORMS = [
   { id: "penana", label: "PENANA", detail: "PENANA.COM", tone: "teal" },
   { id: "cxc", label: "CxC 創利市集", detail: "CXC.TODAY", tone: "violet" },
   { id: "pixiv", label: "Pixiv", detail: "PIXIV.NET", tone: "rose" },
+  { id: "bahamut", label: "巴哈姆特創作大廳", detail: "HOME.GAMER.COM.TW", tone: "cyan" },
+  { id: "popo", label: "POPO 原創市集", detail: "POPO.TW · 索引導流", tone: "teal" },
+  { id: "kadokado", label: "KadoKado 角角者", detail: "KADOKADO.COM.TW · 索引導流", tone: "amber" },
 ] as const;
 
-const FALLBACK_DESKTOP_VERSION = "1.1.14";
+const FALLBACK_DESKTOP_VERSION = "1.2.0";
 const UPDATER_MANIFEST_URL = "https://github.com/0808jessie/fanfic_aggregator/releases/latest/download/latest.json";
 
 type DesktopUpdate = {
@@ -220,7 +223,7 @@ export default function Home() {
   const [keyword, setKeyword] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
   const [searchMode, setSearchMode] = useState<"keyword" | "author">("keyword");
-  const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformId[]>(["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"]);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformId[]>(["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut"]);
   const [selectedLanguage, setSelectedLanguage] = useState<LanguageFilter>("all");
   const [activePlatformFilter, setActivePlatformFilter] = useState<PlatformId | null>(null);
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -944,7 +947,7 @@ export default function Home() {
             </div>
           </div>
           <div className="hidden items-center gap-5 text-xs text-[color:var(--atlas-muted)] md:flex">
-            <span>搜尋</span><span>6 個來源</span><span>私人藏書</span>
+            <span>搜尋</span><span>{PLATFORMS.length} 個來源</span><span>私人藏書</span>
           </div>
           <div className="flex items-center gap-2 text-xs font-medium text-[color:var(--atlas-muted)]">
             <Button type="button" variant="ghost" onClick={() => setCpManagerOpen(true)} className="hidden h-9 border-0 bg-[color:var(--atlas-elevated)] px-3 text-xs font-semibold text-[color:var(--atlas-ink)] hover:bg-[color:var(--atlas-indigo-soft)] lg:inline-flex"><Tags className="mr-2 h-3.5 w-3.5" />CP 詞庫</Button>
@@ -1065,7 +1068,7 @@ export default function Home() {
                     : isBlocked || status.status === "error"
                       ? "border-[#efb4c4] bg-[#fff0f4] text-[#9b4358]"
                       : "border-[#d5d8da] bg-[#f5f6f4] text-[#65737a]";
-                const stateLabel = isSuccess ? "已連線" : isCooldown ? "冷卻限制中" : isBlocked ? status.platformId === "ao3" ? "AO3 需要安全驗證" : "需要安全驗證" : status.status === "error" ? "連線逾時" : "無公開結果";
+                const stateLabel = isSuccess ? "已連線" : isCooldown ? "冷卻限制中" : isBlocked ? status.platformId === "ao3" ? "AO3 需要安全驗證" : "需要安全驗證" : status.status === "error" ? "連線逾時" : status.warning === "本次搜尋未啟用此來源。" ? "未啟用" : "無公開結果";
                 const isActiveFilter = activePlatformFilter === status.platformId;
                 const isRetryingThisPlatform = isSearchPending && retryingPlatformId === status.platformId;
                 return (
@@ -1294,7 +1297,7 @@ export default function Home() {
       </main>
 
       {showScrollToTop && <Button type="button" onClick={scrollToTop} aria-label="回到頂部搜尋列" className="fixed bottom-6 right-5 z-40 h-12 rounded-full bg-[color:var(--atlas-indigo)] px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(79,70,229,0.28)] transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:bg-[#4338ca] focus-visible:ring-2 focus-visible:ring-[color:var(--atlas-indigo)] focus-visible:ring-offset-2 sm:bottom-8 sm:right-8"><ArrowUp className="mr-1.5 h-4 w-4" />回頂部</Button>}
-      <footer className="relative z-10 border-t border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)]"><div className="mx-auto flex max-w-[1440px] flex-col gap-2 px-5 py-6 text-xs text-[color:var(--atlas-muted)] sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-12"><span>Fanfic Atlas · 為你的閱讀清單留一個安靜的位置</span><span>6 個公開來源 · 本機保存個人資料</span></div></footer>
+      <footer className="relative z-10 border-t border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)]"><div className="mx-auto flex max-w-[1440px] flex-col gap-2 px-5 py-6 text-xs text-[color:var(--atlas-muted)] sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-12"><span>Fanfic Atlas · 為你的閱讀清單留一個安靜的位置</span><span>{PLATFORMS.length} 個公開來源 · 本機保存個人資料</span></div></footer>
     </div>
   );
 }

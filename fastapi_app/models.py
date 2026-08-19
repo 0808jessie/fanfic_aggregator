@@ -12,7 +12,7 @@ class ScrapedFanfic(BaseModel):
     id: str = ""
     title: str = "Untitled work"
     author: str = "Unknown author"
-    platform: Literal["AO3", "CxC 創利市集", "Lofter", "同人誌中心", "在水裡寫字", "Penana", "pixiv", "晉江", "其他"] = "AO3"
+    platform: Literal["AO3", "CxC 創利市集", "Lofter", "同人誌中心", "在水裡寫字", "Penana", "pixiv", "巴哈姆特創作大廳", "POPO 原創市集", "KadoKado 角角者", "晉江", "其他"] = "AO3"
     url: str
     tags: str | list[str] = ""
     relationships: list[str] = Field(default_factory=list)

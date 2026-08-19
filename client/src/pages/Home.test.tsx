@@ -186,6 +186,7 @@ describe("Home pagination interactions", () => {
     expect(screen.getByText("準備好開始搜尋")).toBeTruthy();
     expect(screen.getByText("把想讀的故事")).toBeTruthy();
     expect(screen.getByText("跨平台同人閱讀")).toBeTruthy();
+    expect(screen.getByText("9 個公開來源 · 本機保存個人資料")).toBeTruthy();
     expect(screen.getByRole("button", { name: "RUN SEARCH" })).toBeTruthy();
   });
 
@@ -275,7 +276,7 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
-      data: { keyword: "義忍", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: false, customCpMappings: [] },
+      data: { keyword: "義忍", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
     await waitFor(() => expect(screen.getByLabelText("平台連線狀態")).toBeTruthy());
     expect(screen.getByText("冷卻限制中")).toBeTruthy();
@@ -351,7 +352,7 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
-      data: { keyword: "Mizuki Studio", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: false, customCpMappings: [] },
+      data: { keyword: "Mizuki Studio", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
   });
 
@@ -415,18 +416,24 @@ describe("Home pagination interactions", () => {
     const waterwriterCheckbox = screen.getByRole("checkbox", { name: "搜尋 在水裡寫字" });
     const penanaCheckbox = screen.getByRole("checkbox", { name: "搜尋 PENANA" });
     const cxcCheckbox = screen.getByRole("checkbox", { name: "搜尋 CxC 創利市集" });
+    const bahamutCheckbox = screen.getByRole("checkbox", { name: "搜尋 巴哈姆特創作大廳" });
+    const popoCheckbox = screen.getByRole("checkbox", { name: "搜尋 POPO 原創市集" });
+    const kadokadoCheckbox = screen.getByRole("checkbox", { name: "搜尋 KadoKado 角角者" });
     expect(screen.queryByRole("checkbox", { name: "搜尋 LOFTER" })).toBeNull();
     expect(doujinCheckbox.getAttribute("aria-checked")).toBe("true");
     expect(waterwriterCheckbox.getAttribute("aria-checked")).toBe("true");
     expect(penanaCheckbox.getAttribute("aria-checked")).toBe("true");
     expect(cxcCheckbox.getAttribute("aria-checked")).toBe("true");
+    expect(bahamutCheckbox.getAttribute("aria-checked")).toBe("true");
+    expect(popoCheckbox.getAttribute("aria-checked")).toBe("false");
+    expect(kadokadoCheckbox.getAttribute("aria-checked")).toBe("false");
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "花" } });
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
 
     await waitFor(() => expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
-      data: { keyword: "花", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: false, customCpMappings: [] },
+      data: { keyword: "花", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
   });
 
@@ -485,7 +492,7 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
-      data: { keyword: "Atlas Creator", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: false, customCpMappings: [] },
+      data: { keyword: "Atlas Creator", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
     expect(screen.getByText(/正在搜尋作者：Atlas Creator/)).toBeTruthy();
   });

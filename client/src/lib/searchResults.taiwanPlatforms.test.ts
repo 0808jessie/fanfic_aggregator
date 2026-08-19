@@ -10,9 +10,12 @@ const baseResult = {
 };
 
 describe("Taiwan platform result validation", () => {
-  it("accepts verified Written in Waters and Penana story URLs", () => {
+  it("accepts verified Taiwan public work URLs", () => {
     expect(isDisplayableResult({ ...baseResult, platform: "在水裡寫字", url: "https://slashtw.space/forum.php?mod=viewthread&tid=24680" })).toBe(true);
     expect(isDisplayableResult({ ...baseResult, platform: "Penana", url: "https://www.penana.com/story/205687" })).toBe(true);
+    expect(isDisplayableResult({ ...baseResult, platform: "巴哈姆特創作大廳", url: "https://home.gamer.com.tw/creationDetail.php?sn=24680" })).toBe(true);
+    expect(isDisplayableResult({ ...baseResult, platform: "POPO 原創市集", url: "https://www.popo.tw/books/718299" })).toBe(true);
+    expect(isDisplayableResult({ ...baseResult, platform: "KadoKado 角角者", url: "https://www.kadokado.com.tw/book/72641" })).toBe(true);
   });
 
   it("rejects unrelated domains before they can render as Taiwan platform cards", () => {
@@ -24,5 +27,6 @@ describe("Taiwan platform result validation", () => {
     });
     expect(results).toHaveLength(1);
     expect(results[0]?.platform).toBe("在水裡寫字");
+    expect(isDisplayableResult({ ...baseResult, platform: "KadoKado 角角者", url: "https://reader.example.com/book/72641" })).toBe(false);
   });
 });

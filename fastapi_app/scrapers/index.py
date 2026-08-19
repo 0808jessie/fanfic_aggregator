@@ -9,6 +9,7 @@ try:
     from constants.cp_tags import get_keyword_for_platform
     from models import PlatformStatus, ScrapedFanfic
     from scrapers.ao3_scraper import AO3Scraper
+    from scrapers.bahamut_scraper import BahamutScraper
     from scrapers.cxc_scraper import CxCScraper
     from scrapers.doujin_scraper import DoujinScraper
     from scrapers.lofter_scraper import LofterScraper
@@ -26,6 +27,7 @@ except ModuleNotFoundError:  # Supports ``fastapi_app.*`` package-style imports 
     from constants.cp_tags import get_keyword_for_platform
     from models import PlatformStatus, ScrapedFanfic
     from scrapers.ao3_scraper import AO3Scraper
+    from scrapers.bahamut_scraper import BahamutScraper
     from scrapers.cxc_scraper import CxCScraper
     from scrapers.doujin_scraper import DoujinScraper
     from scrapers.lofter_scraper import LofterScraper
@@ -34,22 +36,31 @@ except ModuleNotFoundError:  # Supports ``fastapi_app.*`` package-style imports 
     from scrapers.waterwriter_scraper import WaterWriterScraper
 
 
+from scrapers.popo_scraper import PopoScraper
+from scrapers.kadokado_scraper import KadoKadoScraper
+
 SCRAPERS: dict[str, Callable[[], object]] = {
     "ao3": AO3Scraper,
+    "bahamut": BahamutScraper,
     "cxc": CxCScraper,
     "doujin": DoujinScraper,
     "waterwriter": WaterWriterScraper,
     "penana": PenanaScraper,
     "pixiv": PixivScraper,
+    "popo": PopoScraper,
+    "kadokado": KadoKadoScraper,
 }
 
 PLATFORM_LABELS = {
     "ao3": "AO3",
+    "bahamut": "巴哈姆特創作大廳",
     "cxc": "CxC 創利市集",
     "doujin": "同人誌中心",
     "waterwriter": "在水裡寫字",
     "penana": "Penana",
     "pixiv": "Pixiv",
+    "popo": "POPO 原創市集",
+    "kadokado": "KadoKado 角角者",
 }
 LOCAL_CP_PLATFORM_IDS = frozenset(("doujin", "waterwriter"))
 # Live search is HTTP-only. End each source task promptly so slow upstreams
@@ -58,6 +69,9 @@ ADAPTER_TIMEOUT_SECONDS = 15.0
 PLATFORM_TIMEOUT_SECONDS: dict[str, float] = {
     "ao3": 8.0,
     "penana": 12.0,
+    "bahamut": 12.0,
+    "popo": 20.0,
+    "kadokado": 12.0,
     "cxc": 15.0,
     "doujin": 15.0,
     "waterwriter": 15.0,
@@ -169,7 +183,7 @@ def annotate_work_language(item: ScrapedFanfic, platform_key: str) -> None:
     if provided != "unknown":
         item.language = provided
         return
-    if platform_key in {"doujin", "waterwriter", "cxc"}:
+    if platform_key in {"doujin", "waterwriter", "cxc", "bahamut"}:
         item.language = "zh-TW"
         return
     text = f"{item.title} {item.summary} {item.tags}"

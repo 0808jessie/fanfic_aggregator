@@ -75,7 +75,7 @@ describe("Home Page Traditional Chinese '義忍' Search", () => {
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "義忍" } });
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
 
-    expect(screen.getByText(/正在查詢 6 個來源/)).toBeTruthy();
+    expect(screen.getByText(/正在查詢 7 個來源/)).toBeTruthy();
 
     await waitFor(() => expect(screen.getByText("找到 40 篇作品")).toBeTruthy());
     expect(screen.getByText("【義忍】無題")).toBeTruthy();
@@ -86,7 +86,7 @@ describe("Home Page Traditional Chinese '義忍' Search", () => {
     expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
-      data: { keyword: "義忍", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: false, customCpMappings: [] },
+      data: { keyword: "義忍", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut"], page: 1, forceRefresh: false, customCpMappings: [] },
     });
 
     fireEvent.click(screen.getByRole("button", { name: /進階篩選/ }));
@@ -98,7 +98,7 @@ describe("Home Page Traditional Chinese '義忍' Search", () => {
     await waitFor(() => expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
-      data: { keyword: "義忍", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv"], page: 1, forceRefresh: true, customCpMappings: [] },
+      data: { keyword: "義忍", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut"], page: 1, forceRefresh: true, customCpMappings: [] },
     }));
   });
 });
