@@ -14,6 +14,9 @@ const PLATFORM_LABELS: Record<string, string> = {
   doujin: "同人誌中心",
   waterwriter: "在水裡寫字",
   penana: "Penana",
+  bahamut: "巴哈姆特創作大廳",
+  popo: "POPO 原創市集",
+  kadokado: "KadoKado 角角者",
 };
 
 function unavailableSearchEnvelope(data: Record<string, unknown> | undefined) {

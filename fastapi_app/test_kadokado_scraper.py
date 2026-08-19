@@ -33,7 +33,7 @@ def test_kadokado_parser_maps_only_verified_public_book_cards():
     assert items[1].rating == "R18"
 
 
-def test_kadokado_public_request_and_protection_degrade_safely():
+def test_kadokado_public_request_and_protection_degrade_safely(capsys):
     scraper = KadoKadoScraper()
     with patch("scrapers.kadokado_scraper.curl_requests.get") as request:
         request.return_value = MagicMock(status_code=200, text=KADOKADO_RESULTS)
@@ -43,6 +43,7 @@ def test_kadokado_public_request_and_protection_degrade_safely():
     assert request.call_args.kwargs["timeout"] == 12.0
     assert PLATFORM_TIMEOUT_SECONDS["kadokado"] == 12.0
     assert "kadokado" in SCRAPERS
+    assert "[KadoKado PublicSearch] stage=search endpoint=https://www.kadokado.com.tw/search status=200" in capsys.readouterr().out
 
     scraper = KadoKadoScraper()
     with patch("scrapers.kadokado_scraper.curl_requests.get") as request:

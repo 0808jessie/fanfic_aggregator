@@ -484,4 +484,9 @@
 - [x] 將 KadoKado 接入來源隔離、URL 白名單、首頁平台切換與分級標記，保持所有外連僅前往官方作品頁
 - [x] 為 KadoKado 公開 HTML 解析、受阻降級、R18 標記、網址驗證與平台註冊補足回歸測試
 - [x] 以使用者實際瀏覽器驗證 KadoKado 公開搜尋可取得官方 `/book/<id>` 作品連結；沙盒 HTTP 驗證頁仍只觸發手動來源的十二秒安全降級，不讀取或保存驗證資料
-- [ ] 將九來源公開索引版本一致升至 v1.2.0，重新執行全量驗證、保存檢查點並推送 GitHub Release 標籤
+- [x] 將九來源公開索引版本一致升至 v1.2.0，重新執行全量驗證、保存檢查點並推送 GitHub Release 標籤；GitHub Actions 已成功完成 Apple Silicon、Intel macOS 與 Windows 簽名資產建置
+- [x] 重現巴哈姆特、POPO 與 KadoKado 手動搜尋連線逾時，核對公開端點、Adapter 註冊與來源級 deadline
+- [x] 為三個 Adapter 補齊可追蹤的 URL、HTTP 狀態、逾時與解析失敗診斷日誌，維持不記錄 Cookie 或敏感資料
+- [x] 改善公開搜尋請求與平行來源隔離，確保單一來源逾時不影響既有平台結果
+- [x] 補足三來源成功／超時／防護頁的回歸與端對端測試，確認「義忍」與一般關鍵字的安全降級行為；104 pytest、91 Vitest、production build、cargo check 與 v1.2.1 Unix-socket 實測通過
+- [ ] 將公開來源連線與診斷修正升版、完整驗證並發布新的跨平台桌面更新

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from time import perf_counter
 from urllib.parse import urlencode, urljoin, urlparse
 
 from bs4 import BeautifulSoup
@@ -45,9 +46,30 @@ class BahamutScraper(BaseScraper):
 
     @classmethod
     def build_search_url(cls, keyword: str, page: int = 1) -> str:
-        """Build Bahamut's documented public tag-search URL."""
-        parameters = {"page": max(1, page), "keyword": keyword.strip(), "o": "tag", "v": "3"}
+        """Build Bahamut's current public tag-search URL without a browser fallback."""
+        if page <= 1:
+            parameters = {"o": "tag", "kw": keyword.strip()}
+        else:
+            # Bahamut's rendered pagination currently uses ``keyword`` and ``v``
+            # for subsequent pages. Keep that public contract rather than
+            # guessing an undocumented API endpoint.
+            parameters = {"page": page, "keyword": keyword.strip(), "o": "tag", "v": "3"}
         return f"{cls.search_url}?{urlencode(parameters)}"
+
+    def _log_public_response(self, stage: str, status_code: int | str, started_at: float) -> None:
+        """Emit safe diagnostics without logging search terms, headers, or cookies."""
+        elapsed_ms = round((perf_counter() - started_at) * 1000)
+        print(
+            f"[Bahamut PublicSearch] stage={stage} endpoint={self.search_url} "
+            f"status={status_code} elapsed_ms={elapsed_ms}"
+        )
+
+    def _log_public_outcome(self, outcome: str, error: Exception) -> None:
+        """Keep terminal diagnostics useful without exposing request values."""
+        print(
+            f"[Bahamut PublicSearch] stage=outcome endpoint={self.search_url} "
+            f"outcome={outcome} error_type={type(error).__name__}"
+        )
 
     def scrape(
         self,
@@ -70,24 +92,30 @@ class BahamutScraper(BaseScraper):
                 self.last_warning = f"[巴哈姆特創作大廳] No verified public novel result matched '{normalized_keyword}'"
             return {"items": items, "total_works": 0, "total_pages": total_pages}
         except _PublicPageUnavailable as error:
+            self._log_public_outcome("unavailable", error)
             self.last_warning = f"[巴哈姆特創作大廳] {error}"
         except Exception as error:
+            self._log_public_outcome("parse-error", error)
             self.last_warning = f"[巴哈姆特創作大廳] Public HTTP parse failed safely: {error}"
         return {"items": [], "total_works": 0, "total_pages": 1}
 
     def _fetch_public_search_html(self, keyword: str, page: int) -> str:
         """Fetch one public rendered result page without browser fallback."""
+        started_at = perf_counter()
         try:
+            search_url = self.build_search_url(keyword, page)
             response = requests.get(
-                self.build_search_url(keyword, page),
+                search_url,
                 headers=self.headers,
                 timeout=(self.connect_timeout_seconds, self.read_timeout_seconds),
             )
+            self._log_public_response("search", int(response.status_code), started_at)
             if response.status_code in (401, 403, 429, 503, 520, 521, 522, 525):
                 raise _PublicPageUnavailable(f"Request blocked (HTTP {response.status_code}), skipping cleanly")
             response.raise_for_status()
             html = response.text
         except requests.RequestException as error:
+            self._log_public_response("search", "request-error", started_at)
             raise _PublicPageUnavailable(f"Public HTTP request unavailable: {error}") from error
 
         page_text = BeautifulSoup(html, "html.parser").get_text(" ", strip=True).casefold()

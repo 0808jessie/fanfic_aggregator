@@ -34,7 +34,7 @@ def test_popo_parser_maps_only_verified_public_book_cards():
     assert PopoScraper.extract_total_pages(POPO_RESULTS) == 2
 
 
-def test_popo_uses_public_token_then_book_only_submission():
+def test_popo_uses_public_token_then_book_only_submission(capsys):
     scraper = PopoScraper()
     index_response = MagicMock(status_code=200, text=POPO_INDEX)
     search_response = MagicMock(status_code=200, text=POPO_RESULTS)
@@ -47,9 +47,13 @@ def test_popo_uses_public_token_then_book_only_submission():
     assert payload["total_works"] == 1234
     assert session.post.call_args.args[0] == "https://www.popo.tw/search"
     assert session.post.call_args.kwargs["data"] == {"_poporf-tk001": "public-token", "name": "義忍", "searchtype": "book", "page": "2"}
-    assert session.post.call_args.kwargs["timeout"] == 15
+    assert session.get.call_args.kwargs["timeout"] == 10
+    assert session.post.call_args.kwargs["timeout"] == 10
     assert PLATFORM_TIMEOUT_SECONDS["popo"] == 20.0
     assert "popo" in SCRAPERS
+    diagnostics = capsys.readouterr().out
+    assert "[POPO PublicSearch] stage=index endpoint=https://www.popo.tw/index status=200" in diagnostics
+    assert "[POPO PublicSearch] stage=search endpoint=https://www.popo.tw/search status=200" in diagnostics
 
 
 def test_popo_http_failure_and_protection_degrade_without_access_workarounds():

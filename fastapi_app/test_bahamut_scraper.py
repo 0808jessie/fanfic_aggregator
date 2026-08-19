@@ -46,6 +46,7 @@ def test_bahamut_parser_keeps_only_verified_public_novel_cards():
 
 def test_bahamut_url_and_pagination_contract_are_public_and_bounded():
     scraper = BahamutScraper()
+    assert scraper.build_search_url("義忍") == "https://home.gamer.com.tw/search.php?o=tag&kw=%E7%BE%A9%E5%BF%8D"
     assert scraper.build_search_url("義忍", page=2) == "https://home.gamer.com.tw/search.php?page=2&keyword=%E7%BE%A9%E5%BF%8D&o=tag&v=3"
     assert scraper.extract_total_pages(BAHAMUT_RESULTS) == 2
     assert not scraper._is_verified_creation_url("https://example.com/creationDetail.php?sn=24680")
@@ -53,12 +54,13 @@ def test_bahamut_url_and_pagination_contract_are_public_and_bounded():
     assert "bahamut" in SCRAPERS
 
 
-def test_bahamut_http_timeout_and_challenge_page_degrade_without_browser_fallback():
+def test_bahamut_http_timeout_and_challenge_page_degrade_without_browser_fallback(capsys):
     scraper = BahamutScraper()
     with patch("scrapers.bahamut_scraper.requests.get", side_effect=requests.Timeout("slow public search")):
         payload = scraper.scrape("義忍")
     assert payload == {"items": [], "total_works": 0, "total_pages": 1}
     assert "Public HTTP request unavailable" in (scraper.last_warning or "")
+    assert "[Bahamut PublicSearch] stage=search" in capsys.readouterr().out
 
     class BlockedResponse:
         status_code = 403

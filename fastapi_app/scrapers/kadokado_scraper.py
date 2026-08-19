@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from time import perf_counter
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
@@ -38,6 +39,13 @@ class KadoKadoScraper(BaseScraper):
         ),
     }
 
+    def _log_public_outcome(self, outcome: str, error: Exception) -> None:
+        """Record public failure classes without logging search input or cookies."""
+        print(
+            f"[KadoKado PublicSearch] stage=outcome endpoint={self.search_url} "
+            f"outcome={outcome} error_type={type(error).__name__}"
+        )
+
     def scrape(
         self,
         keyword: str,
@@ -58,12 +66,15 @@ class KadoKadoScraper(BaseScraper):
                 self.last_warning = f"[KadoKado 角角者] No verified public result matched '{normalized_keyword}'"
             return {"items": items, "total_works": len(items), "total_pages": 1}
         except _PublicSearchUnavailable as error:
+            self._log_public_outcome("unavailable", error)
             self.last_warning = f"[KadoKado 角角者] {error}"
         except Exception as error:
+            self._log_public_outcome("parse-error", error)
             self.last_warning = f"[KadoKado 角角者] Public search parse failed safely: {error}"
         return {"items": [], "total_works": 0, "total_pages": 1}
 
     def _fetch_public_search_html(self, keyword: str) -> str:
+        started_at = perf_counter()
         try:
             response = curl_requests.get(
                 self.search_url,
@@ -73,9 +84,19 @@ class KadoKadoScraper(BaseScraper):
                 timeout=self.public_search_timeout_seconds,
             )
         except Exception as error:
+            elapsed_ms = round((perf_counter() - started_at) * 1000)
+            print(
+                f"[KadoKado PublicSearch] stage=search endpoint={self.search_url} "
+                f"status=request-error elapsed_ms={elapsed_ms}"
+            )
             raise _PublicSearchUnavailable(f"Public HTTP request unavailable: {error}") from error
 
         status_code = int(getattr(response, "status_code", 0))
+        elapsed_ms = round((perf_counter() - started_at) * 1000)
+        print(
+            f"[KadoKado PublicSearch] stage=search endpoint={self.search_url} "
+            f"status={status_code} elapsed_ms={elapsed_ms}"
+        )
         if status_code in (401, 403, 429, 503, 520, 521, 522, 525):
             raise _PublicSearchUnavailable(f"Public search blocked (HTTP {status_code}), skipping cleanly")
         response.raise_for_status()

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from time import perf_counter
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
@@ -30,8 +31,9 @@ class PopoScraper(BaseScraper):
     base_url = "https://www.popo.tw"
     index_url = f"{base_url}/index"
     search_url = f"{base_url}/search"
-    connect_timeout_seconds = 8
-    read_timeout_seconds = 15
+    # Two bounded public requests fit within the source-level 20-second budget
+    # while still allowing the comparatively slow index page time to respond.
+    public_request_timeout_seconds = 10
     headers = {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -64,20 +66,40 @@ class PopoScraper(BaseScraper):
                 self.last_warning = f"[POPO 原創市集] No verified public book result matched '{normalized_keyword}'"
             return {"items": items, "total_works": total_works, "total_pages": total_pages}
         except _PublicSearchUnavailable as error:
+            self._log_public_outcome("unavailable", error)
             self.last_warning = f"[POPO 原創市集] {error}"
         except Exception as error:
+            self._log_public_outcome("parse-error", error)
             self.last_warning = f"[POPO 原創市集] Public search parse failed safely: {error}"
         return {"items": [], "total_works": 0, "total_pages": 1}
+
+    def _log_public_response(self, stage: str, status_code: int | str, started_at: float) -> None:
+        """Log public request diagnostics without recording tokens or query values."""
+        elapsed_ms = round((perf_counter() - started_at) * 1000)
+        endpoint = self.index_url if stage == "index" else self.search_url
+        print(
+            f"[POPO PublicSearch] stage={stage} endpoint={endpoint} "
+            f"status={status_code} elapsed_ms={elapsed_ms}"
+        )
+
+    def _log_public_outcome(self, outcome: str, error: Exception) -> None:
+        """Record the safe failure class without logging token fields or search text."""
+        print(
+            f"[POPO PublicSearch] stage=outcome endpoint=public-token-form "
+            f"outcome={outcome} error_type={type(error).__name__}"
+        )
 
     def _fetch_public_book_search_html(self, keyword: str, page: int) -> str:
         """Execute one ordinary public token + book-search form submission."""
         try:
             with curl_requests.Session(impersonate="chrome120") as session:
+                index_started_at = perf_counter()
                 index_response = session.get(
                     self.index_url,
                     headers=self.headers,
-                    timeout=self.read_timeout_seconds,
+                    timeout=self.public_request_timeout_seconds,
                 )
+                self._log_public_response("index", int(index_response.status_code), index_started_at)
                 self._assert_public_response(index_response, "public index")
                 index_soup = BeautifulSoup(index_response.text, "html.parser")
                 token_input = index_soup.select_one('form#header-search-form input[type="hidden"][name]')
@@ -91,15 +113,19 @@ class PopoScraper(BaseScraper):
                 data = {token_name: token_value, "name": keyword, "searchtype": "book"}
                 if page > 1:
                     data["page"] = str(page)
+                search_started_at = perf_counter()
                 response = session.post(
                     self.search_url,
                     data=data,
                     headers={**self.headers, "Referer": self.index_url},
-                    timeout=self.read_timeout_seconds,
+                    timeout=self.public_request_timeout_seconds,
                 )
+                self._log_public_response("search", int(response.status_code), search_started_at)
                 self._assert_public_response(response, "public book search")
                 html = response.text
         except Exception as error:
+            outcome = "protected-or-invalid-public-page" if isinstance(error, _PublicSearchUnavailable) else "request-error"
+            self._log_public_outcome(outcome, error)
             raise _PublicSearchUnavailable(f"Public HTTP request unavailable: {error}") from error
 
         soup = BeautifulSoup(html, "html.parser")
