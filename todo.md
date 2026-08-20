@@ -583,4 +583,4 @@
 - [x] 建立 Reader 已讀章節本地快取，讓同一作品或章節的二次開啟優先以快取內容立即渲染，並補足回歸與端對端驗證；使用 sessionStorage 的 24 篇 LRU 快取，6 項 ReaderView 測試已驗證二次開啟不再呼叫來源請求
 - [x] 執行 v1.2.9 發布前完整 FastAPI pytest、Vitest、production build 與 cargo check，確認 Reader 清洗、快取及既有跨平台功能全部通過；136 pytest、105 Vitest、production build 與 cargo check 通過。pnpm 設定與大型 bundle 警示未阻擋建置。
 - [x] 將 package.json、FastAPI、Cargo.toml 與 tauri.conf.json 的桌面版本同步升至 v1.2.9，並建立發布提交與 Git tag
-- [ ] 推送 v1.2.9 至 GitHub main，驗證 Actions 成功產出 Apple Silicon、Intel macOS、Windows 簽名安裝資產與 latest.json
+- [x] 推送 v1.2.9 至 GitHub main，驗證 Actions 成功產出 Apple Silicon、Intel macOS、Windows 簽名安裝資產與 latest.json；commit c91a0a7、tag v1.2.9、Actions run 32358781624 三個 job 均成功，公開 latest.json 已確認 version 1.2.9 與 darwin-aarch64／darwin-x86_64／windows-x86_64 OTA 平台資產。
