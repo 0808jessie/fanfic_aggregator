@@ -276,7 +276,7 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
-      data: { keyword: "義忍", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut"], page: 1, forceRefresh: false, customCpMappings: [] },
+      data: { keyword: "義忍", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut", "popo", "kadokado"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
     await waitFor(() => expect(screen.getByLabelText("平台連線狀態")).toBeTruthy());
     fireEvent.click(screen.getByLabelText("平台連線狀態"));
@@ -356,7 +356,7 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
-      data: { keyword: "Mizuki Studio", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut"], page: 1, forceRefresh: false, customCpMappings: [] },
+      data: { keyword: "Mizuki Studio", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut", "popo", "kadokado"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
   });
 
@@ -434,20 +434,20 @@ describe("Home pagination interactions", () => {
     expect(penanaCheckbox.getAttribute("aria-checked")).toBe("true");
     expect(cxcCheckbox.getAttribute("aria-checked")).toBe("true");
     expect(bahamutCheckbox.getAttribute("aria-checked")).toBe("true");
-    expect(popoCheckbox.getAttribute("aria-checked")).toBe("false");
-    expect(kadokadoCheckbox.getAttribute("aria-checked")).toBe("false");
-    fireEvent.click(popoCheckbox);
     expect(popoCheckbox.getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(screen.getByRole("button", { name: "清除本次條件" }));
+    expect(kadokadoCheckbox.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(popoCheckbox);
     expect(popoCheckbox.getAttribute("aria-checked")).toBe("false");
-    expect(kadokadoCheckbox.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(screen.getByRole("button", { name: "清除本次條件" }));
+    expect(popoCheckbox.getAttribute("aria-checked")).toBe("true");
+    expect(kadokadoCheckbox.getAttribute("aria-checked")).toBe("true");
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "花" } });
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
 
     await waitFor(() => expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
-      data: { keyword: "花", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut"], page: 1, forceRefresh: false, customCpMappings: [] },
+      data: { keyword: "花", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut", "popo", "kadokado"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
   });
 
@@ -481,7 +481,7 @@ describe("Home pagination interactions", () => {
     expect(screen.getByText("AO3 ONLY")).toBeTruthy();
     expect(screen.queryByText("WATER ONLY")).toBeNull();
 
-    fireEvent.click(ao3Card);
+    fireEvent.click(screen.getByRole("button", { name: "清除來源結果篩選" }));
     expect(ao3Card.getAttribute("aria-pressed")).toBe("false");
     expect(screen.getByText("WATER ONLY")).toBeTruthy();
   });
@@ -507,7 +507,7 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
-      data: { keyword: "Atlas Creator", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut"], page: 1, forceRefresh: false, customCpMappings: [] },
+      data: { keyword: "Atlas Creator", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut", "popo", "kadokado"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
     expect(screen.getByText(/正在搜尋作者：Atlas Creator/)).toBeTruthy();
   });
@@ -518,6 +518,7 @@ describe("Home pagination interactions", () => {
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "義忍" } });
     await waitFor(() => expect(screen.getByRole("button", { name: "套用 義忍 的跨語言 CP 對照搜尋" })).toBeTruthy());
     expect(screen.getByText(/包含 AO3：Tomioka Giyuu\/Kochou Shinobu/)).toBeTruthy();
+    expect(screen.getByText(/本地：義忍 富岡義勇 胡蝶忍 ／ 日文：ぎゆしの/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "套用 義忍 的跨語言 CP 對照搜尋" }));
     await waitFor(() => expect(mockState.lastVariables).toMatchObject({ data: { keyword: "義忍", mode: "keyword" } }));

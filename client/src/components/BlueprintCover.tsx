@@ -14,19 +14,24 @@ type BlueprintCoverProps = {
  */
 export function BlueprintCover({ src, title, className = "aspect-video" }: BlueprintCoverProps) {
   const [failed, setFailed] = useState(false);
+  const [isPortrait, setIsPortrait] = useState(false);
   const showImage = Boolean(src) && !failed;
 
   return (
     <div data-testid="result-cover" className={`relative overflow-hidden border-b border-[color:var(--atlas-line)] bg-[color:var(--atlas-elevated)] ${className}`}>
       {showImage ? (
-        <img
-          src={src ?? undefined}
-          alt={`《${title}》封面`}
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          onError={() => setFailed(true)}
-          className="h-full w-full object-cover"
-        />
+        <>
+          {isPortrait && <img src={src ?? undefined} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full scale-110 object-cover opacity-55 blur-2xl" />}
+          <img
+            src={src ?? undefined}
+            alt={`《${title}》封面`}
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            onLoad={(event) => setIsPortrait(event.currentTarget.naturalHeight > event.currentTarget.naturalWidth)}
+            onError={() => setFailed(true)}
+            className={`relative z-10 block h-full w-full ${isPortrait ? "object-contain" : "object-cover"}`}
+          />
+        </>
       ) : (
         <div role="img" aria-label={`${title} 的預設作品封面`} className="relative flex h-full w-full items-end justify-between overflow-hidden bg-[linear-gradient(135deg,rgba(79,70,229,0.16),rgba(255,255,255,0.84)_55%,rgba(251,191,36,0.16))] p-4 text-[color:var(--atlas-indigo)]">
           <div className="absolute -right-5 -top-6 h-28 w-28 rounded-full bg-white/45 blur-2xl" />

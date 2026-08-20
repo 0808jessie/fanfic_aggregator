@@ -16,7 +16,7 @@ from constants.cp_tags import CP_CACHE_ALIASES, CP_TAG_MAP, build_custom_cp_map
 from relevance import rank_results
 from scrapers.index import SCRAPERS, parallel_search_platforms
 
-app = FastAPI(title="Fanfic Atlas Search API", version="1.2.5")
+app = FastAPI(title="Fanfic Atlas Search API", version="1.2.6")
 app.add_middleware(
     CORSMiddleware,
     # The packaged desktop WebView is served from tauri://localhost, while the
@@ -214,22 +214,22 @@ def get_cached_results(db: Session, keyword: str, platforms: list[str], ignore_t
 
 @app.get("/fastapi-status")
 def fastapi_status() -> dict[str, str]:
-    return {"status": "ok", "service": "fastapi-search", "version": "1.2.5"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.2.6"}
 
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "fastapi-search", "version": "1.2.5"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.2.6"}
 
 
 @app.api_route("/api/health", methods=["GET", "HEAD"])
 def api_health_check():
-    return {"status": "ok", "service": "fastapi-search", "version": "1.2.5"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.2.6"}
 
 
 @app.get("/")
 def read_root() -> dict[str, str]:
-    return {"status": "ok", "service":"fastapi-search", "version": "1.2.5"}
+    return {"status": "ok", "service":"fastapi-search", "version": "1.2.6"}
 
 
 @app.get("/platforms")

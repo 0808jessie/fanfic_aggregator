@@ -80,16 +80,17 @@ describe("personal library local storage helpers", () => {
   it("merges custom CP overrides with defaults and migrates the legacy mapping key", () => {
     expect(loadCpMappings()).toEqual(DEFAULT_CP_MAPPINGS);
     window.localStorage.setItem(LEGACY_CP_MAP_STORAGE_KEY, JSON.stringify([{ alias: "黑邪", tag: "Heiyan/Wu Xie" }]));
-    expect(loadCustomCpMappings()).toContainEqual({ alias: "黑邪", ao3Query: "Heiyan/Wu Xie", localQuery: "黑邪" });
+    expect(loadCustomCpMappings()).toContainEqual({ alias: "黑邪", ao3Query: "Heiyan/Wu Xie", localQuery: "黑邪", japaneseQuery: "" });
     expect(window.localStorage.getItem(CP_MAP_STORAGE_KEY)).toContain("黑邪");
 
     const updated = upsertCpMapping(loadCustomCpMappings(), {
       alias: "義忍",
       ao3Query: "Tomioka Giyuu/Kochou Shinobu",
       localQuery: "義忍",
+      japaneseQuery: "ぎゆしの",
     });
     persistCpMappings(updated);
-    expect(loadCpMappings()).toContainEqual({ alias: "義忍", ao3Query: "Tomioka Giyuu/Kochou Shinobu", localQuery: "義忍" });
+    expect(loadCpMappings()).toContainEqual({ alias: "義忍", ao3Query: "Tomioka Giyuu/Kochou Shinobu", localQuery: "義忍", japaneseQuery: "ぎゆしの" });
     expect(mergeCpMappings([])).toEqual(DEFAULT_CP_MAPPINGS);
   });
 

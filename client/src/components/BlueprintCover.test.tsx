@@ -12,6 +12,19 @@ describe("BlueprintCover", () => {
     expect(image.getAttribute("loading")).toBe("lazy");
   });
 
+  it("uses an in-frame blurred backdrop for portrait covers without leaving white space", () => {
+    const { container } = render(<BlueprintCover src="https://cxc.today/covers/portrait.jpg" title="直式封面" />);
+    const image = within(container).getByRole("img", { name: "《直式封面》封面" });
+    Object.defineProperties(image, {
+      naturalWidth: { configurable: true, value: 600 },
+      naturalHeight: { configurable: true, value: 900 },
+    });
+    fireEvent.load(image);
+
+    expect(image.className).toContain("object-contain");
+    expect(container.querySelector("img[aria-hidden='true']")?.className).toContain("blur-2xl");
+  });
+
   it("switches to the reading-cover fallback when a third-party cover fails", () => {
     const { container } = render(<BlueprintCover src="https://www.doujin.com.tw/blocked-cover.jpg" title="封面測試" />);
     const cover = within(container);

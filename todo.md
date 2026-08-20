@@ -510,3 +510,8 @@
 - [x] 在主搜尋輸入框依 CP 詞典即時顯示跨語言提示晶片，提供一鍵擴充查詢而不改變既有搜尋請求契約
 - [x] 補足卡片等高、來源狀態 Popover、CP 提示互動的前端回歸與響應式視覺驗證；91 Vitest、105 pytest、production build、cargo check 與桌面／行動視覺驗證通過
 - [x] 將搜尋介面精緻化升版、保存檢查點並發布新的跨平台桌面更新；v1.2.5 GitHub Actions 已成功完成 Apple Silicon、Intel macOS 與 Windows 簽名資產，並發布 latest.json
+- [x] 將 SOURCE ADAPTERS 預設與重置行為改為選取所有已註冊平台，並修正結果來源清單的「全部」篩選還原
+- [x] 擴充 CP 詞庫資料模型、管理表單與表格以支援日文關係標籤，補齊內建熱門 CP 對照與搜尋提示晶片
+- [x] 消除結果卡封面白邊，統一標籤膠囊的基線對齊與未收藏結果的標籤可讀性
+- [x] 補足來源重置、日文 CP 詞庫／提示與封面／標籤樣式回歸測試，執行響應式視覺與完整跨端驗證；92 Vitest、105 pytest、production build、cargo check 與桌面／行動視覺驗證通過
+- [ ] 升版、保存檢查點並發布來源與 CP 詞庫修復的跨平台桌面更新

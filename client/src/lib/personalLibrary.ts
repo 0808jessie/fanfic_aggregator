@@ -28,7 +28,7 @@ export type BookmarkRecord = {
 };
 export type BookmarkInput = Omit<BookmarkRecord, "savedAt" | "updatedAt" | "shelf" | "progress"> & { shelf?: BookmarkShelf; progress?: Partial<ReadingProgress> };
 
-export type CpMapping = { alias: string; ao3Query: string; localQuery: string };
+export type CpMapping = { alias: string; ao3Query: string; localQuery: string; japaneseQuery: string };
 export type AgeConfirmation = "unknown" | "adult" | "minor";
 export type ContentSafetySettings = { ageConfirmation: AgeConfirmation; blurRestrictedSummaries: boolean };
 export type BlacklistGroup = { id: string; name: string; keywords: string[]; enabled: boolean };
@@ -46,12 +46,12 @@ export type FullPersonalBackup = {
 };
 export const DEFAULT_CONTENT_SAFETY_SETTINGS: ContentSafetySettings = { ageConfirmation: "unknown", blurRestrictedSummaries: true };
 export const DEFAULT_CP_MAPPINGS: CpMapping[] = [
-  { alias: "義忍", ao3Query: "Tomioka Giyuu/Kochou Shinobu", localQuery: "義忍 富岡義勇 胡蝶忍" },
-  { alias: "五夏", ao3Query: "Gojo Satoru/Geto Suguru", localQuery: "五夏 五條悟 夏油傑" },
-  { alias: "夏五", ao3Query: "Geto Suguru/Gojo Satoru", localQuery: "夏五 夏油傑 五條悟" },
-  { alias: "勝出", ao3Query: "Bakugou Katsuki/Midoriya Izuku", localQuery: "勝出 爆豪勝己 綠谷出久" },
-  { alias: "轟出", ao3Query: "Todoroki Shouto/Midoriya Izuku", localQuery: "轟出 轟焦凍 綠谷出久" },
-  { alias: "佐櫻", ao3Query: "Uchiha Sasuke/Haruno Sakura", localQuery: "佐櫻 宇智波佐助 春野櫻" },
+  { alias: "義忍", ao3Query: "Tomioka Giyuu/Kochou Shinobu", localQuery: "義忍 富岡義勇 胡蝶忍", japaneseQuery: "ぎゆしの" },
+  { alias: "五夏", ao3Query: "Gojo Satoru/Geto Suguru", localQuery: "五夏 五條悟 夏油傑", japaneseQuery: "五夏" },
+  { alias: "夏五", ao3Query: "Geto Suguru/Gojo Satoru", localQuery: "夏五 夏油傑 五條悟", japaneseQuery: "夏五" },
+  { alias: "勝出", ao3Query: "Bakugou Katsuki/Midoriya Izuku", localQuery: "勝出 爆豪勝己 綠谷出久", japaneseQuery: "出勝 / 勝デク" },
+  { alias: "轟出", ao3Query: "Todoroki Shouto/Midoriya Izuku", localQuery: "轟出 轟焦凍 綠谷出久", japaneseQuery: "" },
+  { alias: "佐櫻", ao3Query: "Uchiha Sasuke/Haruno Sakura", localQuery: "佐櫻 宇智波佐助 春野櫻", japaneseQuery: "" },
 ];
 
 const DEFAULT_FILTERS: ResultViewFilters = { wordCount: "all", completion: "all", sort: "relevance", hideBookmarked: false };
@@ -137,7 +137,7 @@ export function mergeImportedBookmarks(current: BookmarkRecord[], incoming: Book
   const byUrl = new Map(current.map((bookmark) => [bookmark.url, bookmark])); incoming.forEach((bookmark) => { const existing = byUrl.get(bookmark.url); byUrl.set(bookmark.url, !existing || bookmark.updatedAt > existing.updatedAt ? bookmark : existing); }); return Array.from(byUrl.values()).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
-function normalizeCpMapping(value: unknown): CpMapping | null { if (!value || typeof value !== "object") return null; const record = value as Record<string, unknown>; const alias = typeof record.alias === "string" ? record.alias.trim() : ""; const legacyTag = typeof record.tag === "string" ? record.tag.trim() : ""; const ao3Query = typeof record.ao3Query === "string" ? record.ao3Query.trim() : legacyTag; const localQuery = typeof record.localQuery === "string" ? record.localQuery.trim() : alias; return alias && ao3Query && localQuery ? { alias, ao3Query, localQuery } : null; }
+function normalizeCpMapping(value: unknown): CpMapping | null { if (!value || typeof value !== "object") return null; const record = value as Record<string, unknown>; const alias = typeof record.alias === "string" ? record.alias.trim() : ""; const legacyTag = typeof record.tag === "string" ? record.tag.trim() : ""; const ao3Query = typeof record.ao3Query === "string" ? record.ao3Query.trim() : legacyTag; const localQuery = typeof record.localQuery === "string" ? record.localQuery.trim() : alias; const japaneseQuery = typeof record.japaneseQuery === "string" ? record.japaneseQuery.trim() : typeof record.japaneseTag === "string" ? record.japaneseTag.trim() : ""; return alias && ao3Query && localQuery ? { alias, ao3Query, localQuery, japaneseQuery } : null; }
 function normalizeCpMappings(value: unknown): CpMapping[] { return Array.isArray(value) ? value.map(normalizeCpMapping).filter((mapping): mapping is CpMapping => Boolean(mapping)) : []; }
 export function loadCustomCpMappings(): CpMapping[] { const stored = normalizeCpMappings(readJson<unknown>(CP_MAP_STORAGE_KEY, [])); if (stored.length || !canUseStorage() || window.localStorage.getItem(CP_MAP_STORAGE_KEY) !== null) return stored; const migrated = normalizeCpMappings(readJson<unknown>(LEGACY_CP_MAP_STORAGE_KEY, [])); if (migrated.length) writeJson(CP_MAP_STORAGE_KEY, migrated); return migrated; }
 export function mergeCpMappings(customMappings: CpMapping[]): CpMapping[] { const normalizedCustom = normalizeCpMappings(customMappings); const customByAlias = new Map(normalizedCustom.map((mapping) => [mapping.alias, mapping])); const defaults = DEFAULT_CP_MAPPINGS.map((mapping) => customByAlias.get(mapping.alias) || mapping); return [...defaults, ...normalizedCustom.filter((mapping) => !DEFAULT_CP_MAPPINGS.some((item) => item.alias === mapping.alias))]; }
