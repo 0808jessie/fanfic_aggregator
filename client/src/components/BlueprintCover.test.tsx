@@ -18,6 +18,6 @@ describe("BlueprintCover", () => {
 
     fireEvent.error(cover.getByRole("img", { name: "《封面測試》封面" }));
     expect(cover.getByRole("img", { name: "封面測試 的預設作品封面" })).toBeTruthy();
-    expect(cover.getByText("閱讀收藏")).toBeTruthy();
+    expect(cover.getByText("閱讀索引")).toBeTruthy();
   });
 });

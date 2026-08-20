@@ -69,6 +69,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { BlueprintCover } from "@/components/BlueprintCover";
 import { BookshelfView } from "@/components/BookshelfView";
 import { BlacklistGroupManager } from "@/components/ExcludeKeywordEditor";
@@ -123,7 +124,7 @@ const PLATFORMS = [
   { id: "kadokado", label: "KadoKado 角角者", detail: "KADOKADO API · 手動啟用", tone: "amber" },
 ] as const;
 
-const FALLBACK_DESKTOP_VERSION = "1.2.4";
+const FALLBACK_DESKTOP_VERSION = "1.2.5";
 const UPDATER_MANIFEST_URL = "https://github.com/0808jessie/fanfic_aggregator/releases/latest/download/latest.json";
 
 type DesktopUpdate = {
@@ -149,6 +150,25 @@ function platformToneClass(tone: (typeof PLATFORMS)[number]["tone"]) {
   if (tone === "amber") return "border-[#e8c681] bg-[#fff4d8] text-[#8b671e]";
   if (tone === "teal") return "border-[#79cdbd] bg-[#ddf6ef] text-[#176d61]";
   return "border-[#10151b] bg-[#10151b] text-white";
+}
+
+function isNotSelectedPlatformStatus(status: PlatformStatus) {
+  return status.warning?.startsWith("本次搜尋尚未選取此來源") === true;
+}
+
+function platformStatusLabel(status: PlatformStatus) {
+  if (status.status === "success") return "已連線";
+  if (status.status === "cooldown") return "冷卻限制中";
+  if (status.status === "blocked") return status.platformId === "ao3" ? "AO3 公開索引受阻" : "公開索引受阻";
+  if (status.status === "error") return "連線逾時";
+  return isNotSelectedPlatformStatus(status) ? "尚未選取" : "無公開結果";
+}
+
+function platformStatusTone(status: PlatformStatus) {
+  if (status.status === "success") return "border-[#9bded1] bg-[#e9f8f4] text-[#176d61]";
+  if (status.status === "cooldown") return "border-[#efd59a] bg-[#fff7df] text-[#8d6b20]";
+  if (status.status === "blocked" || status.status === "error") return "border-[#efb4c4] bg-[#fff0f4] text-[#9b4358]";
+  return "border-[#d5d8da] bg-[#f5f6f4] text-[#65737a]";
 }
 
 function showInfoToast(message: string) {
@@ -477,6 +497,12 @@ export default function Home() {
     const pending = isSearchPending ? Math.max(0, total - responded - blocked) : 0;
     return { total, responded, pending, blocked };
   }, [platformStatuses, selectedPlatforms, isSearchPending, isRetryingSinglePlatform]);
+  const matchedCpMapping = useMemo(() => {
+    if (searchMode !== "keyword") return null;
+    const normalizedKeyword = keyword.trim().toLocaleLowerCase();
+    if (!normalizedKeyword) return null;
+    return cpMappings.find((mapping) => mapping.alias.toLocaleLowerCase() === normalizedKeyword) || null;
+  }, [cpMappings, keyword, searchMode]);
 
   useEffect(() => {
     setBookmarks(loadBookmarks());
@@ -912,6 +938,14 @@ export default function Home() {
     toast.success("已設為預設篩選", { description: "下次開啟網站時會自動帶入這組設定。" });
   };
 
+  const applyCpSuggestion = (mapping: CpMapping) => {
+    setKeyword(mapping.alias);
+    setSearchMode("keyword");
+    setHistoryMenuOpen(false);
+    showInfoToast(`已套用 ${mapping.alias} 的跨語言 CP 對照搜尋。`);
+    runSearch(false, mapping.alias);
+  };
+
   const updateHideBookmarkedResults = (next: boolean) => {
     personalDataRevisionRef.current += 1;
     setHideBookmarkedResults(next);
@@ -981,7 +1015,7 @@ export default function Home() {
 
         <section className="reader-command relative mt-6 px-4 py-4 sm:px-6 sm:py-5">
           <form onSubmit={submitSearch} className="flex flex-col gap-4 lg:flex-row lg:items-center">
-            <div className="flex flex-1 items-center gap-3"><div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${searchMode === "author" ? "bg-amber-50 text-amber-700" : "bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]"}`}>{searchMode === "author" ? <UserRound className="h-5 w-5 shrink-0" /> : <Search className="h-5 w-5 shrink-0" />}</div><div className="relative min-w-0 flex-1"><div className="reader-segmented mb-2 flex w-fit"><Button type="button" variant="ghost" aria-pressed={searchMode === "keyword"} onClick={() => setSearchMode("keyword")} className={`h-7 px-3 text-xs font-semibold ${searchMode === "keyword" ? "bg-white text-[color:var(--atlas-indigo)] shadow-sm" : "text-[color:var(--atlas-muted)]"}`}>關鍵字 / CP</Button><Button type="button" variant="ghost" aria-pressed={searchMode === "author"} onClick={() => setSearchMode("author")} className={`h-7 px-3 text-xs font-semibold ${searchMode === "author" ? "bg-white text-amber-700 shadow-sm" : "text-[color:var(--atlas-muted)]"}`}>作者</Button></div><Input value={keyword} onChange={(event) => { setKeyword(event.target.value); setHistoryMenuOpen(false); }} onFocus={() => setHistoryMenuOpen(true)} onBlur={(event) => { const nextFocus = event.relatedTarget; if (!(nextFocus instanceof Node) || !historyMenuRef.current?.contains(nextFocus)) setHistoryMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setHistoryMenuOpen(false); }} placeholder={searchMode === "author" ? "輸入作者暱稱、繪師或社團名..." : "輸入角色、配對、作品名或關鍵字"} className="h-10 border-0 bg-transparent px-0 text-lg font-semibold shadow-none focus-visible:ring-0 sm:text-xl" aria-label="搜尋同人作品" />{historyMenuOpen && searchHistory.length > 0 && <div ref={historyMenuRef} aria-label="最近搜尋" className="absolute left-0 right-0 top-full z-30 mt-3 overflow-hidden rounded-2xl border border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)]/95 p-2 shadow-[0_18px_42px_rgba(29,28,45,0.16)] backdrop-blur-xl"><div className="mb-1 flex items-center justify-between px-2 py-1"><span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[color:var(--atlas-muted)]"><History className="h-3.5 w-3.5" />最近搜尋</span><button type="button" onClick={() => { clearHistory(); setHistoryMenuOpen(false); }} className="rounded-lg px-2 py-1 text-xs font-semibold text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)]">清空</button></div>{searchHistory.map((entry) => <div key={entry} className="group flex items-center gap-1 rounded-xl px-2 transition-colors hover:bg-[color:var(--atlas-indigo-soft)]"><button type="button" onClick={() => { setKeyword(entry); setSearchMode("keyword"); setHistoryMenuOpen(false); runSearch(false, entry); }} className="min-w-0 flex-1 truncate py-2 text-left text-sm font-semibold text-[color:var(--atlas-ink)]">{entry}</button><button type="button" onClick={() => removeHistoryEntry(entry)} aria-label={`刪除最近搜尋 ${entry}`} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[color:var(--atlas-muted)] opacity-0 transition-opacity hover:bg-white hover:text-[color:var(--atlas-danger)] focus-visible:opacity-100 group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button></div>)}</div>}{searchMode === "author" && <div className="mt-1 text-xs text-amber-700">正在搜尋作者：{keyword}</div>}</div></div>
+            <div className="flex flex-1 items-center gap-3"><div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${searchMode === "author" ? "bg-amber-50 text-amber-700" : "bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]"}`}>{searchMode === "author" ? <UserRound className="h-5 w-5 shrink-0" /> : <Search className="h-5 w-5 shrink-0" />}</div><div className="relative min-w-0 flex-1"><div className="reader-segmented mb-2 flex w-fit"><Button type="button" variant="ghost" aria-pressed={searchMode === "keyword"} onClick={() => setSearchMode("keyword")} className={`h-7 px-3 text-xs font-semibold ${searchMode === "keyword" ? "bg-white text-[color:var(--atlas-indigo)] shadow-sm" : "text-[color:var(--atlas-muted)]"}`}>關鍵字 / CP</Button><Button type="button" variant="ghost" aria-pressed={searchMode === "author"} onClick={() => setSearchMode("author")} className={`h-7 px-3 text-xs font-semibold ${searchMode === "author" ? "bg-white text-amber-700 shadow-sm" : "text-[color:var(--atlas-muted)]"}`}>作者</Button></div><Input value={keyword} onChange={(event) => { setKeyword(event.target.value); setHistoryMenuOpen(false); }} onFocus={() => setHistoryMenuOpen(true)} onBlur={(event) => { const nextFocus = event.relatedTarget; if (!(nextFocus instanceof Node) || !historyMenuRef.current?.contains(nextFocus)) setHistoryMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setHistoryMenuOpen(false); }} placeholder={searchMode === "author" ? "輸入作者暱稱、繪師或社團名..." : "輸入角色、配對、作品名或關鍵字"} className="h-10 border-0 bg-transparent px-0 text-lg font-semibold shadow-none focus-visible:ring-0 sm:text-xl" aria-label="搜尋同人作品" />{matchedCpMapping && <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => applyCpSuggestion(matchedCpMapping)} className="mt-2 inline-flex max-w-full items-center gap-2 rounded-full border border-[color:var(--atlas-indigo)]/20 bg-[color:var(--atlas-indigo-soft)] px-3 py-1.5 text-left text-xs font-semibold text-[color:var(--atlas-indigo)] transition-colors hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--atlas-indigo)]" aria-label={`套用 ${matchedCpMapping.alias} 的跨語言 CP 對照搜尋`}><Sparkles className="h-3.5 w-3.5 shrink-0" /><span className="truncate">包含 AO3：{matchedCpMapping.ao3Query} ／ 本地：{matchedCpMapping.localQuery}</span></button>}{historyMenuOpen && searchHistory.length > 0 && <div ref={historyMenuRef} aria-label="最近搜尋" className="absolute left-0 right-0 top-full z-30 mt-3 overflow-hidden rounded-2xl border border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)]/95 p-2 shadow-[0_18px_42px_rgba(29,28,45,0.16)] backdrop-blur-xl"><div className="mb-1 flex items-center justify-between px-2 py-1"><span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[color:var(--atlas-muted)]"><History className="h-3.5 w-3.5" />最近搜尋</span><button type="button" onClick={() => { clearHistory(); setHistoryMenuOpen(false); }} className="rounded-lg px-2 py-1 text-xs font-semibold text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)]">清空</button></div>{searchHistory.map((entry) => <div key={entry} className="group flex items-center gap-1 rounded-xl px-2 transition-colors hover:bg-[color:var(--atlas-indigo-soft)]"><button type="button" onClick={() => { setKeyword(entry); setSearchMode("keyword"); setHistoryMenuOpen(false); runSearch(false, entry); }} className="min-w-0 flex-1 truncate py-2 text-left text-sm font-semibold text-[color:var(--atlas-ink)]">{entry}</button><button type="button" onClick={() => removeHistoryEntry(entry)} aria-label={`刪除最近搜尋 ${entry}`} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[color:var(--atlas-muted)] opacity-0 transition-opacity hover:bg-white hover:text-[color:var(--atlas-danger)] focus-visible:opacity-100 group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button></div>)}</div>}{searchMode === "author" && <div className="mt-1 text-xs text-amber-700">正在搜尋作者：{keyword}</div>}</div></div>
             <div className="flex flex-wrap items-center gap-3">
               <Button type="button" variant="outline" onClick={() => runSearch(true)} disabled={isSearchPending || !keyword.trim()} aria-label="強制重新抓取" className="h-11 rounded-xl border-[color:var(--atlas-line)] bg-white/80 text-[color:var(--atlas-muted)] hover:border-[color:var(--atlas-indigo)] hover:text-[color:var(--atlas-indigo)]"><RotateCw className={`h-4 w-4 ${isSearchPending ? "animate-spin" : ""}`} /><span className="sr-only">強制重新抓取</span></Button>
               <Button type="submit" disabled={isSearchPending} aria-label={isSearchPending ? "SCANNING" : "RUN SEARCH"} className="h-11 min-w-36 bg-[color:var(--atlas-indigo)] px-6 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(79,70,229,0.24)] hover:bg-[#4338ca]">{isSearchPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}{isSearchPending ? "搜尋中" : "開始搜尋"}</Button>
@@ -1043,7 +1077,48 @@ export default function Home() {
         <section className="mt-10 flex flex-col gap-3 border-b border-[color:var(--atlas-line)] pb-5 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="text-3xl font-extrabold sm:text-4xl">{activeView === "bookmarks" ? `藏書閣 · ${bookmarks.length.toLocaleString()} 本` : searchMutation.isPending ? "正在尋找作品" : hasSearched ? pagination.totalWorks > 0 ? `找到 ${pagination.totalWorks.toLocaleString()} 篇作品` : "暫時沒有可驗證的作品" : "開始探索"}</h2>{activeView === "search" && searchMode === "author" && <div className="mt-2 flex items-center gap-2 text-sm text-amber-700"><UserRound className="h-3.5 w-3.5" /> 搜尋作者：{activeQuery || keyword}</div>}{activeView === "search" && hasSearched && pagination.totalWorks > 0 && <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[color:var(--atlas-muted)]"><span>已載入第 {pagination.loadedThroughPage} / {pagination.totalPages} 頁</span><span>顯示 {displayedResults.length} / {results.length} 筆</span>{hideBookmarkedResults && <span className="text-[color:var(--atlas-indigo)]">藏書閣隱藏：{hiddenBookmarkedResultCount} 篇</span>}{excludedKeywords.length > 0 && <span className="text-[color:var(--atlas-danger)]">避雷中：{excludedKeywords.length} 詞</span>}{completedElapsedMs !== null && <span className="text-[color:var(--atlas-success)]">{(completedElapsedMs / 1000).toFixed(1)} 秒完成</span>}</div>}</div><div className="flex flex-wrap items-center gap-2"><div className="text-xs text-[color:var(--atlas-muted)]">{activeView === "bookmarks" ? desktopRuntime ? "只保留在這台裝置" : "保留在這個瀏覽器" : `${selectedPlatforms.length} 個來源已啟用`}</div>{activeView === "search" && hasSearched && filteredResultCount > 0 && <Button type="button" variant="outline" aria-label="顯示已避雷作品" aria-pressed={showFilteredResults} onClick={() => setShowFilteredResults((current) => { const next = !current; if (!next) setRevealedFilteredUrls(new Set()); return next; })} className={`h-9 rounded-full border px-3 text-xs font-semibold ${showFilteredResults ? "border-[color:var(--atlas-amber)] bg-[color:var(--atlas-amber-soft)] text-[color:var(--atlas-amber)]" : "border-[color:var(--atlas-danger-line)] bg-white text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)]"}`}>{showFilteredResults ? <EyeOff className="mr-1.5 h-3.5 w-3.5" /> : <Eye className="mr-1.5 h-3.5 w-3.5" />}{showFilteredResults ? "隱藏已避雷作品" : "顯示已避雷作品"}<span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-current px-1.5 py-0.5 text-[10px] font-bold text-white">{filteredResultCount}</span></Button>}</div></section>
 
         {activeView === "search" && hasSearched && platformStatuses.length > 0 && (
-          <section aria-label="平台連線狀態" className="atlas-panel relative mt-5 overflow-hidden p-4 sm:p-5">
+          <section aria-label="來源健康摘要" className="mt-3">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button type="button" variant="outline" aria-label="平台連線狀態" className="h-9 rounded-full border-[color:var(--atlas-success)]/25 bg-[color:var(--atlas-success)]/8 px-3 text-xs font-semibold text-[color:var(--atlas-success)] hover:bg-[color:var(--atlas-success)]/14">
+                  <span className="mr-2 h-2 w-2 rounded-full bg-current" />
+                  {platformStatuses.filter((status) => status.status === "success").length}/{PLATFORMS.length} 平台已連線
+                  {sourceProgress.blocked > 0 && <span className="ml-2 rounded-full bg-[color:var(--atlas-danger-soft)] px-1.5 py-0.5 text-[10px] text-[color:var(--atlas-danger)]">{sourceProgress.blocked} 需注意</span>}
+                  <ChevronDown className="ml-2 h-3.5 w-3.5" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-[min(32rem,calc(100vw-2.5rem))] border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)] p-3 shadow-[0_18px_42px_rgba(29,28,45,0.18)]">
+                <div className="mb-3 flex items-center justify-between gap-3 border-b border-[color:var(--atlas-line)] pb-3">
+                  <div><div className="text-sm font-bold text-[color:var(--atlas-ink)]">來源連線狀態</div><p className="mt-0.5 text-xs text-[color:var(--atlas-muted)]">點選平台可只看該來源結果；受阻來源可獨立重試。</p></div>
+                  <Button type="button" variant="ghost" size="sm" aria-pressed={!activePlatformFilter} onClick={() => setActivePlatformFilter(null)} className={`h-7 shrink-0 rounded-lg px-2 text-xs font-semibold ${activePlatformFilter ? "text-[color:var(--atlas-muted)] hover:bg-[color:var(--atlas-indigo-soft)]" : "bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]"}`}>全部</Button>
+                </div>
+                <div className="max-h-[min(58vh,28rem)] space-y-2 overflow-y-auto pr-1">
+                  {platformStatuses.map((status) => {
+                    const isBlocked = status.status === "blocked";
+                    const isSuccess = status.status === "success";
+                    const isRetryingThisPlatform = isSearchPending && retryingPlatformId === status.platformId;
+                    const currentQuery = activeQuery || keyword;
+                    const officialSearch = status.platformId === "ao3"
+                      ? { href: `https://archiveofourown.org/works/search?commit=Search&work_search%5Bquery%5D=${encodeURIComponent(currentQuery)}`, label: "前往 AO3 搜尋本詞" }
+                      : status.platformId === "penana"
+                        ? { href: `https://www.penana.com/search?t=story&search=${encodeURIComponent(currentQuery)}`, label: "在 Penana 官網搜尋" }
+                        : null;
+                    return <div key={status.platformId} className={`rounded-xl border p-2.5 ${platformStatusTone(status)}`}>
+                      <div className="flex items-start gap-2">
+                        <button type="button" aria-label={`篩選 ${status.label} 平台結果`} aria-pressed={activePlatformFilter === status.platformId} onClick={() => togglePlatformQuickFilter(status.platformId as PlatformId)} className="min-w-0 flex-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--atlas-indigo)]">
+                          <div className="truncate text-xs font-semibold">{status.label}</div>
+                          <div className="mt-0.5 text-[11px] font-medium">{platformStatusLabel(status)}{isSuccess ? ` · ${status.itemCount} 筆` : ""}{activePlatformFilter === status.platformId && isSuccess ? " · 篩選中" : ""}</div>
+                        </button>
+                        {isPlatformRetryable(status) && <Button type="button" variant="ghost" size="sm" disabled={isSearchPending && !isRetryingThisPlatform} aria-label={`重試 ${status.label}`} onClick={(event) => retrySinglePlatform(event, status.platformId as PlatformId)} className="h-7 shrink-0 rounded-lg border border-current px-2 text-[11px] font-semibold hover:bg-white/70"><RotateCw className={`mr-1 h-3 w-3 ${isRetryingThisPlatform ? "animate-spin" : ""}`} />{isRetryingThisPlatform ? "重試中" : "重試"}</Button>}
+                      </div>
+                      {isBlocked && officialSearch && currentQuery && <a href={officialSearch.href} target="_blank" rel="noreferrer" aria-label={officialSearch.label} onClick={(event) => void openExternalUrl(event, officialSearch.href, status.platformId === "ao3" ? "已開啟官方 AO3 搜尋。" : undefined)} className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold underline underline-offset-2 hover:no-underline">{officialSearch.label}<ArrowUpRight className="h-3 w-3" /></a>}
+                      {status.warning && <p className="mt-1 text-[11px] leading-4 opacity-80">{status.warning}</p>}
+                    </div>;
+                  })}
+                </div>
+              </PopoverContent>
+            </Popover>
+            {false && <div>
             <div className="mb-4 flex flex-col gap-3 border-b border-[#111826]/10 pb-3 sm:flex-row sm:items-center sm:justify-between">
               <div><div className="atlas-mono text-[9px] font-medium uppercase tracking-[0.18em] text-[#2d70d6]">SOURCE HEALTH / LIVE ROUTES</div><div className="mt-1 text-sm font-bold">{isSearchPending ? `${sourceProgress.total} 個來源中，${sourceProgress.responded} 已回應、${sourceProgress.pending} 查詢中、${sourceProgress.blocked} 受阻` : "每一個來源都是獨立路徑"}</div></div>
               <div className="flex items-center gap-3"><span className="atlas-mono text-[9px] font-medium tracking-[0.1em] text-[#6e7480]">點選來源查看結果；受阻來源可單獨重試</span><Button type="button" variant="ghost" size="sm" aria-pressed={!activePlatformFilter} onClick={() => setActivePlatformFilter(null)} className={`h-7 rounded-none border px-2 font-mono text-[9px] font-bold uppercase tracking-[0.1em] ${activePlatformFilter ? "border-[#111826]/15 bg-white/60 text-[#66757d] hover:border-[#2d70d6] hover:bg-[#e6efff]" : "border-[#2d70d6] bg-[#e6efff] text-[#2d70d6]"}`}>ALL / 全部</Button></div>
@@ -1135,6 +1210,7 @@ export default function Home() {
                 );
               })}
             </div>
+            </div>}
           </section>
         )}
 
@@ -1200,7 +1276,7 @@ export default function Home() {
                   </select>
                 </label>
               </div>
-              <div id="search-results" className={resultViewMode === "cards" ? "grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3" : "space-y-3"}>
+              <div id="search-results" className={resultViewMode === "cards" ? "grid auto-rows-fr grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3" : "space-y-3"}>
                 {visibleResults.map((result, index) => {
                   const meta = platformMeta(result.platform);
                   const allTags = (result.tags || "").split(",").map((tag) => tag.trim()).filter(Boolean);
@@ -1209,18 +1285,21 @@ export default function Home() {
                   const highlightedTags = new Set([...allRelationshipTags, ...allCharacterTags]);
                   const allCategoryTags = allTags.filter((tag) => !highlightedTags.has(tag));
                   const tagsExpanded = expandedTagUrls.has(result.url);
-                  const relationshipTags = tagsExpanded ? allRelationshipTags : allRelationshipTags.slice(0, 2);
-                  const characterTags = tagsExpanded ? allCharacterTags : allCharacterTags.slice(0, 1);
-                  const tags = tagsExpanded ? allCategoryTags : allCategoryTags.slice(0, 2);
+                  const collapsedTagLimit = 2;
+                  const relationshipTags = tagsExpanded ? allRelationshipTags : allRelationshipTags.slice(0, collapsedTagLimit);
+                  const remainingCharacterSlots = Math.max(0, collapsedTagLimit - relationshipTags.length);
+                  const characterTags = tagsExpanded ? allCharacterTags : allCharacterTags.slice(0, remainingCharacterSlots);
+                  const remainingCategorySlots = Math.max(0, collapsedTagLimit - relationshipTags.length - characterTags.length);
+                  const tags = tagsExpanded ? allCategoryTags : allCategoryTags.slice(0, remainingCategorySlots);
                   const hiddenTagCount = Math.max(0, allRelationshipTags.length - relationshipTags.length) + Math.max(0, allCharacterTags.length - characterTags.length) + Math.max(0, allCategoryTags.length - tags.length);
                   const bookmark = bookmarks.find((item) => item.url === result.url);
                   const isRestricted = isRestrictedResult(result);
                   const blacklistMatches = blacklistGroups.filter((group) => group.enabled).map((group) => ({ group, keywords: group.keywords.filter((item) => [result.title, result.summary, result.tags, ...(result.characters || []), ...(result.relationships || [])].join(" ").toLocaleLowerCase().includes(item.toLocaleLowerCase())) })).filter((item) => item.keywords.length > 0);
                   const isMaskedByBlacklist = showFilteredResults && blacklistMatches.length > 0 && !revealedFilteredUrls.has(result.url);
                   return (
-                    <Card key={`${result.url}-${index}`} className={`reader-story-card group relative ${resultViewMode === "list" ? "overflow-hidden" : ""} ${isRestricted ? "border-[#efb4c4]" : ""}`}>
-                      <CardContent className={`p-0 transition-[filter,opacity] duration-200 ${isMaskedByBlacklist ? "pointer-events-none select-none blur-[5px] opacity-45" : ""}`}>
-                        {resultViewMode === "cards" && result.coverUrl && <BlueprintCover src={result.coverUrl} title={result.title} />}
+                    <Card key={`${result.url}-${index}`} className={`reader-story-card group relative ${resultViewMode === "cards" ? "flex h-full flex-col overflow-hidden" : "overflow-hidden"} ${isRestricted ? "border-[#efb4c4]" : ""}`}>
+                      <CardContent className={`p-0 transition-[filter,opacity] duration-200 ${resultViewMode === "cards" ? "flex h-full flex-col" : ""} ${isMaskedByBlacklist ? "pointer-events-none select-none blur-[5px] opacity-45" : ""}`}>
+                        {resultViewMode === "cards" && <BlueprintCover src={result.coverUrl} title={result.title} />}
                         <div className={`flex items-center justify-between border-b border-[#111826]/10 ${resultViewMode === "list" ? "px-4 py-2.5" : "px-5 py-3"}`}>
                           <div className="flex items-center gap-2">
                             <Badge className={`rounded-full border-0 px-2.5 py-1 text-xs font-medium ${platformToneClass(meta.tone)} `}>
@@ -1235,19 +1314,19 @@ export default function Home() {
                           </div>
                           <div className="flex items-center gap-2"><button type="button" onClick={() => bookmark ? removeBookmark(result.url) : (setBookmarkTarget(result), setBookmarkDialogOpen(true))} aria-label={bookmark ? `取消收藏 ${result.title}` : `收藏 ${result.title}`} className={`inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition-colors ${bookmark ? "bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]" : "bg-[color:var(--atlas-elevated)] text-[color:var(--atlas-muted)] hover:text-[color:var(--atlas-indigo)]"}`}>{bookmark ? <BookmarkCheck className="h-3.5 w-3.5" /> : <Bookmark className="h-3.5 w-3.5" />}{bookmark ? "已收藏" : "收藏"}</button><span className="text-xs text-[color:var(--atlas-muted)]">{formatDate(result.scraped_at)}</span></div>
                         </div>
-                        <div className={resultViewMode === "list" ? "grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1.5fr)_minmax(10rem,0.7fr)_auto] md:items-center" : "p-5 sm:p-6"}>
-                          <div className={resultViewMode === "list" ? "min-w-0" : ""}>
+                        <div className={resultViewMode === "list" ? "grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1.5fr)_minmax(10rem,0.7fr)_auto] md:items-center" : "flex flex-1 flex-col p-5 sm:p-6"}>
+                          <div className={resultViewMode === "list" ? "min-w-0" : "flex min-h-0 flex-1 flex-col"}>
                           <div className={resultViewMode === "list" ? "flex items-start justify-between gap-3" : "mb-4 flex items-start justify-between gap-4"}>
                             <h3 className={`line-clamp-2 font-black leading-tight tracking-[-0.045em] ${resultViewMode === "list" ? "text-base" : "text-xl"}`}>{result.title || "UNTITLED WORK"}</h3>
                             <ArrowUpRight className="mt-1 h-5 w-5 shrink-0 text-[#9ca8ad] transition-colors group-hover:text-[#2d70d6]" />
                           </div>
                           {isNavigableAuthor(result.author) ? <button type="button" onClick={() => navigateToAuthor(result.author)} className="group/author inline-flex items-center gap-1.5 text-sm font-medium text-[color:var(--atlas-muted)] transition-colors hover:text-[color:var(--atlas-indigo)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--atlas-indigo)]" aria-label={`搜尋作者 ${result.author}`}><UserRound className="h-3.5 w-3.5" /><span className="border-b border-transparent group-hover/author:border-current">{result.author}</span></button> : <div className="text-sm font-medium text-[color:var(--atlas-muted)]">{result.author || "未知創作者"}</div>}
                           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[color:var(--atlas-muted)]"><span>{result.wordCount ? `${result.wordCount} 字` : "字數以原站為準"}</span>{result.isComplete !== null && result.isComplete !== undefined && <span className={result.isComplete ? "text-[color:var(--atlas-success)]" : "text-[color:var(--atlas-amber)]"}>{result.isComplete ? "已完結" : "連載中"}</span>}{typeof result.relevanceScore === "number" && <span>相關度 {result.relevanceScore}</span>}</div>
-                          <div className={`${resultViewMode === "list" ? "mt-3" : "mt-6"} flex flex-wrap gap-1.5`} aria-label={`${result.title} 的標籤`}>
-                            {relationshipTags.map((tag) => <span key={`relationship-${tag}`} className="border border-[#e8a7bf] bg-[#ffe8f0] px-2 py-1 font-mono text-[9px] font-semibold text-[#8b3e59]">♡ {tag}</span>)}
-                            {characterTags.map((tag) => <span key={`character-${tag}`} className="border border-[#c9bcf2] bg-[#f0ecff] px-2 py-1 font-mono text-[9px] font-semibold text-[#5c4e87]">◇ {tag}</span>)}
-                            {tags.map((tag) => <span key={`tag-${tag}`} className="border border-[#10151b]/10 bg-[#f3f6f5] px-2 py-1 font-mono text-[9px] font-semibold text-[#6a777e]">#{tag}</span>)}
-                            {hiddenTagCount > 0 && <button type="button" onClick={() => setExpandedTagUrls((current) => { const next = new Set(current); next.add(result.url); return next; })} title="展開完整標籤" className="border border-dashed border-[#61707a]/45 bg-white px-2 py-1 font-mono text-[9px] font-bold text-[#56646d] hover:border-[#2d70d6] hover:text-[#2d70d6]">+{hiddenTagCount} 標籤</button>}
+                          <div className={`${resultViewMode === "list" ? "mt-3" : "mt-6"} ${tagsExpanded ? "flex flex-wrap" : "flex h-7 flex-nowrap overflow-hidden"} gap-1.5`} aria-label={`${result.title} 的標籤`}>
+                            {relationshipTags.map((tag) => <span key={`relationship-${tag}`} className="max-w-40 truncate border border-[#e8a7bf] bg-[#ffe8f0] px-2 py-1 font-mono text-[9px] font-semibold text-[#8b3e59]">♡ {tag}</span>)}
+                            {characterTags.map((tag) => <span key={`character-${tag}`} className="max-w-40 truncate border border-[#c9bcf2] bg-[#f0ecff] px-2 py-1 font-mono text-[9px] font-semibold text-[#5c4e87]">◇ {tag}</span>)}
+                            {tags.map((tag) => <span key={`tag-${tag}`} className="max-w-40 truncate border border-[#10151b]/10 bg-[#f3f6f5] px-2 py-1 font-mono text-[9px] font-semibold text-[#6a777e]">#{tag}</span>)}
+                            {hiddenTagCount > 0 && <button type="button" onClick={() => setExpandedTagUrls((current) => { const next = new Set(current); next.add(result.url); return next; })} title="展開完整標籤" className="shrink-0 border border-dashed border-[#61707a]/45 bg-white px-2 py-1 font-mono text-[9px] font-bold text-[#56646d] hover:border-[#2d70d6] hover:text-[#2d70d6]">+{hiddenTagCount} 標籤</button>}
                             {tagsExpanded && hiddenTagCount === 0 && (allRelationshipTags.length + allCharacterTags.length + allCategoryTags.length) > 0 && <button type="button" onClick={() => setExpandedTagUrls((current) => { const next = new Set(current); next.delete(result.url); return next; })} className="border border-dashed border-[#61707a]/45 bg-white px-2 py-1 font-mono text-[9px] font-bold text-[#56646d] hover:border-[#2d70d6] hover:text-[#2d70d6]">收合標籤</button>}
                           </div>
                           {resultViewMode === "cards" && <RestrictedSummary summary={result.summary || "No summary available."} shouldBlur={isRestricted && contentSafetySettings.blurRestrictedSummaries} />}

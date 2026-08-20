@@ -279,6 +279,7 @@ describe("Home pagination interactions", () => {
       data: { keyword: "義忍", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
     await waitFor(() => expect(screen.getByLabelText("平台連線狀態")).toBeTruthy());
+    fireEvent.click(screen.getByLabelText("平台連線狀態"));
     expect(screen.getByText("冷卻限制中")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "重試 在水裡寫字" }));
@@ -298,11 +299,13 @@ describe("Home pagination interactions", () => {
 
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "義忍" } });
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+    await waitFor(() => expect(screen.getByLabelText("平台連線狀態")).toBeTruthy());
+    fireEvent.click(screen.getByLabelText("平台連線狀態"));
     await waitFor(() => expect(screen.getByRole("button", { name: "重試 AO3" })).toBeTruthy());
     expect(screen.getByRole("link", { name: "前往 AO3 搜尋本詞" }).getAttribute("href")).toBe(
       "https://archiveofourown.org/works/search?commit=Search&work_search%5Bquery%5D=%E7%BE%A9%E5%BF%8D",
     );
-    expect(screen.getByText("官方頁的登入或驗證狀態不會同步至本應用程式；這裡只會以獨立公開索引請求重試，不會讀取或保存 Cookie。")).toBeTruthy();
+    expect(screen.queryByText("官方頁的登入或驗證狀態不會同步至本應用程式；這裡只會以獨立公開索引請求重試，不會讀取或保存 Cookie。")).toBeNull();
     expect(screen.getByRole("link", { name: "在 Penana 官網搜尋" }).getAttribute("href")).toBe(
       "https://www.penana.com/search?t=story&search=%E7%BE%A9%E5%BF%8D",
     );
@@ -333,6 +336,7 @@ describe("Home pagination interactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
 
     await waitFor(() => expect(screen.getByLabelText("平台連線狀態")).toBeTruthy());
+    fireEvent.click(screen.getByLabelText("平台連線狀態"));
     expect(screen.getByText("CxC 創利市集")).toBeTruthy();
     expect(screen.getAllByText("連線逾時").length).toBeGreaterThan(0);
     expect(screen.getAllByText("本次未收到來源回應，請單獨重試。").length).toBeGreaterThan(0);
@@ -374,6 +378,7 @@ describe("Home pagination interactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
 
     await waitFor(() => expect(screen.getByText("暫時沒有可驗證的公開作品")).toBeTruthy());
+    fireEvent.click(screen.getByLabelText("平台連線狀態"));
     expect(screen.getByText("CxC 創利市集")).toBeTruthy();
     expect(screen.getByText("無公開結果")).toBeTruthy();
     expect(screen.queryByText("DISCOVERY HALTED")).toBeNull();
@@ -399,6 +404,8 @@ describe("Home pagination interactions", () => {
 
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "義忍" } });
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+    await waitFor(() => expect(screen.getByLabelText("平台連線狀態")).toBeTruthy());
+    fireEvent.click(screen.getByLabelText("平台連線狀態"));
     await waitFor(() => expect(screen.getByRole("button", { name: "重試 在水裡寫字" })).toBeTruthy());
 
     fireEvent.click(screen.getByRole("button", { name: "重試 在水裡寫字" }));
@@ -467,6 +474,7 @@ describe("Home pagination interactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
     await waitFor(() => expect(screen.getByText("WATER ONLY")).toBeTruthy());
 
+    fireEvent.click(screen.getByLabelText("平台連線狀態"));
     const ao3Card = screen.getByRole("button", { name: "篩選 AO3 平台結果" });
     fireEvent.click(ao3Card);
     expect(ao3Card.getAttribute("aria-pressed")).toBe("true");
@@ -502,4 +510,33 @@ describe("Home pagination interactions", () => {
       data: { keyword: "Atlas Creator", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
     expect(screen.getByText(/正在搜尋作者：Atlas Creator/)).toBeTruthy();
+  });
+
+  it("shows a CP dictionary suggestion and applies the existing alias search contract", async () => {
+    render(<Home />);
+
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "義忍" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "套用 義忍 的跨語言 CP 對照搜尋" })).toBeTruthy());
+    expect(screen.getByText(/包含 AO3：Tomioka Giyuu\/Kochou Shinobu/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "套用 義忍 的跨語言 CP 對照搜尋" }));
+    await waitFor(() => expect(mockState.lastVariables).toMatchObject({ data: { keyword: "義忍", mode: "keyword" } }));
+  });
+
+  it("keeps a fixed cover region for both image and fallback cards", async () => {
+    mockState.primaryPayload = {
+      items: [
+        { title: "有封面作品", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/9601", coverUrl: "https://images.example/cover.jpg", tags: "General", summary: "摘要", scraped_at: "2026-01-01T00:00:00Z" },
+        { title: "無封面作品", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/9602", tags: "General", summary: "摘要", scraped_at: "2026-01-01T00:00:00Z" },
+      ], totalWorks: 2, totalPages: 1, page: 1, loadedThroughPage: 1, nextPage: null, hasMore: false,
+    };
+    window.localStorage.setItem("fanfic-atlas-result-view", "cards");
+    render(<Home />);
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "封面" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+
+    await waitFor(() => expect(screen.getByText("有封面作品")).toBeTruthy());
+    expect(screen.getAllByTestId("result-cover")).toHaveLength(2);
+    expect(screen.getAllByTestId("result-cover").every((cover) => cover.className.includes("aspect-video"))).toBe(true);
+    expect(document.getElementById("search-results")?.className).toContain("auto-rows-fr");
   });
