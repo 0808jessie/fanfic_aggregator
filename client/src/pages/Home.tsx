@@ -119,11 +119,11 @@ const PLATFORMS = [
   { id: "cxc", label: "CxC 創利市集", detail: "CXC.TODAY", tone: "violet" },
   { id: "pixiv", label: "Pixiv", detail: "PIXIV.NET", tone: "rose" },
   { id: "bahamut", label: "巴哈姆特創作大廳", detail: "HOME.GAMER.COM.TW", tone: "cyan" },
-  { id: "popo", label: "POPO 原創市集", detail: "POPO.TW · 索引導流", tone: "teal" },
-  { id: "kadokado", label: "KadoKado 角角者", detail: "KADOKADO.COM.TW · 索引導流", tone: "amber" },
+  { id: "popo", label: "POPO 原創市集", detail: "POPO.TW · 預設關閉", tone: "teal" },
+  { id: "kadokado", label: "KadoKado 角角者", detail: "KADOKADO API · 手動啟用", tone: "amber" },
 ] as const;
 
-const FALLBACK_DESKTOP_VERSION = "1.2.3";
+const FALLBACK_DESKTOP_VERSION = "1.2.4";
 const UPDATER_MANIFEST_URL = "https://github.com/0808jessie/fanfic_aggregator/releases/latest/download/latest.json";
 
 type DesktopUpdate = {
@@ -136,6 +136,7 @@ type DesktopUpdate = {
 type PlatformId = (typeof PLATFORMS)[number]["id"];
 type ResultViewMode = "cards" | "list";
 
+const DEFAULT_SELECTED_PLATFORM_IDS: PlatformId[] = ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut"];
 const RESULT_PAGE_SIZES = [12, 24, 36] as const;
 
 function platformMeta(platform: string) {
@@ -223,7 +224,7 @@ export default function Home() {
   const [keyword, setKeyword] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
   const [searchMode, setSearchMode] = useState<"keyword" | "author">("keyword");
-  const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformId[]>(["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut"]);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformId[]>(DEFAULT_SELECTED_PLATFORM_IDS);
   const [selectedLanguage, setSelectedLanguage] = useState<LanguageFilter>("all");
   const [activePlatformFilter, setActivePlatformFilter] = useState<PlatformId | null>(null);
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -429,13 +430,14 @@ export default function Home() {
   const usesSourcePagination = pagination.totalPages > 1;
   const unifiedCurrentPage = usesSourcePagination ? pagination.page : localResultPage;
   const unifiedPageCount = usesSourcePagination ? pagination.totalPages : localResultPageCount;
+  const usesDefaultPlatformSelection = selectedPlatforms.length === DEFAULT_SELECTED_PLATFORM_IDS.length && DEFAULT_SELECTED_PLATFORM_IDS.every((platform) => selectedPlatforms.includes(platform));
   const activeFilterCount = [
     selectedLanguage !== "all",
     wordCountFilter !== "all",
     completionFilter !== "all",
     contentSafetySettings.ageConfirmation === "adult" && ratingFilter !== "all",
     Boolean(activePlatformFilter),
-    selectedPlatforms.length !== PLATFORMS.length,
+    !usesDefaultPlatformSelection,
     excludedKeywords.length > 0,
     hideBookmarkedResults,
   ].filter(Boolean).length;
@@ -450,11 +452,11 @@ export default function Home() {
     if (sortMode !== "relevance") chips.push({ id: "sort", label: sortMode === "updated" ? "最新更新" : "字數最多", clear: () => setSortMode("relevance") });
     if (contentSafetySettings.ageConfirmation === "adult" && ratingFilter !== "all") chips.push({ id: "rating", label: ratingFilter === "safe" ? "僅全年齡" : "僅 R18", clear: () => setRatingFilter("all") });
     if (activePlatformFilter) chips.push({ id: "result-platform", label: `${platformMeta(activePlatformFilter).label} 結果`, clear: () => setActivePlatformFilter(null) });
-    if (selectedPlatforms.length !== PLATFORMS.length) chips.push({ id: "sources", label: `${selectedPlatforms.length} 個來源`, clear: () => setSelectedPlatforms(PLATFORMS.map((platform) => platform.id)) });
+    if (!usesDefaultPlatformSelection) chips.push({ id: "sources", label: `${selectedPlatforms.length} 個來源`, clear: () => setSelectedPlatforms(DEFAULT_SELECTED_PLATFORM_IDS) });
     if (excludedKeywords.length > 0 && !showFilteredResults) chips.push({ id: "blacklist", label: "避雷生效中", clear: () => setShowFilteredResults(true) });
     if (hideBookmarkedResults) chips.push({ id: "bookmarks", label: `隱藏已收藏${hiddenBookmarkedResultCount ? ` ${hiddenBookmarkedResultCount} 篇` : ""}`, clear: () => setHideBookmarkedResults(false) });
     return chips;
-  }, [selectedLanguage, wordCountFilter, completionFilter, sortMode, contentSafetySettings.ageConfirmation, ratingFilter, activePlatformFilter, selectedPlatforms.length, excludedKeywords.length, showFilteredResults, hideBookmarkedResults, hiddenBookmarkedResultCount]);
+  }, [selectedLanguage, wordCountFilter, completionFilter, sortMode, contentSafetySettings.ageConfirmation, ratingFilter, activePlatformFilter, selectedPlatforms.length, usesDefaultPlatformSelection, excludedKeywords.length, showFilteredResults, hideBookmarkedResults, hiddenBookmarkedResultCount]);
   const languageCounts = useMemo(
     () => Object.fromEntries(
       (["all", "zh", "zh-hant", "zh-hans", "en", "ja"] as const).map((language) => [language, countLanguageResults(results.filter((result) => !matchesExcludedKeyword(result, excludedKeywords)), language)]),
@@ -923,7 +925,7 @@ export default function Home() {
     setCompletionFilter("all");
     setSortMode("relevance");
     setActivePlatformFilter(null);
-    setSelectedPlatforms(PLATFORMS.map((platform) => platform.id));
+    setSelectedPlatforms(DEFAULT_SELECTED_PLATFORM_IDS);
     setRatingFilter(contentSafetySettings.ageConfirmation === "minor" ? "safe" : "all");
     setShowFilteredResults(false);
     setHideBookmarkedResults(false);

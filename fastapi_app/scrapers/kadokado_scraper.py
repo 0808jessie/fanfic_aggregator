@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from math import ceil
 from time import perf_counter
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 import httpx
 
+from constants.cp_tags import CP_CACHE_ALIASES
 from models import ScrapedFanfic
 from scrapers.base_scraper import BaseScraper
 
@@ -25,7 +25,7 @@ class _PublicSearchUnavailable(RuntimeError):
 
 
 class KadoKadoScraper(BaseScraper):
-    """Normalize public KadoKado work cards into the shared metadata model."""
+    """Normalize verified, relevant KadoKado work metadata into shared results."""
 
     base_url = "https://www.kadokado.com.tw"
     public_api_url = "https://api.kadokado.com.tw/v3/search"
@@ -59,14 +59,11 @@ class KadoKadoScraper(BaseScraper):
         try:
             payload = self._fetch_public_search_payload(normalized_keyword, page)
             items = self.parse_api_results(payload, normalized_keyword)
-            total_works = max(len(items), self._safe_int(payload.get("total")))
             if not items:
                 self.last_warning = f"[KadoKado 角角者] No verified public result matched '{normalized_keyword}'"
-            return {
-                "items": items,
-                "total_works": total_works,
-                "total_pages": max(1, ceil(total_works / self.public_page_size)),
-            }
+            # The API's `total` includes semantic recommendations. Returning the
+            # post-filtered count avoids advertising unrelated result pages.
+            return {"items": items, "total_works": len(items), "total_pages": 1}
         except _PublicSearchUnavailable as error:
             self._log_public_outcome("unavailable", error)
             self.last_warning = f"[KadoKado 角角者] {error}"
@@ -81,6 +78,25 @@ class KadoKadoScraper(BaseScraper):
             return max(0, int(value))
         except (TypeError, ValueError):
             return 0
+
+    @staticmethod
+    def _normalized_match_text(value: object) -> str:
+        """Normalize visible metadata for exact, whitespace-tolerant matching."""
+        return re.sub(r"\s+", "", str(value or "")).casefold()
+
+    @classmethod
+    def _relevance_terms(cls, keyword: str) -> tuple[str, ...]:
+        """Use the literal query and only explicit CP spelling aliases."""
+        aliases = CP_CACHE_ALIASES.get(keyword.strip(), frozenset((keyword.strip(),)))
+        terms = {cls._normalized_match_text(keyword)}
+        terms.update(cls._normalized_match_text(alias) for alias in aliases)
+        return tuple(term for term in terms if term)
+
+    @classmethod
+    def _matches_relevance(cls, keyword: str, *metadata_values: object) -> bool:
+        """Require a query match in public title, summary, or official tag metadata."""
+        searchable_text = cls._normalized_match_text(" ".join(str(value or "") for value in metadata_values))
+        return bool(searchable_text) and any(term in searchable_text for term in cls._relevance_terms(keyword))
 
     def _fetch_public_search_payload(self, keyword: str, page: int) -> dict[str, object]:
         started_at = perf_counter()
@@ -128,7 +144,7 @@ class KadoKadoScraper(BaseScraper):
 
     @staticmethod
     def _extract_card_fields(anchor: object) -> tuple[str, str, str, list[str], str | None, bool | None]:
-        """Extract visible card metadata without relying on hashed CSS class names."""
+        """Extract visible legacy HTML metadata without relying on hashed CSS classes."""
         card = anchor
         title_node = card.select_one("img[alt]")
         title = str(title_node.get("alt") or "").strip() if title_node else ""
@@ -146,6 +162,7 @@ class KadoKadoScraper(BaseScraper):
         return title, author, summary, raw_tags, rating, is_complete
 
     def parse_results(self, html: str, keyword: str) -> list[ScrapedFanfic]:
+        """Keep legacy HTML parsing strict if the parser is used in isolated tests."""
         soup = BeautifulSoup(html, "html.parser")
         results: list[ScrapedFanfic] = []
         seen_urls: set[str] = set()
@@ -154,14 +171,13 @@ class KadoKadoScraper(BaseScraper):
             if url in seen_urls or not self._is_verified_book_url(url):
                 continue
             title, author, summary, visible_tags, rating, is_complete = self._extract_card_fields(anchor)
-            if not title:
+            if not title or not self._matches_relevance(keyword, title, summary, *visible_tags):
                 continue
             cover_node = anchor.select_one("img[src]")
             cover_url = str(cover_node.get("src") or "") if cover_node else ""
             parsed_cover = urlparse(cover_url)
             if parsed_cover.netloc not in {"img.kadokado.com.tw", "www.kadokado.com.tw"}:
                 cover_url = ""
-            tags = ["KadoKado 公開索引", *visible_tags, keyword]
             results.append(
                 ScrapedFanfic(
                     id=f"kadokado:{url}",
@@ -169,7 +185,7 @@ class KadoKadoScraper(BaseScraper):
                     author=author[:160] or "未知作者",
                     platform="KadoKado 角角者",
                     url=url,
-                    tags=", ".join(dict.fromkeys(tags)),
+                    tags=", ".join(dict.fromkeys(visible_tags)),
                     summary=summary[:800],
                     coverUrl=cover_url or None,
                     isComplete=is_complete,
@@ -183,7 +199,7 @@ class KadoKadoScraper(BaseScraper):
         return results
 
     def parse_api_results(self, payload: dict[str, object], keyword: str) -> list[ScrapedFanfic]:
-        """Map only verified public API metadata to the shared result model."""
+        """Map only relevant public API metadata to the shared result model."""
         results: list[ScrapedFanfic] = []
         seen_urls: set[str] = set()
         raw_results = payload.get("data")
@@ -206,14 +222,17 @@ class KadoKadoScraper(BaseScraper):
             authors = raw_item.get("authorsDisplayNames")
             author_names = [str(name).strip() for name in authors if str(name).strip()] if isinstance(authors, list) else []
             author = ", ".join(author_names) or str(raw_item.get("ownerDisplayName") or "未知作者").strip()
-            summary = str(raw_item.get("logline") or raw_item.get("oneLineIntro") or "").strip()
+            logline = str(raw_item.get("logline") or "").strip()
+            one_line_intro = str(raw_item.get("oneLineIntro") or "").strip()
+            summary = logline or one_line_intro
 
-            raw_tags = raw_item.get("tags")
-            genre_tags = raw_item.get("genreDisplayNames")
-            tags = ["KadoKado 公開 API", keyword]
-            for source_tags in (raw_tags, genre_tags):
+            tags: list[str] = []
+            for source_tags in (raw_item.get("tags"), raw_item.get("genreDisplayNames")):
                 if isinstance(source_tags, list):
                     tags.extend(str(tag).strip() for tag in source_tags if str(tag).strip())
+            tags = list(dict.fromkeys(tags))
+            if not self._matches_relevance(keyword, title, logline, one_line_intro, *tags):
+                continue
 
             cover_url = None
             raw_covers = raw_item.get("coverUrls")
@@ -236,7 +255,7 @@ class KadoKadoScraper(BaseScraper):
                     author=author[:160] or "未知作者",
                     platform="KadoKado 角角者",
                     url=url,
-                    tags=", ".join(dict.fromkeys(tags)),
+                    tags=", ".join(tags),
                     summary=summary[:800],
                     coverUrl=cover_url,
                     isComplete=is_complete,

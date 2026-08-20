@@ -499,4 +499,9 @@
 - [x] 驗證 POPO 是否提供無驗證要求的官方公開搜尋入口；不採用 Cookie 預熱、指紋偽裝或驗證規避
 - [x] 僅在公開端點可用時更新 KadoKado／POPO Adapter，否則維持精確 blocked 狀態與來源級 clean skip
 - [x] 補足公開端點、blocked 降級與多來源隔離回歸測試，並執行「義忍」及一般關鍵字端對端驗證；104 pytest、91 Vitest、production build、cargo check 與 Unix-socket 實測通過
-- [ ] 將 KadoKado 公開 JSON API 修正升版、保存檢查點並發布新的跨平台桌面更新
+- [x] 將 KadoKado 公開 JSON API 修正升版、保存檢查點並發布新的跨平台桌面更新；v1.2.3 GitHub Actions 已成功完成 Apple Silicon、Intel macOS 與 Windows 簽名資產，並發布 latest.json
+- [x] 移除 KadoKado 將使用者查詢詞注入作品標籤的行為，僅保留公開 API 回傳的真實 tags 與 genreDisplayNames
+- [x] 對 KadoKado 公開 API 結果加入標題、簡介與真實標籤的嚴格關鍵字／CP 相關性過濾，捨棄無關推薦作品
+- [x] 確認 POPO 在新安裝與重置偏好下維持預設關閉，並以清楚的未啟用狀態避免加入來源等待
+- [x] 補足「義忍」、「五條悟」與一般關鍵字的 KadoKado 品質回歸、POPO 預設狀態與多來源隔離驗證；105 pytest、91 Vitest、production build、cargo check 與 Unix-socket 實測通過
+- [ ] 將搜尋品質修正升版、保存檢查點並發布新的跨平台桌面更新

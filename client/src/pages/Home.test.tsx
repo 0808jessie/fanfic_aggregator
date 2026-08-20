@@ -17,7 +17,7 @@ const mockState = vi.hoisted(() => ({
 }));
 
 vi.mock("sonner", () => ({
-  toast: { error: vi.fn() },
+  toast: { error: vi.fn(), success: vi.fn() },
 }));
 
 vi.mock("@/lib/trpc", async () => {
@@ -427,6 +427,11 @@ describe("Home pagination interactions", () => {
     expect(penanaCheckbox.getAttribute("aria-checked")).toBe("true");
     expect(cxcCheckbox.getAttribute("aria-checked")).toBe("true");
     expect(bahamutCheckbox.getAttribute("aria-checked")).toBe("true");
+    expect(popoCheckbox.getAttribute("aria-checked")).toBe("false");
+    expect(kadokadoCheckbox.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(popoCheckbox);
+    expect(popoCheckbox.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "清除本次條件" }));
     expect(popoCheckbox.getAttribute("aria-checked")).toBe("false");
     expect(kadokadoCheckbox.getAttribute("aria-checked")).toBe("false");
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "花" } });
