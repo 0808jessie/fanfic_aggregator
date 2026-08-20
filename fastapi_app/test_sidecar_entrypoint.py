@@ -7,11 +7,13 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import entrypoint
 
 
-def test_entrypoint_uses_loopback_host_and_port_8000():
-    """The desktop sidecar must only bind to the local loopback interface."""
+def test_entrypoint_uses_loopback_host_and_default_port_8000():
+    """The desktop sidecar must use loopback and retain 8000 as its desktop default."""
     assert entrypoint.app is not None
-    assert "127.0.0.1" in open(entrypoint.__file__, encoding="utf-8").read()
-    assert "port=8000" in open(entrypoint.__file__, encoding="utf-8").read()
+    source = open(entrypoint.__file__, encoding="utf-8").read()
+    assert "127.0.0.1" in source
+    assert 'os.environ.get("FANFIC_SIDECAR_PORT", "8000")' in source
+    assert "port=port" in source
 
 
 def test_onefile_launcher_watchdog_runs_as_daemon_thread():

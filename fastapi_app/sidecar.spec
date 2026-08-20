@@ -13,8 +13,13 @@ from PyInstaller.utils.hooks import collect_all
 
 PROJECT_ROOT = Path(SPECPATH).parent
 FASTAPI_ROOT = PROJECT_ROOT / "fastapi_app"
+CERTIFI_BUNDLE = Path(certifi.where()).resolve()
+if not CERTIFI_BUNDLE.is_file():
+    raise RuntimeError(f"certifi CA bundle is unavailable while building the sidecar: {CERTIFI_BUNDLE}")
 curl_datas, curl_binaries, curl_hiddenimports = collect_all("curl_cffi")
-datas = list(curl_datas) + [(certifi.where(), "certifi")]
+# The target folder must stay exactly ``certifi``: tls.py resolves
+# ``sys._MEIPASS/certifi/cacert.pem`` in the onefile desktop runtime.
+datas = list(curl_datas) + [(str(CERTIFI_BUNDLE), "certifi")]
 binaries = list(curl_binaries)
 hiddenimports = list(curl_hiddenimports) + ["certifi"]
 

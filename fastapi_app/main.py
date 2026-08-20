@@ -11,6 +11,11 @@ from sqlalchemy.orm import Session
 
 from config import settings
 from tls import configure_tls_certificates
+
+# Set every CA environment variable before importing sidecar adapters. This
+# guarantees curl_cffi and requests inherit the valid onefile extraction path.
+configure_tls_certificates()
+
 from database import Fanfic, SessionLocal
 from models import CustomCpMapping, ReaderChapter, ReaderDocument, ReaderRequest, ScrapedFanfic, SearchQuery, SearchResponse
 from constants.cp_tags import CP_CACHE_ALIASES, CP_TAG_MAP, build_custom_cp_map
@@ -18,9 +23,7 @@ from relevance import rank_results
 from reader import ReaderRequestError, ReaderUnavailableError, read_public_work
 from scrapers.index import SCRAPERS, parallel_search_platforms
 
-configure_tls_certificates()
-
-app = FastAPI(title="Fanfic Atlas Search API", version="1.2.9")
+app = FastAPI(title="Fanfic Atlas Search API", version="1.2.10")
 app.add_middleware(
     CORSMiddleware,
     # The packaged desktop WebView is served from tauri://localhost, while the
@@ -218,22 +221,22 @@ def get_cached_results(db: Session, keyword: str, platforms: list[str], ignore_t
 
 @app.get("/fastapi-status")
 def fastapi_status() -> dict[str, str]:
-    return {"status": "ok", "service": "fastapi-search", "version": "1.2.9"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.2.10"}
 
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "fastapi-search", "version": "1.2.9"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.2.10"}
 
 
 @app.api_route("/api/health", methods=["GET", "HEAD"])
 def api_health_check():
-    return {"status": "ok", "service": "fastapi-search", "version": "1.2.9"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.2.10"}
 
 
 @app.get("/")
 def read_root() -> dict[str, str]:
-    return {"status": "ok", "service":"fastapi-search", "version": "1.2.9"}
+    return {"status": "ok", "service":"fastapi-search", "version": "1.2.10"}
 
 
 @app.post("/reader", response_model=ReaderDocument)

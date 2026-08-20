@@ -130,7 +130,7 @@ const PLATFORMS = [
   { id: "kadokado", label: "KadoKado 角角者", detail: "KADOKADO API · 手動啟用", tone: "amber" },
 ] as const;
 
-const FALLBACK_DESKTOP_VERSION = "1.2.9";
+const FALLBACK_DESKTOP_VERSION = "1.2.10";
 const UPDATER_MANIFEST_URL = "https://github.com/0808jessie/fanfic_aggregator/releases/latest/download/latest.json";
 const READER_SESSION_PROGRESS_PREFIX = "fanfic-atlas-reader-progress:";
 
