@@ -509,4 +509,4 @@
 - [x] 將來源健康狀態收納為結果列旁的連線膠囊，透過 Popover 顯示各來源細節與既有單一來源重試
 - [x] 在主搜尋輸入框依 CP 詞典即時顯示跨語言提示晶片，提供一鍵擴充查詢而不改變既有搜尋請求契約
 - [x] 補足卡片等高、來源狀態 Popover、CP 提示互動的前端回歸與響應式視覺驗證；91 Vitest、105 pytest、production build、cargo check 與桌面／行動視覺驗證通過
-- [ ] 將搜尋介面精緻化升版、保存檢查點並發布新的跨平台桌面更新
+- [x] 將搜尋介面精緻化升版、保存檢查點並發布新的跨平台桌面更新；v1.2.5 GitHub Actions 已成功完成 Apple Silicon、Intel macOS 與 Windows 簽名資產，並發布 latest.json
