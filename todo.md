@@ -545,10 +545,18 @@
 - [x] 補足分頁膠囊、平台色系與排印規範的前端回歸，完成桌面／手機本機視覺驗證；92 Vitest、production build、1280px／375px 檢視通過，不推送 GitHub Release
 - [x] 彙整第一階段本機 UI 打磨與導覽字級調整，將前端、FastAPI 與 Tauri 版本一致升至 v1.2.7
 - [x] 執行 v1.2.7 全量 Vitest、FastAPI pytest、production build 與 cargo check，確認第一階段可發布；92 Vitest、105 pytest、production build 與 cargo check 通過
-- [ ] 將 v1.2.7 提交推送至 GitHub main、建立標籤並確認 GitHub Actions 跨平台 Release 建置啟動
-- [ ] 定義閱讀器的可信 URL、純淨內文、章節與讀取狀態資料契約，維持來源級 timeout 與既有公開請求安全邊界
-- [ ] 建立本機沉浸式 Reader View 骨架，提供返回、字級、行距、字型、四種主題與橫排／直排控制
-- [ ] 從搜尋結果與藏書閣加入作品閱讀入口，完成單篇內文抓取、清理、分段渲染與可理解的失敗降級
-- [ ] 將閱讀位置百分比同步至既有藏書閣進度資料，保留未收藏作品的暫存閱讀狀態
-- [ ] 補足閱讀器入口、內容解析、主題／排版偏好與進度基礎回歸及跨尺寸視覺驗證；Phase 2 僅留在本機，不推送 GitHub Release
-- [ ] 後續實作藏書閣多選 TXT／EPUB 打包匯出，包含純文字、封面、Metadata 與章節目錄
+- [x] 將 v1.2.7 提交推送至 GitHub main、建立標籤並確認 GitHub Actions 跨平台 Release 建置與發布完成；commit ee4ad31、tag v1.2.7、Actions run 32342129738 成功，Release 已含 Apple Silicon／Intel macOS、Windows 簽名資產及 latest.json
+- [x] 定義閱讀器的可信 URL、純淨內文、章節與讀取狀態資料契約，維持 10 秒受限公開請求與既有無 Cookie／無驗證繞過安全邊界
+- [x] 建立本機沉浸式 Reader View 骨架，提供返回、字級、行距、黑體／明體／宋體、四種主題與橫排／直排控制
+- [x] 從搜尋結果與藏書閣加入作品閱讀入口，完成單篇內文抓取、清理、分段渲染與可理解的原始頁面降級
+- [x] 將閱讀位置百分比同步至既有藏書閣進度資料，並為未收藏作品保留僅限工作階段的暫存閱讀位置
+- [x] 補足閱讀器入口、內容解析、主題／排版偏好與進度基礎回歸及本機視覺檢視；95 Vitest、108 pytest、production build、cargo check 與 UI 機械檢測通過，Phase 2 僅留在本機，不推送 GitHub Release
+- [x] 實作藏書閣多選 TXT／EPUB 打包匯出：以受限 Reader 公開正文合併為 UTF-8 TXT 或 EPUB 3，包含自生成 SVG 封面、Metadata、原始來源歸屬、目錄與章節；不可讀來源會略過並提示。98 Vitest、111 pytest、production build、cargo check 與 UI 機械檢測通過，僅在本機，不推送 GitHub Release
+- [x] 修復 PyInstaller Sidecar 對 certifi CA bundle 的資料檔收集與啟動時 SSL_CERT_FILE／REQUESTS_CA_BUNDLE 初始化
+- [x] 修復 AO3 爬蟲 requests 匯入，並新增防止未定義請求模組的回歸測試
+- [x] 對齊 FastAPI Reader 路由與前端／Tauri Sidecar 呼叫路徑，消除桌面端 /reader 404
+- [x] 驗證 PyInstaller Sidecar 產物含 certifi/cacert.pem，並以受控本機請求驗證 /search 與 /reader 根路徑／API 別名；「義忍」AO3 已回傳可預期的來源級 HTTP 403 降級而非 TLS 或 requests 例外，修復僅留在本機，不推送 GitHub Release
+- [x] 將 Sidecar 修復、閱讀器與 TXT／EPUB 匯出升為 v1.2.8，執行完整發布前回歸並保存可發布快照；98 Vitest、111 pytest、production build 與 cargo check 通過
+- [ ] 提交、推送新版本至 GitHub main、建立 Release tag，確認 macOS 與 Windows 簽名資產及 latest.json 發布成功
+- [ ] 下載並驗證至少一個正式 Release 產物的安裝包結構與 Sidecar certifi bundle，確認桌面搜尋、Reader API、TXT／EPUB 匯出流程正常
+- [ ] 驗證作品卡與閱讀器的外部來源連結可由桌面原生外開；記錄來源平台因公開驗證或封鎖導致的正常降級

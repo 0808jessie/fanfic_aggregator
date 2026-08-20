@@ -63,7 +63,7 @@ jobs:
       - name: Build Python Sidecar with PyInstaller
         shell: bash
         run: |
-          pyinstaller --noconfirm --clean --onefile --name "api-server" --paths "fastapi_app" --collect-all curl_cffi fastapi_app/entrypoint.py
+          pyinstaller --noconfirm --clean fastapi_app/sidecar.spec
           mkdir -p src-tauri/binaries
           if [ "${{ runner.os }}" == "Windows" ]; then
             cp dist/api-server.exe src-tauri/binaries/${{ matrix.binary_name }}

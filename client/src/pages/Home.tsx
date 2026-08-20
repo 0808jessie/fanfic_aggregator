@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import React from "react";
 import {
   ArrowUp,
@@ -32,6 +32,7 @@ import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import {
   isTauriDesktopRuntime,
+  postSidecarReader,
   postSidecarSearch,
   waitForSidecarReady,
 } from "@/lib/desktopApi";
@@ -72,6 +73,7 @@ import { Progress } from "@/components/ui/progress";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { BlueprintCover } from "@/components/BlueprintCover";
 import { BookshelfView } from "@/components/BookshelfView";
+import { ReaderView, type ReaderDocument } from "@/components/ReaderView";
 import { BlacklistGroupManager } from "@/components/ExcludeKeywordEditor";
 import { AgeConfirmationDialog, RestrictedSummary } from "@/components/ContentSafety";
 import { BookmarkEditorDialog, CpMappingLibraryPage } from "@/components/PersonalLibrary";
@@ -124,8 +126,28 @@ const PLATFORMS = [
   { id: "kadokado", label: "KadoKado 角角者", detail: "KADOKADO API · 手動啟用", tone: "amber" },
 ] as const;
 
-const FALLBACK_DESKTOP_VERSION = "1.2.7";
+const FALLBACK_DESKTOP_VERSION = "1.2.8";
 const UPDATER_MANIFEST_URL = "https://github.com/0808jessie/fanfic_aggregator/releases/latest/download/latest.json";
+const READER_SESSION_PROGRESS_PREFIX = "fanfic-atlas-reader-progress:";
+
+function readSessionReaderProgress(url: string): { percent: number; chapter: string } {
+  try {
+    const raw = window.sessionStorage.getItem(`${READER_SESSION_PROGRESS_PREFIX}${url}`);
+    const value = raw ? JSON.parse(raw) as { percent?: unknown; chapter?: unknown } : null;
+    const percent = typeof value?.percent === "number" && Number.isFinite(value.percent) ? Math.max(0, Math.min(100, Math.round(value.percent))) : 0;
+    return { percent, chapter: typeof value?.chapter === "string" ? value.chapter.slice(0, 80) : "" };
+  } catch {
+    return { percent: 0, chapter: "" };
+  }
+}
+
+function persistSessionReaderProgress(url: string, progress: { percent: number; chapter: string }) {
+  try {
+    window.sessionStorage.setItem(`${READER_SESSION_PROGRESS_PREFIX}${url}`, JSON.stringify({ percent: Math.max(0, Math.min(100, Math.round(progress.percent))), chapter: progress.chapter.slice(0, 80) }));
+  } catch {
+    // Private browsing or storage quotas should never interrupt reading.
+  }
+}
 
 type DesktopUpdate = {
   version: string;
@@ -252,6 +274,7 @@ export default function Home() {
   const [activeView, setActiveView] = useState<"search" | "bookmarks" | "cp-library">("search");
   const [bookmarks, setBookmarks] = useState<BookmarkRecord[]>([]);
   const [bookmarkTarget, setBookmarkTarget] = useState<SearchResult | null>(null);
+  const [readerTarget, setReaderTarget] = useState<SearchResult | null>(null);
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
   const [cpMappings, setCpMappings] = useState<CpMapping[]>([]);
   const [customCpMappings, setCustomCpMappings] = useState<CpMapping[]>([]);
@@ -380,9 +403,32 @@ export default function Home() {
     onSuccess: (payload, request) => handleSearchSuccess(payload, request as { data?: Record<string, unknown> }),
     onError: (error, request) => handleSearchError(error, request as { data?: Record<string, unknown> }),
   });
+  const readerMutation = trpc.fastapi.proxy.useMutation();
 
   const desktopRuntime = isTauriDesktopRuntime();
   const isSearchPending = searchMutation.isPending || desktopSearchPending;
+
+  const loadReaderDocument = useCallback(async (url: string): Promise<ReaderDocument> => {
+    if (desktopRuntime) {
+      await waitForSidecarReady();
+      return postSidecarReader<ReaderDocument>(url);
+    }
+    return readerMutation.mutateAsync({ path: "/reader", method: "POST", data: { url } }) as Promise<ReaderDocument>;
+  }, [desktopRuntime, readerMutation]);
+
+  const openReaderSource = useCallback(async (url: string) => {
+    if (!desktopRuntime) {
+      window.open(url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    try {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      await openUrl(url);
+    } catch (error) {
+      console.error("[Reader] Failed to open original source:", { url, error });
+      showInfoToast("無法以系統瀏覽器開啟原始頁面，請稍後再試。");
+    }
+  }, [desktopRuntime]);
 
   const requestSearch = (request: { path: string; method: "POST"; data: Record<string, unknown> }, requestId: number, cacheKey: string | null) => {
     if (!desktopRuntime) {
@@ -1068,7 +1114,7 @@ export default function Home() {
             <div aria-label="進階篩選面板" className="mt-4 space-y-4 border-t border-[#10151b]/10 pt-4">
               <div className="min-w-0 rounded-xl border border-[#10151b]/10 bg-white/45 p-3">
                 <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300"><Filter className="h-3.5 w-3.5" />小說平台</div>
-                <div className="flex flex-wrap gap-2">{PLATFORMS.map((platform) => { const active = selectedPlatforms.includes(platform.id); return <label key={platform.id} className={`group inline-flex min-w-0 cursor-pointer items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold transition-colors md:text-sm ${active ? "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300" : "border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"}`}><Checkbox checked={active} onCheckedChange={() => togglePlatform(platform.id)} aria-label={`搜尋 ${platform.label}`} className="shrink-0 rounded border-current data-[state=checked]:border-indigo-600 data-[state=checked]:bg-indigo-600 data-[state=checked]:text-white" /><span className="truncate" title={platform.label}>{platform.label}</span></label>; })}</div>
+                <div className="flex flex-wrap gap-2">{PLATFORMS.map((platform) => { const active = selectedPlatforms.includes(platform.id); return <label key={platform.id} className={`group inline-flex min-w-0 cursor-pointer items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold transition-colors md:text-sm ${active ? "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300" : "border-slate-200 bg-slate-100 text-[#475569] dark:border-slate-700 dark:bg-slate-800 dark:text-[#cbd5e1]"}`}><Checkbox checked={active} onCheckedChange={() => togglePlatform(platform.id)} aria-label={`搜尋 ${platform.label}`} className="shrink-0 rounded border-current data-[state=checked]:border-indigo-600 data-[state=checked]:bg-indigo-600 data-[state=checked]:text-white" /><span className="truncate" title={platform.label}>{platform.label}</span></label>; })}</div>
               </div>
               <section aria-label="顯示與隱私偏好" className="grid grid-cols-1 gap-4 rounded-xl border border-[color:var(--atlas-line)] bg-white/45 p-3 md:grid-cols-2">
                 <label className="flex items-start gap-3 rounded-lg border border-[#b7c9ef] bg-[#f4f7ff] px-3 py-2.5">
@@ -1240,6 +1286,8 @@ export default function Home() {
               onBatchRemove={batchRemoveBookmarks}
               onBatchUpdate={batchUpdateBookmarks}
               onProgressChange={updateBookmarkProgress}
+              onRead={(bookmark) => setReaderTarget(bookmark.result)}
+              loadReaderDocument={loadReaderDocument}
               onExportAll={exportAllPersonalData}
               onImportAll={importAllPersonalData}
               desktopVersion={desktopRuntime ? desktopVersion : undefined}
@@ -1347,9 +1395,7 @@ export default function Home() {
                           </div>
                           {resultViewMode === "cards" && <RestrictedSummary summary={result.summary || "No summary available."} shouldBlur={isRestricted && contentSafetySettings.blurRestrictedSummaries} />}
                           </div>
-                          <a href={result.url} target="_blank" rel="noreferrer" onClick={(event) => void openExternalUrl(event, result.url)} className={`${resultViewMode === "list" ? "md:justify-self-end" : "mt-6"} inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--atlas-indigo)] hover:text-[#4338ca]`}>
-                            前往原始作品 <ArrowUpRight className="h-3.5 w-3.5" />
-                          </a>
+                          <div className={`${resultViewMode === "list" ? "md:justify-self-end" : "mt-6"} flex flex-wrap items-center gap-3`}><Button type="button" variant="outline" onClick={() => setReaderTarget(result)} aria-label={`閱讀 ${result.title}`} className="h-9 rounded-full border-[color:var(--atlas-indigo)]/20 bg-[color:var(--atlas-indigo-soft)] px-3 text-xs font-semibold text-[color:var(--atlas-indigo)] hover:bg-[color:var(--atlas-indigo)] hover:text-white"><BookOpen className="mr-1.5 h-3.5 w-3.5" />閱讀</Button><a href={result.url} target="_blank" rel="noreferrer" onClick={(event) => void openExternalUrl(event, result.url)} className="inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--atlas-indigo)] hover:text-[#4338ca]">前往原始作品 <ArrowUpRight className="h-3.5 w-3.5" /></a></div>
                         </div>
                       </CardContent>
                       {isMaskedByBlacklist && <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 border border-[#e27d9d] bg-[#fff7f9]/75 p-6 text-center backdrop-blur-sm"><div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#9b4358]">⚠️ 此作品命中避雷設定</div><div className="font-mono text-[9px] font-bold tracking-[0.08em] text-[#8b3e59]">{blacklistMatches.map((item) => item.group.name).join(" · ")}</div><div className="flex flex-wrap justify-center gap-1.5">{blacklistMatches.flatMap((item) => item.keywords.map((keyword) => <span key={`${item.group.id}-${keyword}`} className="border border-[#e8a7bf] bg-[#fff0f4] px-2 py-1 font-mono text-[9px] font-bold text-[#8b3e59]">{keyword}</span>))}</div><Button type="button" onClick={() => setRevealedFilteredUrls((current) => { const next = new Set(current); next.add(result.url); return next; })} className="h-9 rounded-none bg-[#8b3e59] font-mono text-[9px] font-bold uppercase tracking-[0.12em]">⚠️ 暫時查看這一篇</Button><span className="font-mono text-[8px] font-medium tracking-[0.08em] text-[#75838b]">不會修改全局避雷設定</span></div>}
@@ -1394,6 +1440,7 @@ export default function Home() {
       </main>
 
       {showScrollToTop && <Button type="button" onClick={scrollToTop} aria-label="回到頂部搜尋列" className="fixed bottom-6 right-5 z-40 h-12 rounded-full bg-[color:var(--atlas-indigo)] px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(79,70,229,0.28)] transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:bg-[#4338ca] focus-visible:ring-2 focus-visible:ring-[color:var(--atlas-indigo)] focus-visible:ring-offset-2 sm:bottom-8 sm:right-8"><ArrowUp className="mr-1.5 h-4 w-4" />回頂部</Button>}
+      {readerTarget && <ReaderView work={readerTarget} initialProgress={bookmarks.find((bookmark) => bookmark.url === readerTarget.url)?.progress || readSessionReaderProgress(readerTarget.url)} loadDocument={loadReaderDocument} onClose={() => setReaderTarget(null)} onOpenSource={(url) => void openReaderSource(url)} onProgress={({ percent, chapter }) => { const bookmark = bookmarks.find((item) => item.url === readerTarget.url); if (bookmark) updateBookmarkProgress(bookmark.url, { ...bookmark.progress, status: percent >= 100 ? "finished" : percent > 0 ? "reading" : "unread", percent, chapter }); else persistSessionReaderProgress(readerTarget.url, { percent, chapter }); }} />}
       <footer className="relative z-10 border-t border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)]"><div className="mx-auto flex max-w-[1440px] flex-col gap-2 px-5 py-6 text-xs text-[color:var(--atlas-muted)] sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-12"><span>Fanfic Atlas · 為你的閱讀清單留一個安靜的位置</span><span>{PLATFORMS.length} 個公開來源 · 本機保存個人資料</span></div></footer>
     </div>
   );

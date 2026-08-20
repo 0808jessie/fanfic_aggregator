@@ -10,13 +10,17 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from config import settings
+from tls import configure_tls_certificates
 from database import Fanfic, SessionLocal
-from models import CustomCpMapping, ScrapedFanfic, SearchQuery, SearchResponse
+from models import CustomCpMapping, ReaderChapter, ReaderDocument, ReaderRequest, ScrapedFanfic, SearchQuery, SearchResponse
 from constants.cp_tags import CP_CACHE_ALIASES, CP_TAG_MAP, build_custom_cp_map
 from relevance import rank_results
+from reader import ReaderRequestError, ReaderUnavailableError, read_public_work
 from scrapers.index import SCRAPERS, parallel_search_platforms
 
-app = FastAPI(title="Fanfic Atlas Search API", version="1.2.7")
+configure_tls_certificates()
+
+app = FastAPI(title="Fanfic Atlas Search API", version="1.2.8")
 app.add_middleware(
     CORSMiddleware,
     # The packaged desktop WebView is served from tauri://localhost, while the
@@ -214,22 +218,43 @@ def get_cached_results(db: Session, keyword: str, platforms: list[str], ignore_t
 
 @app.get("/fastapi-status")
 def fastapi_status() -> dict[str, str]:
-    return {"status": "ok", "service": "fastapi-search", "version": "1.2.7"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.2.8"}
 
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "fastapi-search", "version": "1.2.7"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.2.8"}
 
 
 @app.api_route("/api/health", methods=["GET", "HEAD"])
 def api_health_check():
-    return {"status": "ok", "service": "fastapi-search", "version": "1.2.7"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.2.8"}
 
 
 @app.get("/")
 def read_root() -> dict[str, str]:
-    return {"status": "ok", "service":"fastapi-search", "version": "1.2.7"}
+    return {"status": "ok", "service":"fastapi-search", "version": "1.2.8"}
+
+
+@app.post("/reader", response_model=ReaderDocument)
+@app.post("/api/reader", response_model=ReaderDocument, include_in_schema=False)
+def read_work_document(request: ReaderRequest) -> ReaderDocument:
+    """Return a bounded, non-persistent clean reading payload for one public work URL."""
+    try:
+        document = read_public_work(request.url)
+    except ReaderRequestError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except ReaderUnavailableError as error:
+        print(f"[Reader] Public extraction unavailable url={request.url!r}: {error}")
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    return ReaderDocument(
+        url=document.url,
+        title=document.title,
+        author=document.author,
+        source=document.source,
+        coverUrl=document.cover_url,
+        chapters=[ReaderChapter(id="chapter-1", title=document.chapter_title, paragraphs=document.paragraphs)],
+    )
 
 
 @app.get("/platforms")

@@ -8,7 +8,7 @@ from time import monotonic
 from typing import Any, Optional
 
 from bs4 import BeautifulSoup
-from curl_cffi import requests as curl_requests
+from curl_cffi import requests
 
 from scrapers.base_scraper import BaseScraper
 from models import ScrapedFanfic
@@ -83,7 +83,7 @@ class AO3Scraper(BaseScraper):
     def _get_http_session(self):
         """Reuse one curl_cffi session so AO3 cookies and TLS connections persist."""
         if self._http_session is None:
-            session = curl_requests.Session(impersonate="chrome120")
+            session = requests.Session(impersonate="chrome120")
             session.headers.update(self.static_headers)
             session.cookies.update(self.static_cookies)
             self._http_session = session

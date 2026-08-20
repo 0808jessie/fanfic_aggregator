@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import React from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BookshelfView } from "./BookshelfView";
 import type { BookmarkRecord } from "@/lib/personalLibrary";
@@ -48,6 +48,32 @@ describe("BookshelfView interaction polish", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /閱讀狀態：未讀/ }));
     expect(onProgressChange).toHaveBeenCalledWith(bookmark.url, { status: "reading", percent: 1, chapter: "" });
+  });
+
+  it("opens a saved work in the in-app reader through the dedicated reading action", () => {
+    const onRead = vi.fn();
+    render(<BookshelfView bookmarks={[bookmark]} onEdit={vi.fn()} onRemove={vi.fn()} onImport={vi.fn()} onBatchRemove={vi.fn()} onBatchUpdate={vi.fn()} onProgressChange={vi.fn()} onRead={onRead} onExportAll={vi.fn()} onImportAll={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "閱讀 批次操作測試作品" }));
+    expect(onRead).toHaveBeenCalledWith(bookmark);
+  });
+
+  it("exports selected readable works as a Reader-backed UTF-8 TXT anthology", async () => {
+    const loadReaderDocument = vi.fn().mockResolvedValue({
+      url: bookmark.url, title: bookmark.result.title, author: bookmark.result.author, source: "AO3", coverUrl: null,
+      chapters: [{ id: "chapter-1", title: "第一章", paragraphs: ["可公開匯出的正文。"] }],
+    });
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:reader-export") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
+    render(<BookshelfView bookmarks={[bookmark]} onEdit={vi.fn()} onRemove={vi.fn()} onImport={vi.fn()} onBatchRemove={vi.fn()} onBatchUpdate={vi.fn()} onProgressChange={vi.fn()} loadReaderDocument={loadReaderDocument} onExportAll={vi.fn()} onImportAll={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "批次多選" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "選取 批次操作測試作品" }));
+    fireEvent.click(screen.getByRole("button", { name: "匯出 TXT" }));
+
+    await waitFor(() => expect(loadReaderDocument).toHaveBeenCalledWith(bookmark.url));
+    expect(screen.getByRole("status").textContent).toContain("已匯出 1 篇 UTF-8 TXT");
+    expect(URL.createObjectURL).toHaveBeenCalled();
   });
 
   it("switches the bookshelf between three-column cards and compact list view with a persisted preference", () => {

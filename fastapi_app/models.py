@@ -83,3 +83,26 @@ class SearchResponse(BaseModel):
     hasMore: bool = False
     platformStatuses: list[PlatformStatus] = Field(default_factory=list)
     fromCache: bool = False
+
+
+class ReaderRequest(BaseModel):
+    """A one-shot request for a verified public work page; no credentials are accepted."""
+
+    url: str = Field(min_length=12, max_length=2_048)
+
+
+class ReaderChapter(BaseModel):
+    id: str
+    title: str
+    paragraphs: list[str] = Field(default_factory=list)
+
+
+class ReaderDocument(BaseModel):
+    """In-memory reader payload for one source page, with explicit original attribution."""
+
+    url: str
+    title: str
+    author: str
+    source: str
+    coverUrl: Optional[str] = None
+    chapters: list[ReaderChapter] = Field(default_factory=list)

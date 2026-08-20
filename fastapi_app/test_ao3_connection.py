@@ -35,7 +35,7 @@ def test_ao3_session_uses_matching_chrome_120_fingerprint_and_headers():
             self.cookies = {}
 
     fake_session = FakeSession()
-    with patch("scrapers.ao3_scraper.curl_requests.Session", return_value=fake_session) as build_session:
+    with patch("scrapers.ao3_scraper.requests.Session", return_value=fake_session) as build_session:
         scraper = AO3Scraper()
         session = scraper._get_http_session()
 

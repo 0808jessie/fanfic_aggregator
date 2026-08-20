@@ -92,3 +92,27 @@ export async function postSidecarSearch<T>(
   if (!response.ok) throw new Error(`搜尋引擎回傳 HTTP ${response.status}`);
   return response.json() as Promise<T>;
 }
+
+export async function postSidecarReader<T>(
+  url: string,
+  configuredBase?: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  const response = await globalThis.fetch(createSidecarUrl("/reader", {}, configuredBase), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+    signal,
+  });
+  if (!response.ok) {
+    let detail = "";
+    try {
+      const payload = await response.json() as { detail?: unknown };
+      detail = typeof payload.detail === "string" ? payload.detail : "";
+    } catch {
+      // A non-JSON upstream response should preserve the status fallback below.
+    }
+    throw new Error(detail || `閱讀器回傳 HTTP ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}

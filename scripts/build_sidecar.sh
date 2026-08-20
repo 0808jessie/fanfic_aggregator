@@ -2,15 +2,12 @@
 set -e
 
 echo "=== Building FastAPI Sidecar with PyInstaller ==="
-python3 -c "import PyInstaller, curl_cffi, fastapi, uvicorn" || {
+python3 -c "import PyInstaller, certifi, curl_cffi, fastapi, uvicorn" || {
   echo "Missing packaging dependencies. Run: sudo pip3 install pyinstaller -r fastapi_app/requirements.txt" >&2
   exit 1
 }
 
-python3 -m PyInstaller --noconfirm --clean --onefile --name "api-server" \
-  --paths "fastapi_app" \
-  --collect-all curl_cffi \
-  fastapi_app/entrypoint.py
+python3 -m PyInstaller --noconfirm --clean fastapi_app/sidecar.spec
 
 mkdir -p src-tauri/binaries
 # 依據當前平台決定 target triple 命名
