@@ -586,4 +586,4 @@
 - [x] 推送 v1.2.9 至 GitHub main，驗證 Actions 成功產出 Apple Silicon、Intel macOS、Windows 簽名安裝資產與 latest.json；commit c91a0a7、tag v1.2.9、Actions run 32358781624 三個 job 均成功，公開 latest.json 已確認 version 1.2.9 與 darwin-aarch64／darwin-x86_64／windows-x86_64 OTA 平台資產。
 - [x] 修復 v1.2.10 Python Sidecar 的 certifi CA bundle 封裝與 PyInstaller `_MEIPASS` 執行期環境變數，避免桌面端 TLS CA 路徑失效；onefile 封存已確認 `certifi/cacert.pem`，以隔離埠啟動的新二進位 health 回傳成功
 - [x] 修復 AO3 Adapter 的 curl_cffi requests 匯入，補足可重現的回歸測試與 Sidecar 搜尋 smoke test；AO3 module requests.Session 回歸通過，Sidecar 成功啟動並可回應健康端點
-- [ ] 執行 v1.2.10 PyInstaller、完整測試與跨平台發布，驗證 GitHub Release 簽名資產及 latest.json 更新清單
+- [x] 執行 v1.2.10 PyInstaller、完整測試與跨平台發布，驗證 GitHub Release 簽名資產及 latest.json 更新清單；141 pytest、105 Vitest、production build、cargo check 與 onefile Sidecar health 均通過。Actions run 32362751462 三個 job 成功，公開 latest.json 為 1.2.10 並含 darwin-aarch64／darwin-x86_64／windows-x86_64 OTA 資產。
