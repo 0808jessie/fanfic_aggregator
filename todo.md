@@ -557,6 +557,30 @@
 - [x] 對齊 FastAPI Reader 路由與前端／Tauri Sidecar 呼叫路徑，消除桌面端 /reader 404
 - [x] 驗證 PyInstaller Sidecar 產物含 certifi/cacert.pem，並以受控本機請求驗證 /search 與 /reader 根路徑／API 別名；「義忍」AO3 已回傳可預期的來源級 HTTP 403 降級而非 TLS 或 requests 例外，修復僅留在本機，不推送 GitHub Release
 - [x] 將 Sidecar 修復、閱讀器與 TXT／EPUB 匯出升為 v1.2.8，執行完整發布前回歸並保存可發布快照；98 Vitest、111 pytest、production build 與 cargo check 通過
-- [ ] 提交、推送新版本至 GitHub main、建立 Release tag，確認 macOS 與 Windows 簽名資產及 latest.json 發布成功
-- [ ] 下載並驗證至少一個正式 Release 產物的安裝包結構與 Sidecar certifi bundle，確認桌面搜尋、Reader API、TXT／EPUB 匯出流程正常
-- [ ] 驗證作品卡與閱讀器的外部來源連結可由桌面原生外開；記錄來源平台因公開驗證或封鎖導致的正常降級
+- [x] 提交、推送 v1.2.8 至 GitHub main、建立 Release tag，確認 macOS Apple Silicon／Intel 與 Windows 簽名資產及 latest.json 發布成功；commit 27f824f、Actions run 32346267459 三個 job 均成功
+- [x] 下載並驗證 v1.2.8 正式 Release 產物：macOS Apple Silicon `.app.tar.gz` 含 Tauri 主程式、Sidecar 與嵌入式 `certifi/cacert.pem`；Windows x64 MSI 與 `.sig` 可下載且 Installer metadata 正確。v1.2.8 Sidecar 健康、九來源「義忍」搜尋、Reader 根路徑／API 別名、TXT／EPUB 與桌面開啟流程回歸正常
+- [x] 驗證作品卡與閱讀器的外部來源連結可由桌面原生 opener 外開（16 項 updater／Reader／匯出／外連回歸通過）；從「義忍」實際結果抽樣的 Pixiv 連結可直接取得 HTTP 200。部分同人誌中心與 Penana 原始頁回傳站方 HTTP 403，屬來源公開防護，程式維持原始連結外開與安全降級，不繞過保護
+- [x] 擴充 Reader 的 Pixiv Novel JSON、在水裡寫字首樓、AO3、Penana 與 CxC 公開正文選取器，保留來源與作者歸屬
+- [x] 在來源選取器未命中時加入不擷取驗證資料的可讀性文字降級與清楚失敗分類，避免可公開正文誤回 502
+- [x] 補足來源正文解析與 /reader 根路徑／API 別名回歸，並以 Pixiv「森林的中心」及在水裡寫字公開作品本機驗證；兩者均 HTTP 200 並回傳正文。101 Vitest、118 pytest、production build 與 cargo check 通過，修復僅留在本機，不推送 GitHub Release
+- [x] 統一 Reader 對 AO3、在水裡寫字、Penana、CxC 與 Pixiv 的 curl_cffi AsyncSession 公開請求、Chrome 120 profile、User-Agent／Accept-Language 與來源級安全降級，補強實際正文選取
+- [x] 建立章節資料契約、AO3／Pixiv／Penana 章節清單解析與指定章節讀取流程，保留單篇來源的安全降級
+- [x] 在 Reader View 加入章節目錄抽屜、目前章節、上一章／下一章切換及載入狀態
+- [x] 將 Reader 頂部控制列重整為 Apple Books 風格：即時字級值、行距膠囊、主題圓點、字型切換與直橫排控制
+- [x] 補足多平台正文、章節導航與控制列互動回歸，完成公開來源／1280px／375px 本機驗證；102 Vitest、118 pytest、production build、cargo check 通過。Pixiv／在水裡寫字正文與 Pixiv 下一章均 HTTP 200；AO3／Penana 若受站方驗證或暫時拒絕則安全回傳可理解的 502 降級。本輪僅在本機，不推送 GitHub Release
+- [x] 修復在水裡寫字主題的樓主連續回覆，依 UID／暱稱過濾簽名與他人回覆，將樓主段落按樓層整併為完整正文與可選章節
+- [x] 補齊 AO3、Penana、巴哈姆特、KadoKado、CxC 的公開章節目錄／指定章資料契約；無章節平台明示全一話
+- [x] 在 Reader 建立下一章背景預載、記憶體章節快取與點擊時的即時切換降級
+- [x] 建立 AppData／localStorage 閱讀歷史，於藏書閣加入最近閱讀入口與一鍵接續指定章／位置，並納入完整個人備份還原
+- [x] 補足長文、章節、預載、歷史與接續閱讀回歸，完成公開來源與 1280px／375px 本機驗證；105 Vitest、125 pytest、production build 與 cargo check 通過。在水裡寫字公開長文 Reader 回傳 HTTP 200 及正文；先前 Pixiv 系列測試網址已移除，正確以來源級 HTTP 404 降級。本輪僅在本機，不推送 GitHub Release
+- [x] 修復在水裡寫字 1 樓富文本的全量節點／br／段落抽取，移除任何正文數量或長度截斷並以尾段回歸 fixture 驗證完整保留；指定 waterfall.slashx.space 在 sandbox DNS 無法解析，已納入可信主機，實機可達時沿用同一解析流程
+- [x] 補強巴哈姆特公開 Reader 請求的來源標頭、合規年齡偏好與 `.article-content.main #article`／`.c-article__content`／`div.MSG-list8c` 正文選取，將 creationDetail 轉為 artwork canonical URL，避免公開頁誤判為 502
+- [x] 補強 Penana `.issue-content`／`.content_holder` 的完整段落與換行抽取，保留來源級安全降級
+- [x] 補足三來源正文、在水裡寫字尾段、根路徑／API 別名及公開作品端對端回歸；在水裡寫字尾段與 Penana換行由 24 項 Reader 單元測試覆蓋，指定 waterfall.slashx.space 因 sandbox DNS 無法解析而保留來源級降級；巴哈姆特 creationDetail／artwork 公開文章已由 `/reader` 與 `/api/reader` 實測回傳完整正文及上一篇／下一篇導覽。本輪僅在本機，不推送 GitHub Release
+- [x] Penana 故事首頁辨識章節目錄並自動載入第一個公開 issue，同時移除不可見節點與防盜浮水印文字；指定故事 195625 已由本機 Reader API 實測導向 issue 1，回應中的非 issue 目錄連結與浮水印計數皆為 0
+- [x] 修復在水裡寫字 waterfall.slashtw.space 文章的全文段落與 br 換行保留，確保指定尾段持續完整呈現；新版 SSR 單一 p／多 br 與指定尾段均有回歸測試，現時公開回應可正確保留 187 個 br 的自然換行，但來源返回內容本身未含指定尾段，Reader 不會虛構補足
+- [x] 補強 CxC 公開免費章節的 HTML／狀態資料正文擷取與來源級安全降級；匿名 API 已實測可回傳公開章節目錄與 content_hant，若正文採私用字元字型內容保護則明確降級，不解碼或繞過來源保護
+- [x] 建立 Reader 已讀章節本地快取，讓同一作品或章節的二次開啟優先以快取內容立即渲染，並補足回歸與端對端驗證；使用 sessionStorage 的 24 篇 LRU 快取，6 項 ReaderView 測試已驗證二次開啟不再呼叫來源請求
+- [x] 執行 v1.2.9 發布前完整 FastAPI pytest、Vitest、production build 與 cargo check，確認 Reader 清洗、快取及既有跨平台功能全部通過；136 pytest、105 Vitest、production build 與 cargo check 通過。pnpm 設定與大型 bundle 警示未阻擋建置。
+- [x] 將 package.json、FastAPI、Cargo.toml 與 tauri.conf.json 的桌面版本同步升至 v1.2.9，並建立發布提交與 Git tag
+- [ ] 推送 v1.2.9 至 GitHub main，驗證 Actions 成功產出 Apple Silicon、Intel macOS、Windows 簽名安裝資產與 latest.json

@@ -95,13 +95,14 @@ export async function postSidecarSearch<T>(
 
 export async function postSidecarReader<T>(
   url: string,
+  options: { chapterUrl?: string } = {},
   configuredBase?: string,
   signal?: AbortSignal,
 ): Promise<T> {
   const response = await globalThis.fetch(createSidecarUrl("/reader", {}, configuredBase), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, ...(options.chapterUrl ? { chapterUrl: options.chapterUrl } : {}) }),
     signal,
   });
   if (!response.ok) {

@@ -6,21 +6,22 @@ cookies, or verification material, and it only requests known public work hosts.
 
 from __future__ import annotations
 
+import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
 from bs4 import BeautifulSoup, Tag
 from curl_cffi import requests
 
 
-MAX_READER_PARAGRAPHS = 900
 READER_TIMEOUT_SECONDS = 10
 READER_HOSTS: dict[str, str] = {
     "archiveofourown.org": "AO3",
     "penana.com": "Penana",
     "slashtw.space": "在水裡寫字",
+    "waterfall.slashx.space": "在水裡寫字",
     "doujin.com.tw": "同人誌中心",
     "cxc.today": "CxC 創利市集",
     "pixiv.net": "Pixiv",
@@ -31,7 +32,41 @@ READER_HOSTS: dict[str, str] = {
 READER_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 }
+PIXIV_AJAX_HEADERS = {
+    **READER_HEADERS,
+    "Accept": "application/json, text/plain, */*",
+    "Referer": "https://www.pixiv.net/",
+}
+BAHAMUT_HEADERS = {
+    **READER_HEADERS,
+    "Referer": "https://home.gamer.com.tw/",
+    "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+}
+BAHAMUT_PUBLIC_COOKIES = {"over18": "1", "ckBH_adult": "1"}
+CXC_PUBLIC_API_BASE = "https://api.cxc.today"
+CXC_PUBLIC_HEADERS = {
+    "Accept": "application/json",
+    "device": "server",
+    "uuid": "56833f18-52ae-4f1f-a3fd-ee5699e03f79",
+    "lang": "zh",
+    "timezone": "Asia/Taipei",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+}
+SOURCE_CONTENT_SELECTORS: dict[str, tuple[str, ...]] = {
+    "AO3": ("#chapters .userstuff", "div.userstuff", "#chapters"),
+    "在水裡寫字": ("td[id^='postmessage_']", "div.pct .t_f", "div.t_f"),
+    "Penana": (".issue-content", ".content_holder", ".story-content"),
+    "CxC 創利市集": ("article .article-content", "article .content", "article [class*='content']"),
+    "巴哈姆特創作大廳": (".article-content.main #article", ".c-article__content", "div.MSG-list8c", ".article-content"),
+}
+PENANA_WATERMARK_PATTERN = re.compile(
+    r"\d*\s*please\s+respect\s+copyright\.\s*(?:[pＰ]\s*[eＥ]\s*[nＮ]\s*[aＡ]\s*[nＮ]\s*[aＡ])(?:[A-Za-z0-9]{0,24})?",
+    re.IGNORECASE,
+)
+PENANA_COPYRIGHT_PATTERN = re.compile(r"copyright\s+protection\s*\d*", re.IGNORECASE)
+CXC_WORK_PATH_PATTERN = re.compile(r"/@(?P<store>[^/]+)/work/(?P<work_id>\d+)(?:/reader/(?P<section_id>\d+))?/?$")
 
 
 class ReaderRequestError(ValueError):
@@ -51,6 +86,16 @@ class ExtractedReaderDocument:
     cover_url: str | None
     chapter_title: str
     paragraphs: list[str]
+    table_of_contents: list["ReaderChapterEntry"] = field(default_factory=list)
+    current_chapter_index: int = 0
+
+
+@dataclass(frozen=True)
+class ReaderChapterEntry:
+    id: str
+    title: str
+    url: str
+    index: int
 
 
 def _normalized_host(url: str) -> str:
@@ -68,17 +113,74 @@ def source_for_reader_url(url: str) -> str:
     raise ReaderRequestError("此來源尚未支援內建閱讀；請改由原始網站閱讀。")
 
 
+def _normalize_bahamut_url(url: str) -> str:
+    """Use Bahamut's public article route instead of its redirecting search route."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower().removeprefix("www.")
+    if host.endswith("gamer.com.tw") and parsed.path.endswith("/creationDetail.php"):
+        serial_number = parse_qs(parsed.query).get("sn", [""])[0]
+        if serial_number.isdecimal():
+            return urlunparse(("https", "home.gamer.com.tw", "/artwork.php", "", urlencode({"sn": serial_number}), parsed.fragment))
+    return url
+
+
 def _is_protection_page(html: str) -> bool:
     sample = html[:12_000].lower()
-    markers = ("cf-chl", "cloudflare", "captcha", "verify you are human", "安全驗證", "請完成驗證")
+    # Public sites frequently include harmless Cloudflare asset references in
+    # otherwise complete article HTML. Only flag explicit challenge indicators.
+    markers = ("cf-chl", "turnstile", "captcha", "verify you are human", "安全驗證", "請完成驗證")
     return any(marker in sample for marker in markers)
 
 
-def fetch_public_work_html(url: str) -> str:
+async def _public_get(url: str, headers: dict[str, str] | None = None, cookies: dict[str, str] | None = None):
+    """Perform one bounded, credential-free browser-profiled public request."""
+    async with requests.AsyncSession(impersonate="chrome120", headers=headers or READER_HEADERS) as session:
+        return await session.get(url, timeout=READER_TIMEOUT_SECONDS, cookies=cookies)
+
+
+async def _bahamut_public_get(url: str):
+    """Warm one public Bahamut session before fetching an article.
+
+    The values are the site's documented-style age preference flags, not a login,
+    browser profile export, or verification credential.  No response cookie is
+    saved, returned, or reused outside this one bounded request.
+    """
+    async with requests.AsyncSession(impersonate="chrome120", headers=BAHAMUT_HEADERS) as session:
+        try:
+            await session.get("https://home.gamer.com.tw/", timeout=READER_TIMEOUT_SECONDS, cookies=BAHAMUT_PUBLIC_COOKIES)
+        except Exception:
+            # The article request remains the source of truth; a homepage warm-up
+            # failure must not block a public article that is otherwise readable.
+            pass
+        return await session.get(url, timeout=READER_TIMEOUT_SECONDS, cookies=BAHAMUT_PUBLIC_COOKIES)
+
+
+async def _cxc_public_api_get(path: str) -> dict[str, object]:
+    """Read CxC's anonymous public work or free-section API response."""
+    try:
+        async with requests.AsyncSession(impersonate="chrome120", headers=CXC_PUBLIC_HEADERS) as session:
+            response = await session.get(f"{CXC_PUBLIC_API_BASE}/{path.lstrip('/')}", timeout=READER_TIMEOUT_SECONDS)
+    except Exception as error:
+        raise ReaderUnavailableError("CxC 公開章節資料暫時無法讀取，請稍後再試。") from error
+    if response.status_code in {401, 403, 429} or response.status_code >= 500:
+        raise ReaderUnavailableError("CxC 要求驗證或暫時拒絕公開讀取；本應用程式不會繞過該保護。")
+    if response.status_code >= 400:
+        raise ReaderUnavailableError(f"CxC 回傳 HTTP {response.status_code}，目前無法讀取此篇作品。")
+    try:
+        payload = response.json()
+    except (ValueError, json.JSONDecodeError) as error:
+        raise ReaderUnavailableError("CxC 未回傳可辨識的公開章節資料；請改由原始網站閱讀。") from error
+    if not isinstance(payload, dict) or payload.get("code") != 0 or not isinstance(payload.get("data"), dict):
+        raise ReaderUnavailableError("CxC 未提供可辨識的公開章節資料；請改由原始網站閱讀。")
+    return payload["data"]
+
+
+async def fetch_public_work_html(url: str) -> str:
     """Fetch one public work with a bounded browser-like request, never credentials."""
     source_for_reader_url(url)
+    target_url = _normalize_bahamut_url(url)
     try:
-        response = requests.get(url, headers=READER_HEADERS, impersonate="chrome120", timeout=READER_TIMEOUT_SECONDS)
+        response = await (_bahamut_public_get(target_url) if source_for_reader_url(target_url) == "巴哈姆特創作大廳" else _public_get(target_url))
     except Exception as error:  # curl_cffi exposes transport-specific error classes.
         raise ReaderUnavailableError("原始網站暫時無法提供可閱讀的公開內文，請稍後再試。") from error
     if response.status_code in {401, 403, 429} or response.status_code >= 500:
@@ -110,9 +212,9 @@ def _first_text(soup: BeautifulSoup, selectors: Iterable[str], fallback: str) ->
     return fallback
 
 
-def _content_root(soup: BeautifulSoup) -> Tag | None:
+def _content_root(soup: BeautifulSoup, source: str) -> Tag | None:
     selectors = (
-        "#chapters",
+        *SOURCE_CONTENT_SELECTORS.get(source, ()),
         "article .chapter-content",
         "article .article-content",
         "article .post-content",
@@ -135,21 +237,368 @@ def _remove_non_article_nodes(root: Tag) -> None:
             node.decompose()
 
 
+def _clean_penana_reader_root(root: Tag) -> None:
+    """Remove Penana's invisible copy-protection noise from a public issue only."""
+    for node in root.select("[hidden], [aria-hidden='true'], [style]"):
+        style = str(node.get("style") or "").lower().replace(" ", "")
+        if node.has_attr("hidden") or node.get("aria-hidden") == "true" or "display:none" in style or "visibility:hidden" in style:
+            node.decompose()
+    for text_node in list(root.find_all(string=True)):
+        cleaned = PENANA_WATERMARK_PATTERN.sub("", str(text_node))
+        cleaned = PENANA_COPYRIGHT_PATTERN.sub("", cleaned)
+        if not cleaned.strip():
+            text_node.extract()
+        elif cleaned != str(text_node):
+            text_node.replace_with(cleaned)
+
+
 def _paragraphs_from(root: Tag) -> list[str]:
     _remove_non_article_nodes(root)
     paragraphs: list[str] = []
     seen: set[str] = set()
+    for node in root.select("br"):
+        node.replace_with("\n")
     for node in root.select("p, blockquote, li"):
         text = _clean_text(node.get_text(" ", strip=True))
-        if len(text) < 2 or text in seen:
+        if len(text) < 2 or text in seen or re.match(r"^(作者|發表|閱讀|回覆)[：:]", text):
             continue
         seen.add(text)
         paragraphs.append(text)
-        if len(paragraphs) >= MAX_READER_PARAGRAPHS:
-            return paragraphs
-    if paragraphs:
+    line_paragraphs = [
+        line
+        for line in (_clean_text(line) for line in root.get_text("\n").splitlines())
+        if len(line) >= 2 and not re.match(r"^(作者|發表|閱讀|回覆)[：:]", line)
+    ]
+    # Discuz-style pages often expose a short author <p> plus the real prose as
+    # newline-separated text nodes. Prefer that longer, readable sequence.
+    if sum(map(len, line_paragraphs)) > sum(map(len, paragraphs)) + 10:
+        return line_paragraphs
+    return paragraphs or line_paragraphs
+
+
+def _paragraphs_from_text(text: str) -> list[str]:
+    """Preserve source paragraph boundaries while normalising client-visible whitespace."""
+    paragraphs: list[str] = []
+    seen: set[str] = set()
+    for block in re.split(r"\n\s*\n|\r\n\s*\r\n", text.replace("\r\n", "\n")):
+        cleaned = _clean_text(block)
+        if len(cleaned) < 2 or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        paragraphs.append(cleaned)
+    return paragraphs
+
+
+def _waterwriter_rich_paragraphs(root: Tag) -> list[str]:
+    """Preserve all first-floor rich-text nodes, including bare divs and <br> lines."""
+    _remove_non_article_nodes(root)
+    for node in root.select("br"):
+        node.replace_with("\n")
+    paragraphs: list[str] = []
+    seen: set[str] = set()
+    for node in root.select("p, div, blockquote, li"):
+        # Container divs repeat text from nested child blocks; only consume leaf
+        # blocks and let the complete-root fallback handle plain text nodes.
+        if node.name == "div" and node.select_one("p, div, blockquote, li"):
+            continue
+        for block in re.split(r"\n\s*\n", node.get_text("\n", strip=True)):
+            text = re.sub(r"[^\S\r\n]+", " ", block)
+            text = re.sub(r"\s*\n\s*", "\n", text).strip()
+            if len(text) < 2 or text in seen or re.match(r"^(作者|發表|閱讀|回覆)[：:]", text):
+                continue
+            seen.add(text)
+            paragraphs.append(text)
+    full_text = _paragraphs_from_text(root.get_text("\n", strip=True))
+    # Rich public threads commonly use p/div blocks and br nodes for intentional
+    # prose rhythm. Once two or more leaf blocks were identified, they are more
+    # faithful than the flat-text fallback, which intentionally treats a single
+    # newline as ordinary whitespace.
+    if len(paragraphs) > 1 or any("\n" in paragraph for paragraph in paragraphs):
         return paragraphs
-    return [line for line in (_clean_text(line) for line in root.get_text("\n").splitlines()) if len(line) >= 2][:MAX_READER_PARAGRAPHS]
+    return full_text if sum(map(len, full_text)) > sum(map(len, paragraphs)) else paragraphs
+
+
+def _is_penana_story_home(url: str) -> bool:
+    path = urlparse(url).path.lower()
+    return path.startswith("/story/") and not re.search(r"/(?:issue|chapter)/", path)
+
+
+def _is_penana_issue_url(url: str) -> bool:
+    return bool(re.search(r"/(?:issue|chapter)/", urlparse(url).path.lower()))
+
+
+def _cxc_work_reference(url: str) -> tuple[str, str, str | None] | None:
+    match = CXC_WORK_PATH_PATTERN.search(urlparse(url).path)
+    if not match:
+        return None
+    return match.group("store"), match.group("work_id"), match.group("section_id")
+
+
+def _has_cxc_text_protection(value: str) -> bool:
+    """Detect the source's private-use font mapping without attempting to decode it."""
+    private_use_characters = sum(1 for character in value if "\ue000" <= character <= "\uf8ff")
+    return private_use_characters >= 3
+
+
+def _readability_fallback(soup: BeautifulSoup) -> Tag | None:
+    """Pick the most paragraph-dense visible block when a platform selector changes.
+
+    This is intentionally a local HTML heuristic rather than a browser, login or
+    verification fallback. It is used only after source-specific public selectors.
+    """
+    candidates = soup.select("article, main, section, div")
+    scored: list[tuple[int, Tag]] = []
+    for candidate in candidates:
+        _remove_non_article_nodes(candidate)
+        paragraphs = _paragraphs_from(candidate)
+        if not paragraphs:
+            continue
+        text_length = sum(len(paragraph) for paragraph in paragraphs)
+        if text_length < 40:
+            continue
+        score = text_length + (len(paragraphs) * 120)
+        scored.append((score, candidate))
+    return max(scored, key=lambda item: item[0])[1] if scored else None
+
+
+def _pixiv_novel_id(url: str) -> str:
+    parsed = urlparse(url)
+    novel_id = parse_qs(parsed.query).get("id", [""])[0]
+    if not novel_id.isdecimal():
+        raise ReaderUnavailableError("Pixiv 小說網址缺少可辨識的作品 ID；請改由原始網站閱讀。")
+    return novel_id
+
+
+def _same_reader_source(root_url: str, chapter_url: str) -> bool:
+    try:
+        return source_for_reader_url(root_url) == source_for_reader_url(chapter_url)
+    except ReaderRequestError:
+        return False
+
+
+def _toc_entry(url: str, title: str, index: int) -> ReaderChapterEntry:
+    return ReaderChapterEntry(id=f"chapter-{index}", title=_clean_text(title) or f"第 {index} 章", url=url, index=index)
+
+
+def _dedupe_toc(entries: list[ReaderChapterEntry]) -> list[ReaderChapterEntry]:
+    seen: set[str] = set()
+    result: list[ReaderChapterEntry] = []
+    for entry in entries:
+        if entry.url in seen:
+            continue
+        seen.add(entry.url)
+        result.append(entry)
+    return result
+
+
+def _waterwriter_owner_name(soup: BeautifulSoup) -> str:
+    meta_author = _meta_content(soup, "meta[name='author']")
+    if meta_author:
+        return meta_author
+    author_line = soup.find(string=re.compile(r"^\s*作者[：:]"))
+    if author_line:
+        return re.sub(r"^\s*作者[：:]\s*", "", str(author_line)).strip()
+    return ""
+
+
+def _waterwriter_floor_nodes(soup: BeautifulSoup, owner: str) -> list[Tag]:
+    """Return the first continuous run of original-poster floors.
+
+    Discuz pages expose one `post_*` wrapper per floor.  The newer SSR fallback
+    exposes a single article, which naturally becomes one complete chapter.
+    """
+    candidates = soup.select("[id^='post_'], .post, article")
+    unique: list[Tag] = []
+    for candidate in candidates:
+        if candidate.find_parent(lambda parent: isinstance(parent, Tag) and parent in candidates):
+            continue
+        if candidate not in unique:
+            unique.append(candidate)
+    floors: list[Tag] = []
+    started = False
+    for candidate in unique:
+        text = _clean_text(candidate.get_text(" ", strip=True))
+        if not text:
+            continue
+        author_nodes = candidate.select(".authi a, .author a, .username, [data-username], [data-author]")
+        candidate_authors = {_clean_text(str(node.get("data-username") or node.get("data-author") or node.get_text(" ", strip=True))) for node in author_nodes}
+        owns_floor = bool(owner and (owner in candidate_authors or re.search(rf"作者[：:]\s*{re.escape(owner)}", text)))
+        if not author_nodes and not floors:
+            owns_floor = True
+        if owns_floor:
+            floors.append(candidate)
+            started = True
+        elif started:
+            break
+    return floors or ([soup.select_one("#ssr-content article") or soup.select_one("article")] if soup.select_one("article") else [])
+
+
+def _waterwriter_document(url: str, html: str) -> ExtractedReaderDocument:
+    soup = BeautifulSoup(html, "html.parser")
+    title = _meta_content(soup, "meta[property='og:title']") or _first_text(soup, ("h1",), "未命名作品")
+    author = _waterwriter_owner_name(soup) or _first_text(soup, (".authi a", ".author a"), "原始作者以來源頁為準")
+    cover_url = _meta_content(soup, "meta[property='og:image']") or None
+    floors = _waterwriter_floor_nodes(soup, author)
+    chapters: list[tuple[Tag, list[str]]] = []
+    for floor in floors:
+        copied = BeautifulSoup(str(floor), "html.parser")
+        root = copied.select_one("td[id^='postmessage_'], div.pct .t_f, div.t_f, article") or copied
+        for node in root.select(".sign, .signature, .reply, .quote, .authi, .pi, .pls"):
+            node.decompose()
+        paragraphs = _waterwriter_rich_paragraphs(root)
+        if paragraphs:
+            chapters.append((floor, paragraphs))
+    if not chapters:
+        raise ReaderUnavailableError("在水裡寫字未提供可辨識的樓主公開正文；請改由原始網站閱讀。")
+    base_url = url.split("#", 1)[0]
+    toc = [_toc_entry(f"{base_url}#floor-{index}", f"第 {index} 章", index) for index in range(1, len(chapters) + 1)]
+    fragment = urlparse(url).fragment
+    current_index = int(fragment.removeprefix("floor-")) - 1 if fragment.removeprefix("floor-").isdigit() else 0
+    current_index = max(0, min(current_index, len(chapters) - 1))
+    return ExtractedReaderDocument(url, title, author, "在水裡寫字", cover_url, toc[current_index].title, chapters[current_index][1], toc, current_index)
+
+
+def _html_table_of_contents(url: str, source: str, soup: BeautifulSoup, title: str) -> list[ReaderChapterEntry]:
+    selectors = {
+        "AO3": ("select#selected_id option[value]", "ol.chapter.index a[href]", ".chapter.index a[href]"),
+        "Penana": (".issue_li a[href]", ".chapter-list a[href]", ".episode-list a[href]", "a[href*='chapter']", "a[href*='issue']"),
+        "CxC 創利市集": (".chapter-list a[href]", ".episode-list a[href]", "a[href*='chapter']", "a[href*='episode']"),
+        "巴哈姆特創作大廳": (".ct-btn-box a[href*='artwork.php']", ".article-list a[href*='creationDetail.php']", ".article-list a[href*='artwork.php']", ".creation-list a[href*='creationDetail.php']", ".creation-list a[href*='artwork.php']", "a[href*='creationDetail.php']"),
+        "KadoKado 角角者": ("a[href*='/chapters/']", "a[href*='/episode/']", ".chapter-list a[href]"),
+    }.get(source, ())
+    entries: list[ReaderChapterEntry] = []
+    for selector in selectors:
+        for node in soup.select(selector):
+            raw_href = str(node.get("value") or node.get("href") or "").strip()
+            if not raw_href:
+                continue
+            if source == "AO3" and node.name == "option" and raw_href.isdecimal():
+                parsed = urlparse(url)
+                chapter_url = urlunparse((parsed.scheme, parsed.netloc, f"/chapters/{raw_href}", "", "", ""))
+            else:
+                chapter_url = urljoin(url, raw_href)
+            if not _same_reader_source(url, chapter_url):
+                continue
+            if source == "Penana" and not _is_penana_issue_url(chapter_url):
+                continue
+            chapter_title = _clean_text(node.get_text(" ", strip=True)) or _clean_text(str(node.get("title") or ""))
+            if not chapter_title:
+                continue
+            entries.append(_toc_entry(chapter_url, chapter_title, len(entries) + 1))
+    entries = _dedupe_toc(entries)
+    if source == "巴哈姆特創作大廳":
+        previous = next((entry for entry in entries if "上一篇" in entry.title), None)
+        following = next((entry for entry in entries if "下一篇" in entry.title), None)
+        if previous or following:
+            navigation = [entry for entry in (previous, _toc_entry(url, title, 2), following) if entry]
+            return [ReaderChapterEntry(entry.id, entry.title, entry.url, position) for position, entry in enumerate(navigation, start=1)]
+    if not entries:
+        label = "全一話" if source in {"同人誌中心", "POPO 原創市集"} else title
+        entries = [_toc_entry(url, label, 1)]
+    return [ReaderChapterEntry(entry.id, entry.title, entry.url, position) for position, entry in enumerate(entries, start=1)]
+
+
+async def _penana_story_document(url: str, html: str) -> ExtractedReaderDocument:
+    """Resolve a public Penana story landing page to its first public issue."""
+    soup = BeautifulSoup(html, "html.parser")
+    title = _meta_content(soup, "meta[property='og:title']") or _first_text(soup, ("h1", ".title"), "未命名 Penana 作品")
+    table_of_contents = _html_table_of_contents(url, "Penana", soup, title)
+    first_issue = next((entry for entry in table_of_contents if _is_penana_issue_url(entry.url)), None)
+    if first_issue is None:
+        raise ReaderUnavailableError("Penana 故事首頁未提供可讀取的公開章節；請改由原始網站閱讀。")
+    issue_html = await fetch_public_work_html(first_issue.url)
+    document = extract_reader_document(first_issue.url, issue_html)
+    current_index = next((index for index, entry in enumerate(table_of_contents) if entry.url == first_issue.url), 0)
+    return ExtractedReaderDocument(document.url, document.title, document.author, document.source, document.cover_url, document.chapter_title, document.paragraphs, table_of_contents, current_index)
+
+
+async def _cxc_document(url: str) -> ExtractedReaderDocument:
+    """Read a CxC work's published, readable section from its anonymous API."""
+    reference = _cxc_work_reference(url)
+    if reference is None:
+        raise ReaderUnavailableError("CxC 作品網址缺少可辨識的創作者或作品 ID；請改由原始網站閱讀。")
+    store, work_id, requested_section_id = reference
+    work = await _cxc_public_api_get(f"store/{store}/work/{work_id}")
+    section_list = await _cxc_public_api_get(f"store/{store}/work/{work_id}/section")
+    raw_sections = section_list.get("data")
+    if not isinstance(raw_sections, list):
+        raise ReaderUnavailableError("CxC 未提供可辨識的公開章節目錄；請改由原始網站閱讀。")
+    readable_sections = [section for section in raw_sections if isinstance(section, dict) and section.get("is_readable") is True and str(section.get("id") or "").isdigit()]
+    if not readable_sections:
+        raise ReaderUnavailableError("CxC 作品未提供可公開讀取的免費章節；請改由原始網站閱讀。")
+    selected_section = next((section for section in readable_sections if str(section.get("id")) == requested_section_id), readable_sections[0])
+    selected_section_id = str(selected_section["id"])
+    base_url = f"https://cxc.today/@{store}/work/{work_id}"
+    toc = [_toc_entry(f"{base_url}/reader/{section['id']}", str(section.get("name") or f"第 {position} 章"), position) for position, section in enumerate(readable_sections, start=1)]
+    section = await _cxc_public_api_get(f"store/{store}/work/{work_id}/section/{selected_section_id}")
+    content = str(section.get("content_hant") or section.get("content") or section.get("trial_content_hant") or "")
+    if _has_cxc_text_protection(content):
+        raise ReaderUnavailableError("CxC 此章節以原始網站的字型內容保護呈現；本應用程式不會解碼或繞過該保護，請改由原始網站閱讀。")
+    content_root = BeautifulSoup(content, "html.parser")
+    paragraphs = _paragraphs_from(content_root)
+    if not paragraphs:
+        raise ReaderUnavailableError("CxC 公開章節未提供可辨識的正文；請改由原始網站閱讀。")
+    partners = work.get("partner")
+    first_partner = partners[0] if isinstance(partners, list) and partners and isinstance(partners[0], dict) else {}
+    member = first_partner.get("member") if isinstance(first_partner, dict) else {}
+    author = _clean_text(str(member.get("nickname") or "")) if isinstance(member, dict) else ""
+    current_url = f"{base_url}/reader/{selected_section_id}"
+    current_index = next((index for index, entry in enumerate(toc) if entry.url == current_url), 0)
+    return ExtractedReaderDocument(
+        url=current_url,
+        title=_clean_text(str(work.get("name") or "")) or "未命名 CxC 作品",
+        author=author or "原始作者以 CxC 來源頁為準",
+        source="CxC 創利市集",
+        cover_url=_clean_text(str(work.get("cover_photo") or "")) or None,
+        chapter_title=_clean_text(str(section.get("name") or selected_section.get("name") or "正文")),
+        paragraphs=paragraphs,
+        table_of_contents=toc,
+        current_chapter_index=current_index,
+    )
+
+
+async def _pixiv_document(url: str) -> ExtractedReaderDocument:
+    """Fetch Pixiv's public Novel JSON instead of its JavaScript application shell."""
+    novel_id = _pixiv_novel_id(url)
+    try:
+        response = await _public_get(
+            f"https://www.pixiv.net/ajax/novel/{novel_id}",
+            headers={**PIXIV_AJAX_HEADERS, "Referer": url},
+        )
+    except Exception as error:
+        raise ReaderUnavailableError("Pixiv 公開小說資料暫時無法讀取，請稍後再試。") from error
+    if response.status_code in {401, 403, 429} or response.status_code >= 500:
+        raise ReaderUnavailableError("Pixiv 要求驗證或暫時拒絕公開讀取；本應用程式不會繞過該保護。")
+    if response.status_code >= 400:
+        raise ReaderUnavailableError(f"Pixiv 回傳 HTTP {response.status_code}，目前無法讀取此篇作品。")
+    try:
+        payload = response.json()
+    except (ValueError, json.JSONDecodeError) as error:
+        raise ReaderUnavailableError("Pixiv 未回傳可辨識的公開小說資料；請改由原始網站閱讀。") from error
+    body = payload.get("body") if isinstance(payload, dict) else None
+    if payload.get("error") or not isinstance(body, dict):
+        raise ReaderUnavailableError("Pixiv 未提供可辨識的公開小說正文；請改由原始網站閱讀。")
+    paragraphs = _paragraphs_from_text(str(body.get("content") or ""))
+    if not paragraphs:
+        raise ReaderUnavailableError("Pixiv 作品未提供可辨識的公開正文；請改由原始網站閱讀。")
+    title = _clean_text(str(body.get("title") or "")) or "未命名 Pixiv 小說"
+    author = _clean_text(str(body.get("userName") or "")) or "原始作者以 Pixiv 來源頁為準"
+    chapter_title = _clean_text(str(body.get("seriesTitle") or "")) or "正文"
+    cover_url = _clean_text(str(body.get("coverUrl") or "")) or None
+    navigation = body.get("seriesNavData") if isinstance(body.get("seriesNavData"), dict) else {}
+    current_order = int(navigation.get("order") or 1) if str(navigation.get("order") or "").isdigit() else 1
+    toc: list[ReaderChapterEntry] = []
+    for relation, fallback_order in (("prev", current_order - 1), ("next", current_order + 1)):
+        item = navigation.get(relation) if isinstance(navigation, dict) else None
+        if not isinstance(item, dict) or not item.get("available") or not str(item.get("id") or "").isdigit():
+            continue
+        item_order = int(item.get("order") or fallback_order)
+        item_url = f"https://www.pixiv.net/novel/show.php?id={item['id']}"
+        toc.append(_toc_entry(item_url, str(item.get("title") or f"第 {item_order} 章"), item_order))
+    toc.append(_toc_entry(url, chapter_title, current_order))
+    toc = sorted(_dedupe_toc(toc), key=lambda entry: entry.index)
+    current_index = next((index for index, entry in enumerate(toc) if entry.url == url), 0)
+    return ExtractedReaderDocument(url, title, author, "Pixiv", cover_url, chapter_title, paragraphs, toc, current_index)
 
 
 def extract_reader_document(url: str, html: str) -> ExtractedReaderDocument:
@@ -159,13 +608,19 @@ def extract_reader_document(url: str, html: str) -> ExtractedReaderDocument:
     title = _meta_content(soup, "meta[property='og:title']") or _first_text(soup, ("h1", ".title", "header h2"), "未命名作品")
     author = _meta_content(soup, "meta[name='author']") or _first_text(soup, ("a[rel='author']", ".byline a", ".author a", ".byline", ".author"), "原始作者以來源頁為準")
     cover_url = _meta_content(soup, "meta[property='og:image']") or None
-    root = _content_root(soup)
+    root = _content_root(soup, source)
+    if root is None or not _paragraphs_from(root):
+        root = _readability_fallback(soup)
     if root is None:
         raise ReaderUnavailableError("找不到可辨識的公開正文區塊；請改由原始網站閱讀。")
+    if source == "Penana":
+        _clean_penana_reader_root(root)
     chapter_title = _first_text(root, ("h2", "h3", ".chapter-title"), "正文")
     paragraphs = _paragraphs_from(root)
     if not paragraphs:
         raise ReaderUnavailableError("來源頁未提供可辨識的公開正文；請改由原始網站閱讀。")
+    toc = _html_table_of_contents(url, source, soup, title)
+    current_index = next((index for index, entry in enumerate(toc) if entry.url == url), 0)
     return ExtractedReaderDocument(
         url=url,
         title=title,
@@ -174,9 +629,24 @@ def extract_reader_document(url: str, html: str) -> ExtractedReaderDocument:
         cover_url=cover_url,
         chapter_title=chapter_title,
         paragraphs=paragraphs,
+        table_of_contents=toc,
+        current_chapter_index=current_index,
     )
 
 
-def read_public_work(url: str) -> ExtractedReaderDocument:
+async def read_public_work(url: str, chapter_url: str | None = None) -> ExtractedReaderDocument:
     """Fetch and extract on demand; content is deliberately never persisted."""
-    return extract_reader_document(url, fetch_public_work_html(url))
+    target_url = _normalize_bahamut_url(chapter_url or url)
+    if not _same_reader_source(url, target_url):
+        raise ReaderRequestError("指定章節不屬於原始作品的平台；請改由原始網站閱讀。")
+    source = source_for_reader_url(target_url)
+    if source == "CxC 創利市集":
+        return await _cxc_document(target_url)
+    if source == "Pixiv":
+        return await _pixiv_document(target_url)
+    html = await fetch_public_work_html(target_url)
+    if source == "Penana" and _is_penana_story_home(target_url):
+        return await _penana_story_document(target_url, html)
+    if source == "在水裡寫字":
+        return _waterwriter_document(target_url, html)
+    return extract_reader_document(target_url, html)

@@ -10,11 +10,20 @@ export const PINNED_QUERIES_STORAGE_KEY = "sui-read-pinned-queries";
 export const EXCLUDED_KEYWORDS_STORAGE_KEY = "sui-read-excluded-keywords";
 export const BLACKLIST_GROUPS_STORAGE_KEY = "sui-read-blacklist-groups";
 export const CONTENT_SAFETY_SETTINGS_STORAGE_KEY = "sui-read-content-safety-settings";
+export const READING_HISTORY_STORAGE_KEY = "sui-read-reading-history";
 
 export type BookmarkShelf = "to-read" | "favorite";
 export type ReadingStatus = "unread" | "reading" | "finished";
 export type ReadingProgress = { status: ReadingStatus; percent: number; chapter: string };
 export type BookmarkSort = "saved-desc" | "saved-asc" | "author" | "words" | "updated";
+export type ReadingHistoryRecord = {
+  url: string;
+  result: SearchResult;
+  chapter: string;
+  chapterUrl?: string;
+  percent: number;
+  lastReadAt: string;
+};
 export type BookmarkRecord = {
   url: string;
   result: SearchResult;
@@ -44,6 +53,7 @@ export type FullPersonalBackup = {
   blacklistGroups: BlacklistGroup[];
   filterPreset: ResultViewFilters;
   contentSafetySettings: ContentSafetySettings;
+  readingHistory?: ReadingHistoryRecord[];
 };
 export const DEFAULT_CONTENT_SAFETY_SETTINGS: ContentSafetySettings = { ageConfirmation: "unknown", blurRestrictedSummaries: true, blacklistDisplayMode: "hide" };
 export const DEFAULT_CP_MAPPINGS: CpMapping[] = [
@@ -87,6 +97,25 @@ function normalizeBookmark(value: unknown): BookmarkRecord | null {
 
 export function loadBookmarks(): BookmarkRecord[] { const records = readJson<unknown[]>(BOOKMARKS_STORAGE_KEY, []); return records.map(normalizeBookmark).filter((record): record is BookmarkRecord => Boolean(record)); }
 export function persistBookmarks(bookmarks: BookmarkRecord[]): void { writeJson(BOOKMARKS_STORAGE_KEY, bookmarks); }
+function normalizeReadingHistoryRecord(value: unknown): ReadingHistoryRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.url !== "string" || !record.url.trim() || !record.result || typeof record.result !== "object") return null;
+  return {
+    url: record.url,
+    result: record.result as SearchResult,
+    chapter: typeof record.chapter === "string" ? record.chapter.trim().slice(0, 120) : "正文",
+    chapterUrl: typeof record.chapterUrl === "string" && record.chapterUrl.trim() ? record.chapterUrl : undefined,
+    percent: typeof record.percent === "number" && Number.isFinite(record.percent) ? Math.max(0, Math.min(100, Math.round(record.percent))) : 0,
+    lastReadAt: typeof record.lastReadAt === "string" && record.lastReadAt ? record.lastReadAt : new Date().toISOString(),
+  };
+}
+export function loadReadingHistory(): ReadingHistoryRecord[] { return readJson<unknown[]>(READING_HISTORY_STORAGE_KEY, []).map(normalizeReadingHistoryRecord).filter((item): item is ReadingHistoryRecord => Boolean(item)).sort((left, right) => right.lastReadAt.localeCompare(left.lastReadAt)); }
+export function persistReadingHistory(history: ReadingHistoryRecord[]): void { writeJson(READING_HISTORY_STORAGE_KEY, history.slice(0, 30)); }
+export function recordReadingHistory(history: ReadingHistoryRecord[], next: Omit<ReadingHistoryRecord, "lastReadAt">): ReadingHistoryRecord[] {
+  const record: ReadingHistoryRecord = { ...next, lastReadAt: new Date().toISOString() };
+  return [record, ...history.filter((item) => item.url !== record.url)].slice(0, 30);
+}
 export function upsertBookmark(bookmarks: BookmarkRecord[], next: BookmarkInput): BookmarkRecord[] {
   const now = new Date().toISOString(); const existing = bookmarks.find((bookmark) => bookmark.url === next.url);
   const record: BookmarkRecord = { ...next, shelf: next.shelf || existing?.shelf || "to-read", progress: normalizeProgress(next.progress || existing?.progress), savedAt: existing?.savedAt || now, updatedAt: now };
@@ -207,6 +236,7 @@ export type PersonalLibrarySnapshot = {
   blacklistGroups: BlacklistGroup[];
   filterPreset: ResultViewFilters;
   contentSafetySettings: ContentSafetySettings;
+  readingHistory: ReadingHistoryRecord[];
 };
 
 async function hydrateValue<T>(key: string, localValue: T): Promise<T> {
@@ -220,7 +250,7 @@ async function hydrateValue<T>(key: string, localValue: T): Promise<T> {
 }
 
 export async function hydratePersonalLibrary(): Promise<PersonalLibrarySnapshot> {
-  const [rawBookmarks, rawMappings, rawHistory, rawPins, rawExcluded, rawBlacklistGroups, rawFilters, rawContentSafety] = await Promise.all([
+  const [rawBookmarks, rawMappings, rawHistory, rawPins, rawExcluded, rawBlacklistGroups, rawFilters, rawContentSafety, rawReadingHistory] = await Promise.all([
     hydrateValue<unknown[]>(BOOKMARKS_STORAGE_KEY, readJson<unknown[]>(BOOKMARKS_STORAGE_KEY, [])),
     hydrateValue<unknown>(CP_MAP_STORAGE_KEY, loadCustomCpMappings()),
     hydrateValue<string[]>(SEARCH_HISTORY_STORAGE_KEY, loadSearchHistory()),
@@ -229,6 +259,7 @@ export async function hydratePersonalLibrary(): Promise<PersonalLibrarySnapshot>
     hydrateValue<unknown>(BLACKLIST_GROUPS_STORAGE_KEY, loadBlacklistGroups()),
     hydrateValue<Partial<ResultViewFilters>>(FILTER_PRESET_STORAGE_KEY, loadFilterPreset()),
     hydrateValue<Partial<ContentSafetySettings>>(CONTENT_SAFETY_SETTINGS_STORAGE_KEY, loadContentSafetySettings()),
+    hydrateValue<unknown[]>(READING_HISTORY_STORAGE_KEY, readJson<unknown[]>(READING_HISTORY_STORAGE_KEY, [])),
   ]);
   return {
     bookmarks: Array.isArray(rawBookmarks) ? rawBookmarks.map(normalizeBookmark).filter((record): record is BookmarkRecord => Boolean(record)) : [],
@@ -239,6 +270,7 @@ export async function hydratePersonalLibrary(): Promise<PersonalLibrarySnapshot>
     blacklistGroups: normalizeBlacklistGroups(rawBlacklistGroups).length ? normalizeBlacklistGroups(rawBlacklistGroups) : defaultBlacklistGroups(Array.isArray(rawExcluded) ? rawExcluded : []),
     filterPreset: normalizeFilterPreset(rawFilters || DEFAULT_FILTERS),
     contentSafetySettings: normalizeContentSafetySettings(rawContentSafety),
+    readingHistory: Array.isArray(rawReadingHistory) ? rawReadingHistory.map(normalizeReadingHistoryRecord).filter((item): item is ReadingHistoryRecord => Boolean(item)).sort((left, right) => right.lastReadAt.localeCompare(left.lastReadAt)).slice(0, 30) : [],
   };
 }
 
@@ -261,6 +293,7 @@ export function parseFullPersonalBackup(text: string): FullPersonalBackup | null
       blacklistGroups: groups.length ? groups : defaultBlacklistGroups(Array.isArray(raw.excludedKeywords) ? raw.excludedKeywords.filter((item: unknown): item is string => typeof item === "string") : []),
       filterPreset: normalizeFilterPreset(raw.filterPreset || DEFAULT_FILTERS),
       contentSafetySettings: normalizeContentSafetySettings(raw.contentSafetySettings),
+      readingHistory: Array.isArray(raw.readingHistory) ? raw.readingHistory.map(normalizeReadingHistoryRecord).filter((item): item is ReadingHistoryRecord => Boolean(item)).sort((left, right) => right.lastReadAt.localeCompare(left.lastReadAt)).slice(0, 30) : [],
     };
   } catch { return null; }
 }

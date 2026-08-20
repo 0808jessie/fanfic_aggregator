@@ -16,6 +16,7 @@ import {
   type BookmarkRecord,
   type BookmarkShelf,
   type BookmarkSort,
+  type ReadingHistoryRecord,
 } from "@/lib/personalLibrary";
 
 type ExportFormat = "json" | "markdown" | "csv";
@@ -35,6 +36,8 @@ type BookshelfViewProps = {
   desktopVersion?: string;
   updateCheckPending?: boolean;
   onCheckForUpdates?: () => void;
+  readingHistory?: ReadingHistoryRecord[];
+  onResumeHistory?: (record: ReadingHistoryRecord) => void;
 };
 
 function downloadFile(filename: string, body: BlobPart, mime: string) {
@@ -47,7 +50,7 @@ function downloadFile(filename: string, body: BlobPart, mime: string) {
   URL.revokeObjectURL(url);
 }
 
-export function BookshelfView({ bookmarks, onEdit, onRemove, onImport, onBatchRemove, onBatchUpdate, onProgressChange, onRead, loadReaderDocument, onExportAll, onImportAll, desktopVersion, updateCheckPending = false, onCheckForUpdates }: BookshelfViewProps) {
+export function BookshelfView({ bookmarks, onEdit, onRemove, onImport, onBatchRemove, onBatchUpdate, onProgressChange, onRead, loadReaderDocument, onExportAll, onImportAll, desktopVersion, updateCheckPending = false, onCheckForUpdates, readingHistory = [], onResumeHistory }: BookshelfViewProps) {
   const [query, setQuery] = useState("");
   const [platform, setPlatform] = useState("all");
   const [shelf, setShelf] = useState<BookmarkShelf | "all">("all");
@@ -132,6 +135,7 @@ export function BookshelfView({ bookmarks, onEdit, onRemove, onImport, onBatchRe
   };
 
   return <section className="space-y-4">
+    {readingHistory.length > 0 && <section aria-label="最近閱讀" className="reader-library-actions p-4"><div className="mb-3 flex items-center justify-between"><div><h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">最近閱讀</h2><p className="mt-1 text-xs text-[color:var(--atlas-muted)]">從上次離開的章節與位置接續閱讀。</p></div><span className="text-xs font-semibold text-[color:var(--atlas-indigo)]">最近 {readingHistory.length} 篇</span></div><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{readingHistory.slice(0, 6).map((record) => <Button key={record.url} type="button" variant="outline" onClick={() => onResumeHistory?.(record)} className="h-auto min-h-20 justify-start border-[color:var(--atlas-line)] bg-white/70 px-3 py-3 text-left"><div className="min-w-0"><div className="truncate text-sm font-semibold text-slate-800">{record.result.title}</div><div className="mt-1 truncate text-xs text-[color:var(--atlas-muted)]">{record.result.platform} · {record.chapter || "正文"}</div><div className="mt-2 flex items-center gap-2 text-xs font-semibold text-[color:var(--atlas-indigo)]"><span>{record.percent}%</span><span className="h-1.5 flex-1 overflow-hidden rounded-full bg-indigo-100"><span className="block h-full bg-[color:var(--atlas-indigo)]" style={{ width: `${record.percent}%` }} /></span></div></div></Button>)}</div></section>}
     <div className="reader-library-toolbar grid gap-3 p-5 lg:grid-cols-[1.2fr_repeat(4,0.62fr)_auto] lg:items-end">
       <label className="grid gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">搜尋藏書<div className="relative"><Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--atlas-muted)]" /><Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="標題、作者、標籤或摘要" className="h-10 rounded-xl border-[color:var(--atlas-line)] bg-white/80 pl-9 text-sm text-slate-700 dark:text-slate-200" /></div></label>
       <label className="grid gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">來源<select value={platform} onChange={(event) => setPlatform(event.target.value)} className="h-10 rounded-xl border border-[color:var(--atlas-line)] bg-white/80 px-2 text-sm text-slate-700 dark:text-slate-200"><option value="all">全部平台</option>{platforms.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>

@@ -58,6 +58,16 @@ describe("BookshelfView interaction polish", () => {
     expect(onRead).toHaveBeenCalledWith(bookmark);
   });
 
+  it("shows recent reading and resumes the saved chapter and position", () => {
+    const onResumeHistory = vi.fn();
+    const history = [{ url: bookmark.url, result: bookmark.result, chapter: "第 4 章", chapterUrl: `${bookmark.url}#chapter-4`, percent: 63, lastReadAt: "2026-08-20T08:00:00Z" }];
+    render(<BookshelfView bookmarks={[bookmark]} onEdit={vi.fn()} onRemove={vi.fn()} onImport={vi.fn()} onBatchRemove={vi.fn()} onBatchUpdate={vi.fn()} onProgressChange={vi.fn()} onExportAll={vi.fn()} onImportAll={vi.fn()} readingHistory={history} onResumeHistory={onResumeHistory} />);
+
+    expect(screen.getByRole("heading", { name: "最近閱讀" })).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: /批次操作測試作品/ })[0]);
+    expect(onResumeHistory).toHaveBeenCalledWith(history[0]);
+  });
+
   it("exports selected readable works as a Reader-backed UTF-8 TXT anthology", async () => {
     const loadReaderDocument = vi.fn().mockResolvedValue({
       url: bookmark.url, title: bookmark.result.title, author: bookmark.result.author, source: "AO3", coverUrl: null,

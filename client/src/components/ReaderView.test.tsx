@@ -1,6 +1,6 @@
 import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReaderView, type ReaderDocument } from "./ReaderView";
 
 const work = {
@@ -22,6 +22,7 @@ const document: ReaderDocument = {
 };
 
 afterEach(() => cleanup());
+beforeEach(() => window.sessionStorage.clear());
 
 describe("ReaderView", () => {
   it("loads one clean document and exposes reading presentation controls", async () => {
@@ -60,6 +61,73 @@ describe("ReaderView", () => {
     });
     fireEvent.scroll(viewport);
 
-    expect(onProgress).toHaveBeenCalledWith({ percent: 50, chapter: "第一章" });
+    expect(onProgress).toHaveBeenCalledWith({ percent: 50, chapter: "第一章", chapterUrl: "https://archiveofourown.org/works/42" });
+  });
+
+  it("opens a chapter drawer and requests the selected chapter URL", async () => {
+    const firstUrl = "https://www.pixiv.net/novel/show.php?id=1";
+    const secondUrl = "https://www.pixiv.net/novel/show.php?id=2";
+    const loadDocument = vi.fn()
+      .mockResolvedValueOnce({
+        ...document,
+        source: "Pixiv",
+        url: firstUrl,
+        tableOfContents: [
+          { id: "chapter-1", index: 1, title: "第一章", url: firstUrl, paragraphs: [] },
+          { id: "chapter-2", index: 2, title: "第二章", url: secondUrl, paragraphs: [] },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ...document,
+        source: "Pixiv",
+        url: secondUrl,
+        currentChapterIndex: 1,
+        tableOfContents: [
+          { id: "chapter-1", index: 1, title: "第一章", url: firstUrl, paragraphs: [] },
+          { id: "chapter-2", index: 2, title: "第二章", url: secondUrl, paragraphs: [] },
+        ],
+        chapters: [{ id: "chapter-2", index: 2, title: "第二章", url: secondUrl, paragraphs: ["第二章正文。"] }],
+      });
+
+    render(<ReaderView work={work} loadDocument={loadDocument} onClose={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("第一段公開正文。")).toBeTruthy());
+    fireEvent.click(screen.getByLabelText("開啟章節目錄"));
+    expect(screen.getByLabelText("章節目錄抽屜")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /第二章/ }));
+
+    await waitFor(() => expect(screen.getByText("第二章正文。")).toBeTruthy());
+    expect(loadDocument).toHaveBeenLastCalledWith(work.url, secondUrl);
+  });
+
+  it("prefetches the next chapter after the current public chapter becomes readable", async () => {
+    const firstUrl = "https://www.pixiv.net/novel/show.php?id=11";
+    const nextUrl = "https://www.pixiv.net/novel/show.php?id=12";
+    const loadDocument = vi.fn().mockResolvedValue({
+      ...document,
+      source: "Pixiv",
+      url: firstUrl,
+      tableOfContents: [
+        { id: "chapter-1", index: 1, title: "第一章", url: firstUrl, paragraphs: [] },
+        { id: "chapter-2", index: 2, title: "第二章", url: nextUrl, paragraphs: [] },
+      ],
+    });
+
+    render(<ReaderView work={work} loadDocument={loadDocument} onClose={vi.fn()} />);
+    await waitFor(() => expect(loadDocument).toHaveBeenCalledWith(work.url, nextUrl));
+  });
+
+  it("reopens a successfully read chapter from the current-session local cache without another source request", async () => {
+    const firstLoad = vi.fn().mockResolvedValue(document);
+    const initial = render(<ReaderView work={work} loadDocument={firstLoad} onClose={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("第一段公開正文。")).toBeTruthy());
+    expect(firstLoad).toHaveBeenCalledTimes(1);
+    initial.unmount();
+
+    const secondLoad = vi.fn().mockRejectedValue(new Error("不應重新請求來源"));
+    render(<ReaderView work={work} loadDocument={secondLoad} onClose={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByText("第一段公開正文。")).toBeTruthy());
+    expect(secondLoad).not.toHaveBeenCalled();
+    expect(screen.getByRole("status").textContent).toContain("本機快取");
   });
 });

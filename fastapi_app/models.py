@@ -89,11 +89,14 @@ class ReaderRequest(BaseModel):
     """A one-shot request for a verified public work page; no credentials are accepted."""
 
     url: str = Field(min_length=12, max_length=2_048)
+    chapterUrl: Optional[str] = Field(default=None, min_length=12, max_length=2_048)
 
 
 class ReaderChapter(BaseModel):
     id: str
     title: str
+    index: int = 1
+    url: Optional[str] = None
     paragraphs: list[str] = Field(default_factory=list)
 
 
@@ -105,4 +108,6 @@ class ReaderDocument(BaseModel):
     author: str
     source: str
     coverUrl: Optional[str] = None
+    currentChapterIndex: int = 0
+    tableOfContents: list[ReaderChapter] = Field(default_factory=list)
     chapters: list[ReaderChapter] = Field(default_factory=list)

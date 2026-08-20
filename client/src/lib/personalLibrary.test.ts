@@ -19,6 +19,7 @@ import {
   loadExcludedKeywords,
   loadContentSafetySettings,
   loadPinnedQueries,
+  loadReadingHistory,
   loadSearchHistory,
   mergeImportedBookmarks,
   mergeCpMappings,
@@ -31,7 +32,9 @@ import {
   persistBookmarks,
   persistBlacklistGroups,
   persistPinnedQueries,
+  persistReadingHistory,
   recordSearch,
+  recordReadingHistory,
   serializeFullPersonalBackup,
   serializeBookmarksJson,
   sortBookmarks,
@@ -111,6 +114,14 @@ describe("personal library local storage helpers", () => {
     expect(loadFilterPreset()).toMatchObject({ hideBookmarked: true });
   });
 
+  it("persists recent reading with chapter URLs and keeps one newest entry per work", () => {
+    const first = recordReadingHistory([], { url: result.url, result, chapter: "第 1 章", chapterUrl: `${result.url}#chapter-1`, percent: 24 });
+    const updated = recordReadingHistory(first, { url: result.url, result, chapter: "第 2 章", chapterUrl: `${result.url}#chapter-2`, percent: 68 });
+    persistReadingHistory(updated);
+    expect(loadReadingHistory()).toHaveLength(1);
+    expect(loadReadingHistory()[0]).toMatchObject({ chapter: "第 2 章", chapterUrl: `${result.url}#chapter-2`, percent: 68 });
+  });
+
   it("filters bookshelf records and round-trips JSON import/export safely", () => {
     const saved = upsertBookmark([], { url: result.url, result, rating: 5, notes: "必收", tags: ["義忍", "神作"], shelf: "favorite" });
     expect(filterBookmarks(saved, "短篇", "all", "favorite", "")).toHaveLength(1);
@@ -161,11 +172,12 @@ describe("personal library local storage helpers", () => {
 
   it("serializes and restores the complete personal backup payload", () => {
     const bookmarks = upsertBookmark([], { url: result.url, result, rating: 3, notes: "完整備份", tags: ["備份"], shelf: "to-read", progress: { status: "reading", percent: 50, chapter: "第 5 章" } });
-    const backup = serializeFullPersonalBackup({ bookmarks, customCpMappings: [], searchHistory: ["義忍"], pinnedQueries: ["義忍"], blacklistGroups: [{ id: "general", name: "通用避雷", keywords: ["雷點"], enabled: true }], filterPreset: { wordCount: "all", completion: "all", sort: "relevance" }, contentSafetySettings: { ageConfirmation: "adult", blurRestrictedSummaries: true, blacklistDisplayMode: "mask" } });
+    const backup = serializeFullPersonalBackup({ bookmarks, customCpMappings: [], searchHistory: ["義忍"], pinnedQueries: ["義忍"], blacklistGroups: [{ id: "general", name: "通用避雷", keywords: ["雷點"], enabled: true }], filterPreset: { wordCount: "all", completion: "all", sort: "relevance" }, contentSafetySettings: { ageConfirmation: "adult", blurRestrictedSummaries: true, blacklistDisplayMode: "mask" }, readingHistory: [{ url: result.url, result, chapter: "第 5 章", percent: 50, lastReadAt: "2026-08-20T00:00:00Z" }] });
     const restored = parseFullPersonalBackup(backup);
     expect(restored?.bookmarks[0]?.progress).toMatchObject({ status: "reading", percent: 50 });
     expect(restored?.blacklistGroups[0]?.name).toBe("通用避雷");
     expect(restored?.pinnedQueries).toEqual(["義忍"]);
+    expect(restored?.readingHistory?.[0]).toMatchObject({ chapter: "第 5 章", percent: 50 });
   });
 
   it("defaults to a protected age state and persists adult content preferences", () => {

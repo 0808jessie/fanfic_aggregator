@@ -20,7 +20,7 @@ from scrapers.index import SCRAPERS, parallel_search_platforms
 
 configure_tls_certificates()
 
-app = FastAPI(title="Fanfic Atlas Search API", version="1.2.8")
+app = FastAPI(title="Fanfic Atlas Search API", version="1.2.9")
 app.add_middleware(
     CORSMiddleware,
     # The packaged desktop WebView is served from tauri://localhost, while the
@@ -218,30 +218,30 @@ def get_cached_results(db: Session, keyword: str, platforms: list[str], ignore_t
 
 @app.get("/fastapi-status")
 def fastapi_status() -> dict[str, str]:
-    return {"status": "ok", "service": "fastapi-search", "version": "1.2.8"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.2.9"}
 
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "fastapi-search", "version": "1.2.8"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.2.9"}
 
 
 @app.api_route("/api/health", methods=["GET", "HEAD"])
 def api_health_check():
-    return {"status": "ok", "service": "fastapi-search", "version": "1.2.8"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.2.9"}
 
 
 @app.get("/")
 def read_root() -> dict[str, str]:
-    return {"status": "ok", "service":"fastapi-search", "version": "1.2.8"}
+    return {"status": "ok", "service":"fastapi-search", "version": "1.2.9"}
 
 
 @app.post("/reader", response_model=ReaderDocument)
 @app.post("/api/reader", response_model=ReaderDocument, include_in_schema=False)
-def read_work_document(request: ReaderRequest) -> ReaderDocument:
+async def read_work_document(request: ReaderRequest) -> ReaderDocument:
     """Return a bounded, non-persistent clean reading payload for one public work URL."""
     try:
-        document = read_public_work(request.url)
+        document = await read_public_work(request.url, request.chapterUrl)
     except ReaderRequestError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except ReaderUnavailableError as error:
@@ -253,7 +253,9 @@ def read_work_document(request: ReaderRequest) -> ReaderDocument:
         author=document.author,
         source=document.source,
         coverUrl=document.cover_url,
-        chapters=[ReaderChapter(id="chapter-1", title=document.chapter_title, paragraphs=document.paragraphs)],
+        currentChapterIndex=document.current_chapter_index,
+        tableOfContents=[ReaderChapter(id=item.id, title=item.title, index=item.index, url=item.url) for item in document.table_of_contents],
+        chapters=[ReaderChapter(id=f"chapter-{document.current_chapter_index + 1}", title=document.chapter_title, index=document.current_chapter_index + 1, url=document.url, paragraphs=document.paragraphs)],
     )
 
 

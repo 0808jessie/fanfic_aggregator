@@ -89,6 +89,7 @@ import {
   loadFilterPreset,
   loadPinnedQueries,
   loadSearchHistory,
+  loadReadingHistory,
   hydratePersonalLibrary,
   mergeImportedBookmarks,
   mergeCpMappings,
@@ -100,7 +101,9 @@ import {
   persistFilterPreset,
   persistPinnedQueries,
   persistSearchHistory,
+  persistReadingHistory,
   recordSearch,
+  recordReadingHistory,
   parseFullPersonalBackup,
   serializeFullPersonalBackup,
   normalizeExcludedKeywordList,
@@ -112,6 +115,7 @@ import {
   type BlacklistGroup,
   type ContentSafetySettings,
   type CpMapping,
+  type ReadingHistoryRecord,
 } from "@/lib/personalLibrary";
 
 const PLATFORMS = [
@@ -126,7 +130,7 @@ const PLATFORMS = [
   { id: "kadokado", label: "KadoKado 角角者", detail: "KADOKADO API · 手動啟用", tone: "amber" },
 ] as const;
 
-const FALLBACK_DESKTOP_VERSION = "1.2.8";
+const FALLBACK_DESKTOP_VERSION = "1.2.9";
 const UPDATER_MANIFEST_URL = "https://github.com/0808jessie/fanfic_aggregator/releases/latest/download/latest.json";
 const READER_SESSION_PROGRESS_PREFIX = "fanfic-atlas-reader-progress:";
 
@@ -275,6 +279,8 @@ export default function Home() {
   const [bookmarks, setBookmarks] = useState<BookmarkRecord[]>([]);
   const [bookmarkTarget, setBookmarkTarget] = useState<SearchResult | null>(null);
   const [readerTarget, setReaderTarget] = useState<SearchResult | null>(null);
+  const [readerResume, setReaderResume] = useState<{ url: string; percent: number; chapter: string; chapterUrl?: string } | null>(null);
+  const [readingHistory, setReadingHistory] = useState<ReadingHistoryRecord[]>([]);
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
   const [cpMappings, setCpMappings] = useState<CpMapping[]>([]);
   const [customCpMappings, setCustomCpMappings] = useState<CpMapping[]>([]);
@@ -408,12 +414,12 @@ export default function Home() {
   const desktopRuntime = isTauriDesktopRuntime();
   const isSearchPending = searchMutation.isPending || desktopSearchPending;
 
-  const loadReaderDocument = useCallback(async (url: string): Promise<ReaderDocument> => {
+  const loadReaderDocument = useCallback(async (url: string, chapterUrl?: string): Promise<ReaderDocument> => {
     if (desktopRuntime) {
       await waitForSidecarReady();
-      return postSidecarReader<ReaderDocument>(url);
+      return postSidecarReader<ReaderDocument>(url, { chapterUrl });
     }
-    return readerMutation.mutateAsync({ path: "/reader", method: "POST", data: { url } }) as Promise<ReaderDocument>;
+    return readerMutation.mutateAsync({ path: "/reader", method: "POST", data: { url, ...(chapterUrl ? { chapterUrl } : {}) } }) as Promise<ReaderDocument>;
   }, [desktopRuntime, readerMutation]);
 
   const openReaderSource = useCallback(async (url: string) => {
@@ -552,6 +558,7 @@ export default function Home() {
 
   useEffect(() => {
     setBookmarks(loadBookmarks());
+    setReadingHistory(loadReadingHistory());
     const savedCustomMappings = loadCustomCpMappings();
     setCustomCpMappings(savedCustomMappings);
     setCpMappings(mergeCpMappings(savedCustomMappings));
@@ -575,6 +582,7 @@ export default function Home() {
     void hydratePersonalLibrary().then((snapshot) => {
       if (!mounted || personalDataRevisionRef.current !== initialRevision) return;
       setBookmarks(snapshot.bookmarks);
+      setReadingHistory(snapshot.readingHistory);
       setCustomCpMappings(snapshot.customCpMappings);
       setCpMappings(mergeCpMappings(snapshot.customCpMappings));
       setSearchHistory(snapshot.searchHistory);
@@ -930,6 +938,14 @@ export default function Home() {
     persistBookmarks(next);
   };
 
+  const recordReaderProgress = (result: SearchResult, progress: { percent: number; chapter: string; chapterUrl?: string }) => {
+    setReadingHistory((current) => {
+      const next = recordReadingHistory(current, { url: result.url, result, chapter: progress.chapter, chapterUrl: progress.chapterUrl, percent: progress.percent });
+      persistReadingHistory(next);
+      return next;
+    });
+  };
+
   const batchUpdateBookmarks = (urls: string[], patch: Parameters<typeof updateBookmarksBatch>[2]) => {
     personalDataRevisionRef.current += 1;
     const next = updateBookmarksBatch(bookmarks, urls, patch);
@@ -948,7 +964,7 @@ export default function Home() {
   };
 
   const exportAllPersonalData = () => {
-    const body = serializeFullPersonalBackup({ bookmarks, customCpMappings, searchHistory, pinnedQueries, blacklistGroups, filterPreset: { wordCount: wordCountFilter, completion: completionFilter, sort: sortMode }, contentSafetySettings });
+    const body = serializeFullPersonalBackup({ bookmarks, customCpMappings, searchHistory, pinnedQueries, blacklistGroups, filterPreset: { wordCount: wordCountFilter, completion: completionFilter, sort: sortMode }, contentSafetySettings, readingHistory });
     const url = URL.createObjectURL(new Blob([body], { type: "application/json;charset=utf-8" }));
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -968,6 +984,8 @@ export default function Home() {
     setBlacklistGroups(backup.blacklistGroups); setExcludedKeywords(activeBlacklistKeywords(backup.blacklistGroups)); persistBlacklistGroups(backup.blacklistGroups);
     setWordCountFilter(backup.filterPreset.wordCount); setCompletionFilter(backup.filterPreset.completion); setSortMode(backup.filterPreset.sort); persistFilterPreset(backup.filterPreset);
     setContentSafetySettings(backup.contentSafetySettings); persistContentSafetySettings(backup.contentSafetySettings);
+    const restoredReadingHistory = backup.readingHistory || [];
+    setReadingHistory(restoredReadingHistory); persistReadingHistory(restoredReadingHistory);
     toast.success("已完整還原個人資料", { description: `包含 ${backup.bookmarks.length} 筆藏書與 ${backup.blacklistGroups.length} 組避雷設定。` });
   };
 
@@ -1286,8 +1304,10 @@ export default function Home() {
               onBatchRemove={batchRemoveBookmarks}
               onBatchUpdate={batchUpdateBookmarks}
               onProgressChange={updateBookmarkProgress}
-              onRead={(bookmark) => setReaderTarget(bookmark.result)}
+              onRead={(bookmark) => { setReaderResume(null); setReaderTarget(bookmark.result); }}
               loadReaderDocument={loadReaderDocument}
+              readingHistory={readingHistory}
+              onResumeHistory={(record) => { setReaderResume({ url: record.url, percent: record.percent, chapter: record.chapter, chapterUrl: record.chapterUrl }); setReaderTarget(record.result); }}
               onExportAll={exportAllPersonalData}
               onImportAll={importAllPersonalData}
               desktopVersion={desktopRuntime ? desktopVersion : undefined}
@@ -1395,7 +1415,7 @@ export default function Home() {
                           </div>
                           {resultViewMode === "cards" && <RestrictedSummary summary={result.summary || "No summary available."} shouldBlur={isRestricted && contentSafetySettings.blurRestrictedSummaries} />}
                           </div>
-                          <div className={`${resultViewMode === "list" ? "md:justify-self-end" : "mt-6"} flex flex-wrap items-center gap-3`}><Button type="button" variant="outline" onClick={() => setReaderTarget(result)} aria-label={`閱讀 ${result.title}`} className="h-9 rounded-full border-[color:var(--atlas-indigo)]/20 bg-[color:var(--atlas-indigo-soft)] px-3 text-xs font-semibold text-[color:var(--atlas-indigo)] hover:bg-[color:var(--atlas-indigo)] hover:text-white"><BookOpen className="mr-1.5 h-3.5 w-3.5" />閱讀</Button><a href={result.url} target="_blank" rel="noreferrer" onClick={(event) => void openExternalUrl(event, result.url)} className="inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--atlas-indigo)] hover:text-[#4338ca]">前往原始作品 <ArrowUpRight className="h-3.5 w-3.5" /></a></div>
+                          <div className={`${resultViewMode === "list" ? "md:justify-self-end" : "mt-6"} flex flex-wrap items-center gap-3`}><Button type="button" variant="outline" onClick={() => { setReaderResume(null); setReaderTarget(result); }} aria-label={`閱讀 ${result.title}`} className="h-9 rounded-full border-[color:var(--atlas-indigo)]/20 bg-[color:var(--atlas-indigo-soft)] px-3 text-xs font-semibold text-[color:var(--atlas-indigo)] hover:bg-[color:var(--atlas-indigo)] hover:text-white"><BookOpen className="mr-1.5 h-3.5 w-3.5" />閱讀</Button><a href={result.url} target="_blank" rel="noreferrer" onClick={(event) => void openExternalUrl(event, result.url)} className="inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--atlas-indigo)] hover:text-[#4338ca]">前往原始作品 <ArrowUpRight className="h-3.5 w-3.5" /></a></div>
                         </div>
                       </CardContent>
                       {isMaskedByBlacklist && <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 border border-[#e27d9d] bg-[#fff7f9]/75 p-6 text-center backdrop-blur-sm"><div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#9b4358]">⚠️ 此作品命中避雷設定</div><div className="font-mono text-[9px] font-bold tracking-[0.08em] text-[#8b3e59]">{blacklistMatches.map((item) => item.group.name).join(" · ")}</div><div className="flex flex-wrap justify-center gap-1.5">{blacklistMatches.flatMap((item) => item.keywords.map((keyword) => <span key={`${item.group.id}-${keyword}`} className="border border-[#e8a7bf] bg-[#fff0f4] px-2 py-1 font-mono text-[9px] font-bold text-[#8b3e59]">{keyword}</span>))}</div><Button type="button" onClick={() => setRevealedFilteredUrls((current) => { const next = new Set(current); next.add(result.url); return next; })} className="h-9 rounded-none bg-[#8b3e59] font-mono text-[9px] font-bold uppercase tracking-[0.12em]">⚠️ 暫時查看這一篇</Button><span className="font-mono text-[8px] font-medium tracking-[0.08em] text-[#75838b]">不會修改全局避雷設定</span></div>}
@@ -1440,7 +1460,7 @@ export default function Home() {
       </main>
 
       {showScrollToTop && <Button type="button" onClick={scrollToTop} aria-label="回到頂部搜尋列" className="fixed bottom-6 right-5 z-40 h-12 rounded-full bg-[color:var(--atlas-indigo)] px-4 text-sm font-semibold text-white shadow-[0_14px_34px_rgba(79,70,229,0.28)] transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:bg-[#4338ca] focus-visible:ring-2 focus-visible:ring-[color:var(--atlas-indigo)] focus-visible:ring-offset-2 sm:bottom-8 sm:right-8"><ArrowUp className="mr-1.5 h-4 w-4" />回頂部</Button>}
-      {readerTarget && <ReaderView work={readerTarget} initialProgress={bookmarks.find((bookmark) => bookmark.url === readerTarget.url)?.progress || readSessionReaderProgress(readerTarget.url)} loadDocument={loadReaderDocument} onClose={() => setReaderTarget(null)} onOpenSource={(url) => void openReaderSource(url)} onProgress={({ percent, chapter }) => { const bookmark = bookmarks.find((item) => item.url === readerTarget.url); if (bookmark) updateBookmarkProgress(bookmark.url, { ...bookmark.progress, status: percent >= 100 ? "finished" : percent > 0 ? "reading" : "unread", percent, chapter }); else persistSessionReaderProgress(readerTarget.url, { percent, chapter }); }} />}
+      {readerTarget && <ReaderView work={readerTarget} initialProgress={readerResume?.url === readerTarget.url ? readerResume : bookmarks.find((bookmark) => bookmark.url === readerTarget.url)?.progress || readSessionReaderProgress(readerTarget.url)} initialChapterUrl={readerResume?.url === readerTarget.url ? readerResume.chapterUrl : undefined} loadDocument={loadReaderDocument} onClose={() => { setReaderTarget(null); setReaderResume(null); }} onOpenSource={(url) => void openReaderSource(url)} onProgress={({ percent, chapter, chapterUrl }) => { const bookmark = bookmarks.find((item) => item.url === readerTarget.url); if (bookmark) updateBookmarkProgress(bookmark.url, { ...bookmark.progress, status: percent >= 100 ? "finished" : percent > 0 ? "reading" : "unread", percent, chapter }); else persistSessionReaderProgress(readerTarget.url, { percent, chapter }); recordReaderProgress(readerTarget, { percent, chapter, chapterUrl }); }} />}
       <footer className="relative z-10 border-t border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)]"><div className="mx-auto flex max-w-[1440px] flex-col gap-2 px-5 py-6 text-xs text-[color:var(--atlas-muted)] sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-12"><span>Fanfic Atlas · 為你的閱讀清單留一個安靜的位置</span><span>{PLATFORMS.length} 個公開來源 · 本機保存個人資料</span></div></footer>
     </div>
   );
