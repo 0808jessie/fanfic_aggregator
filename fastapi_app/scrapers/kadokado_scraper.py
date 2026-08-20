@@ -1,19 +1,20 @@
 """Public, metadata-only KadoKado search adapter.
 
-The adapter reads only the anonymous server-rendered search document exposed at
-``/search?keyword=...``. It never logs in, opens a browser, accesses chapter
-content, or attempts to work around a failed public request.
+The adapter reads the JSON endpoint used by KadoKado's public search page. It
+never logs in, opens a browser, accesses chapter content, or attempts to work
+around a failed public request.
 """
 
 from __future__ import annotations
 
 import re
 from datetime import datetime
+from math import ceil
 from time import perf_counter
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
-from curl_cffi import requests as curl_requests
+import httpx
 
 from models import ScrapedFanfic
 from scrapers.base_scraper import BaseScraper
@@ -27,22 +28,18 @@ class KadoKadoScraper(BaseScraper):
     """Normalize public KadoKado work cards into the shared metadata model."""
 
     base_url = "https://www.kadokado.com.tw"
-    search_url = f"{base_url}/search"
-    public_search_timeout_seconds = 12.0
+    public_api_url = "https://api.kadokado.com.tw/v3/search"
+    public_api_timeout_seconds = 8.0
+    public_page_size = 20
     headers = {
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept": "application/json",
         "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Referer": f"{base_url}/",
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
-        ),
     }
 
     def _log_public_outcome(self, outcome: str, error: Exception) -> None:
         """Record public failure classes without logging search input or cookies."""
         print(
-            f"[KadoKado PublicSearch] stage=outcome endpoint={self.search_url} "
+            f"[KadoKado PublicSearch] stage=outcome endpoint={self.public_api_url} "
             f"outcome={outcome} error_type={type(error).__name__}"
         )
 
@@ -60,11 +57,16 @@ class KadoKadoScraper(BaseScraper):
             return {"items": [], "total_works": 0, "total_pages": 1}
 
         try:
-            html = self._fetch_public_search_html(normalized_keyword)
-            items = self.parse_results(html, normalized_keyword)
+            payload = self._fetch_public_search_payload(normalized_keyword, page)
+            items = self.parse_api_results(payload, normalized_keyword)
+            total_works = max(len(items), self._safe_int(payload.get("total")))
             if not items:
                 self.last_warning = f"[KadoKado 角角者] No verified public result matched '{normalized_keyword}'"
-            return {"items": items, "total_works": len(items), "total_pages": 1}
+            return {
+                "items": items,
+                "total_works": total_works,
+                "total_pages": max(1, ceil(total_works / self.public_page_size)),
+            }
         except _PublicSearchUnavailable as error:
             self._log_public_outcome("unavailable", error)
             self.last_warning = f"[KadoKado 角角者] {error}"
@@ -73,20 +75,31 @@ class KadoKadoScraper(BaseScraper):
             self.last_warning = f"[KadoKado 角角者] Public search parse failed safely: {error}"
         return {"items": [], "total_works": 0, "total_pages": 1}
 
-    def _fetch_public_search_html(self, keyword: str) -> str:
+    @staticmethod
+    def _safe_int(value: object) -> int:
+        try:
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            return 0
+
+    def _fetch_public_search_payload(self, keyword: str, page: int) -> dict[str, object]:
         started_at = perf_counter()
         try:
-            response = curl_requests.get(
-                self.search_url,
-                params={"keyword": keyword},
+            response = httpx.get(
+                self.public_api_url,
+                params={
+                    "current": max(1, page),
+                    "limit": self.public_page_size,
+                    "sentence": keyword,
+                },
                 headers=self.headers,
-                impersonate="chrome120",
-                timeout=self.public_search_timeout_seconds,
+                timeout=self.public_api_timeout_seconds,
+                follow_redirects=False,
             )
         except Exception as error:
             elapsed_ms = round((perf_counter() - started_at) * 1000)
             print(
-                f"[KadoKado PublicSearch] stage=search endpoint={self.search_url} "
+                f"[KadoKado PublicSearch] stage=search endpoint={self.public_api_url} "
                 f"status=request-error elapsed_ms={elapsed_ms}"
             )
             raise _PublicSearchUnavailable(f"Public HTTP request unavailable: {error}") from error
@@ -94,21 +107,19 @@ class KadoKadoScraper(BaseScraper):
         status_code = int(getattr(response, "status_code", 0))
         elapsed_ms = round((perf_counter() - started_at) * 1000)
         print(
-            f"[KadoKado PublicSearch] stage=search endpoint={self.search_url} "
+            f"[KadoKado PublicSearch] stage=search endpoint={self.public_api_url} "
             f"status={status_code} elapsed_ms={elapsed_ms}"
         )
         if status_code in (401, 403, 429, 503, 520, 521, 522, 525):
             raise _PublicSearchUnavailable(f"Public search blocked (HTTP {status_code}), skipping cleanly")
         response.raise_for_status()
-        html = response.text
-        lowered = html.casefold()
-        if any(marker in lowered for marker in ("cloudflare", "just a moment", "cdn-cgi", "captcha", "安全驗證")):
-            raise _PublicSearchUnavailable("Public search returned a verification page, skipping cleanly")
-        if not BeautifulSoup(html, "html.parser").select('a[href^="/book/"]'):
-            if "還沒找到相關的作品" in html:
-                return html
-            raise _PublicSearchUnavailable("Public search result markup was unavailable")
-        return html
+        try:
+            payload = response.json()
+        except Exception as error:
+            raise _PublicSearchUnavailable("Public search did not return JSON, skipping cleanly") from error
+        if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+            raise _PublicSearchUnavailable("Public search JSON payload was unavailable")
+        return payload
 
     @classmethod
     def _is_verified_book_url(cls, value: str) -> bool:
@@ -163,6 +174,74 @@ class KadoKadoScraper(BaseScraper):
                     coverUrl=cover_url or None,
                     isComplete=is_complete,
                     rating=rating,
+                    language="zh-TW",
+                    scraped_at=datetime.utcnow(),
+                    keyword=keyword,
+                )
+            )
+            seen_urls.add(url)
+        return results
+
+    def parse_api_results(self, payload: dict[str, object], keyword: str) -> list[ScrapedFanfic]:
+        """Map only verified public API metadata to the shared result model."""
+        results: list[ScrapedFanfic] = []
+        seen_urls: set[str] = set()
+        raw_results = payload.get("data")
+        if not isinstance(raw_results, list):
+            return results
+
+        for raw_item in raw_results:
+            if not isinstance(raw_item, dict):
+                continue
+            work_id = self._safe_int(raw_item.get("id"))
+            if not work_id:
+                continue
+            url = f"{self.base_url}/book/{work_id}"
+            if url in seen_urls or not self._is_verified_book_url(url):
+                continue
+
+            title = str(raw_item.get("displayName") or "").strip()
+            if not title:
+                continue
+            authors = raw_item.get("authorsDisplayNames")
+            author_names = [str(name).strip() for name in authors if str(name).strip()] if isinstance(authors, list) else []
+            author = ", ".join(author_names) or str(raw_item.get("ownerDisplayName") or "未知作者").strip()
+            summary = str(raw_item.get("logline") or raw_item.get("oneLineIntro") or "").strip()
+
+            raw_tags = raw_item.get("tags")
+            genre_tags = raw_item.get("genreDisplayNames")
+            tags = ["KadoKado 公開 API", keyword]
+            for source_tags in (raw_tags, genre_tags):
+                if isinstance(source_tags, list):
+                    tags.extend(str(tag).strip() for tag in source_tags if str(tag).strip())
+
+            cover_url = None
+            raw_covers = raw_item.get("coverUrls")
+            if isinstance(raw_covers, list):
+                for value in raw_covers:
+                    candidate = str(value or "").strip()
+                    parsed_cover = urlparse(candidate)
+                    if parsed_cover.scheme == "https" and parsed_cover.netloc == "img.kadokado.com.tw":
+                        cover_url = candidate
+                        break
+
+            serialized = raw_item.get("isSerialized")
+            is_complete = (not serialized) if isinstance(serialized, bool) else None
+            rating = "R18" if raw_item.get("isRRated") is True else None
+            word_count = self._safe_int(raw_item.get("wordCount"))
+            results.append(
+                ScrapedFanfic(
+                    id=f"kadokado:{url}",
+                    title=title[:240],
+                    author=author[:160] or "未知作者",
+                    platform="KadoKado 角角者",
+                    url=url,
+                    tags=", ".join(dict.fromkeys(tags)),
+                    summary=summary[:800],
+                    coverUrl=cover_url,
+                    isComplete=is_complete,
+                    rating=rating,
+                    wordCount=str(word_count) if word_count else None,
                     language="zh-TW",
                     scraped_at=datetime.utcnow(),
                     keyword=keyword,

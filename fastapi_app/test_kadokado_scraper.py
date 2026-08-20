@@ -20,6 +20,39 @@ KADOKADO_RESULTS = '''
   <a href="/chapter/900">不應收錄的章節連結</a>
 </main>'''
 
+KADOKADO_API_RESULTS = {
+    "current": 1,
+    "limit": 20,
+    "more": False,
+    "total": 2,
+    "data": [
+        {
+            "id": 72641,
+            "displayName": "是誰在制服裡種了花",
+            "logline": "被植入豹基因的特級探員。",
+            "coverUrls": ["https://img.kadokado.com.tw/cover/72641"],
+            "tags": ["都市", "科幻"],
+            "genreDisplayNames": ["科幻"],
+            "isRRated": False,
+            "isSerialized": True,
+            "authorsDisplayNames": ["忍"],
+            "wordCount": 25600,
+        },
+        {
+            "id": 25945,
+            "displayName": "旭夕",
+            "oneLineIntro": "一段公開作品摘要。",
+            "coverUrls": [],
+            "tags": ["成人向"],
+            "genreDisplayNames": [],
+            "isRRated": True,
+            "isSerialized": False,
+            "ownerDisplayName": "义在",
+            "wordCount": 3400,
+        },
+    ],
+}
+
 
 def test_kadokado_parser_maps_only_verified_public_book_cards():
     items = KadoKadoScraper().parse_results(KADOKADO_RESULTS, "義忍")
@@ -35,19 +68,23 @@ def test_kadokado_parser_maps_only_verified_public_book_cards():
 
 def test_kadokado_public_request_and_protection_degrade_safely(capsys):
     scraper = KadoKadoScraper()
-    with patch("scrapers.kadokado_scraper.curl_requests.get") as request:
-        request.return_value = MagicMock(status_code=200, text=KADOKADO_RESULTS)
+    with patch("scrapers.kadokado_scraper.httpx.get") as request:
+        request.return_value = MagicMock(status_code=200, json=lambda: KADOKADO_API_RESULTS)
         payload = scraper.scrape("義忍")
     assert len(payload["items"]) == 2
-    assert request.call_args.kwargs["params"] == {"keyword": "義忍"}
-    assert request.call_args.kwargs["timeout"] == 12.0
+    assert payload["total_works"] == 2
+    assert request.call_args.kwargs["params"] == {"current": 1, "limit": 20, "sentence": "義忍"}
+    assert request.call_args.kwargs["timeout"] == 8.0
     assert PLATFORM_TIMEOUT_SECONDS["kadokado"] == 12.0
     assert "kadokado" in SCRAPERS
-    assert "[KadoKado PublicSearch] stage=search endpoint=https://www.kadokado.com.tw/search status=200" in capsys.readouterr().out
+    assert "[KadoKado PublicSearch] stage=search endpoint=https://api.kadokado.com.tw/v3/search status=200" in capsys.readouterr().out
+    assert payload["items"][0].wordCount == "25600"
+    assert payload["items"][1].rating == "R18"
+    assert payload["items"][1].isComplete is True
 
     scraper = KadoKadoScraper()
-    with patch("scrapers.kadokado_scraper.curl_requests.get") as request:
-        request.return_value = MagicMock(status_code=403, text="<title>Cloudflare</title>")
+    with patch("scrapers.kadokado_scraper.httpx.get") as request:
+        request.return_value = MagicMock(status_code=403)
         assert scraper.scrape("義忍") == {"items": [], "total_works": 0, "total_pages": 1}
     assert classify_platform_status(0, scraper.last_warning) == "blocked"
 

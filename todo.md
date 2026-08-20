@@ -494,4 +494,9 @@
 - [x] 重構進階篩選面板為來源平台三欄晶片、屬性篩選三等分與全寬隱藏藏書切換列，消除畸形留白與爆版
 - [x] 修正 POPO／KadoKado 未啟用狀態與 AO3 受阻提示文案，使其明確、可操作且不暗示不存在的驗證資料回流
 - [x] 補足藏書閣視圖、篩選面板、來源狀態文案的前端回歸與響應式視覺驗證；維持 AO3 官方搜尋直達與來源級安全降級，不實作指紋偽裝、Cookie 預熱或驗證規避
-- [ ] 將藏書閣與篩選面板重構升版、保存檢查點並同步 GitHub 跨平台桌面更新
+- [x] 將藏書閣與篩選面板重構升版、保存檢查點並同步 GitHub 跨平台桌面更新；v1.2.2 GitHub Actions 已成功完成 Apple Silicon、Intel macOS 與 Windows 簽名資產，並發布 latest.json
+- [x] 研究 KadoKado 是否提供可公開、文件化且不需登入的搜尋 API，驗證其作品資料與使用條款邊界
+- [x] 驗證 POPO 是否提供無驗證要求的官方公開搜尋入口；不採用 Cookie 預熱、指紋偽裝或驗證規避
+- [x] 僅在公開端點可用時更新 KadoKado／POPO Adapter，否則維持精確 blocked 狀態與來源級 clean skip
+- [x] 補足公開端點、blocked 降級與多來源隔離回歸測試，並執行「義忍」及一般關鍵字端對端驗證；104 pytest、91 Vitest、production build、cargo check 與 Unix-socket 實測通過
+- [ ] 將 KadoKado 公開 JSON API 修正升版、保存檢查點並發布新的跨平台桌面更新

@@ -990,7 +990,7 @@ dependencies = [
 
 [[package]]
 name = "fanfic_atlas"
-version = "1.2.2"
+version = "1.2.3"
 dependencies = [
  "serde",
  "serde_json",
