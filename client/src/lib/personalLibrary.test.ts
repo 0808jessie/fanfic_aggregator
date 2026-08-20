@@ -150,18 +150,18 @@ describe("personal library local storage helpers", () => {
     persistBookmarks(bookmarks);
     persistPinnedQueries(["義忍"]);
     persistExcludedKeywords(["避雷角色"]);
-    persistContentSafetySettings({ ageConfirmation: "adult", blurRestrictedSummaries: false });
+    persistContentSafetySettings({ ageConfirmation: "adult", blurRestrictedSummaries: false, blacklistDisplayMode: "hide" });
 
     const snapshot = await hydratePersonalLibrary();
     expect(snapshot.bookmarks).toHaveLength(1);
     expect(snapshot.pinnedQueries).toEqual(["義忍"]);
     expect(snapshot.excludedKeywords).toEqual(["避雷角色"]);
-    expect(snapshot.contentSafetySettings).toEqual({ ageConfirmation: "adult", blurRestrictedSummaries: false });
+    expect(snapshot.contentSafetySettings).toEqual({ ageConfirmation: "adult", blurRestrictedSummaries: false, blacklistDisplayMode: "hide" });
   });
 
   it("serializes and restores the complete personal backup payload", () => {
     const bookmarks = upsertBookmark([], { url: result.url, result, rating: 3, notes: "完整備份", tags: ["備份"], shelf: "to-read", progress: { status: "reading", percent: 50, chapter: "第 5 章" } });
-    const backup = serializeFullPersonalBackup({ bookmarks, customCpMappings: [], searchHistory: ["義忍"], pinnedQueries: ["義忍"], blacklistGroups: [{ id: "general", name: "通用避雷", keywords: ["雷點"], enabled: true }], filterPreset: { wordCount: "all", completion: "all", sort: "relevance" }, contentSafetySettings: { ageConfirmation: "adult", blurRestrictedSummaries: true } });
+    const backup = serializeFullPersonalBackup({ bookmarks, customCpMappings: [], searchHistory: ["義忍"], pinnedQueries: ["義忍"], blacklistGroups: [{ id: "general", name: "通用避雷", keywords: ["雷點"], enabled: true }], filterPreset: { wordCount: "all", completion: "all", sort: "relevance" }, contentSafetySettings: { ageConfirmation: "adult", blurRestrictedSummaries: true, blacklistDisplayMode: "mask" } });
     const restored = parseFullPersonalBackup(backup);
     expect(restored?.bookmarks[0]?.progress).toMatchObject({ status: "reading", percent: 50 });
     expect(restored?.blacklistGroups[0]?.name).toBe("通用避雷");
@@ -169,8 +169,8 @@ describe("personal library local storage helpers", () => {
   });
 
   it("defaults to a protected age state and persists adult content preferences", () => {
-    expect(loadContentSafetySettings()).toEqual({ ageConfirmation: "unknown", blurRestrictedSummaries: true });
-    persistContentSafetySettings({ ageConfirmation: "adult", blurRestrictedSummaries: false });
-    expect(loadContentSafetySettings()).toEqual({ ageConfirmation: "adult", blurRestrictedSummaries: false });
+    expect(loadContentSafetySettings()).toEqual({ ageConfirmation: "unknown", blurRestrictedSummaries: true, blacklistDisplayMode: "hide" });
+    persistContentSafetySettings({ ageConfirmation: "adult", blurRestrictedSummaries: false, blacklistDisplayMode: "mask" });
+    expect(loadContentSafetySettings()).toEqual({ ageConfirmation: "adult", blurRestrictedSummaries: false, blacklistDisplayMode: "mask" });
   });
 });

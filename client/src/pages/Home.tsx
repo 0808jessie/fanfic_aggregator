@@ -74,7 +74,7 @@ import { BlueprintCover } from "@/components/BlueprintCover";
 import { BookshelfView } from "@/components/BookshelfView";
 import { BlacklistGroupManager } from "@/components/ExcludeKeywordEditor";
 import { AgeConfirmationDialog, RestrictedSummary } from "@/components/ContentSafety";
-import { BookmarkEditorDialog, CpMappingManagerDialog } from "@/components/PersonalLibrary";
+import { BookmarkEditorDialog, CpMappingLibraryPage } from "@/components/PersonalLibrary";
 import {
   loadBookmarks,
   activeBlacklistKeywords,
@@ -124,7 +124,7 @@ const PLATFORMS = [
   { id: "kadokado", label: "KadoKado 角角者", detail: "KADOKADO API · 手動啟用", tone: "amber" },
 ] as const;
 
-const FALLBACK_DESKTOP_VERSION = "1.2.6";
+const FALLBACK_DESKTOP_VERSION = "1.2.7";
 const UPDATER_MANIFEST_URL = "https://github.com/0808jessie/fanfic_aggregator/releases/latest/download/latest.json";
 
 type DesktopUpdate = {
@@ -249,13 +249,12 @@ export default function Home() {
   const [activePlatformFilter, setActivePlatformFilter] = useState<PlatformId | null>(null);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [platformStatuses, setPlatformStatuses] = useState<PlatformStatus[]>([]);
-  const [activeView, setActiveView] = useState<"search" | "bookmarks">("search");
+  const [activeView, setActiveView] = useState<"search" | "bookmarks" | "cp-library">("search");
   const [bookmarks, setBookmarks] = useState<BookmarkRecord[]>([]);
   const [bookmarkTarget, setBookmarkTarget] = useState<SearchResult | null>(null);
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
   const [cpMappings, setCpMappings] = useState<CpMapping[]>([]);
   const [customCpMappings, setCustomCpMappings] = useState<CpMapping[]>([]);
-  const [cpManagerOpen, setCpManagerOpen] = useState(false);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [pinnedQueries, setPinnedQueries] = useState<string[]>([]);
   const [excludedKeywords, setExcludedKeywords] = useState<string[]>([]);
@@ -267,6 +266,7 @@ export default function Home() {
     return RESULT_PAGE_SIZES.includes(saved as (typeof RESULT_PAGE_SIZES)[number]) ? saved : 24;
   });
   const [localResultPage, setLocalResultPage] = useState(1);
+  const [jumpPageInput, setJumpPageInput] = useState("");
   const [showScrollToTop, setShowScrollToTop] = useState(false);
   const [revealedFilteredUrls, setRevealedFilteredUrls] = useState<Set<string>>(new Set());
   const [expandedTagUrls, setExpandedTagUrls] = useState<Set<string>>(new Set());
@@ -430,9 +430,9 @@ export default function Home() {
         ? results.filter((result) => platformMeta(result.platform).id === activePlatformFilter)
         : results,
       activeQuery || keyword.trim(),
-      { wordCount: wordCountFilter, completion: completionFilter, sort: sortMode, language: selectedLanguage, excludedKeywords: showFilteredResults ? [] : excludedKeywords, rating: contentSafetySettings.ageConfirmation === "minor" ? "safe" : ratingFilter },
+      { wordCount: wordCountFilter, completion: completionFilter, sort: sortMode, language: selectedLanguage, excludedKeywords: contentSafetySettings.blacklistDisplayMode === "mask" ? [] : excludedKeywords, rating: contentSafetySettings.ageConfirmation === "minor" ? "safe" : ratingFilter },
     ),
-    [results, activePlatformFilter, activeQuery, keyword, wordCountFilter, completionFilter, sortMode, selectedLanguage, excludedKeywords, showFilteredResults, ratingFilter, contentSafetySettings.ageConfirmation],
+    [results, activePlatformFilter, activeQuery, keyword, wordCountFilter, completionFilter, sortMode, selectedLanguage, excludedKeywords, ratingFilter, contentSafetySettings.ageConfirmation, contentSafetySettings.blacklistDisplayMode],
   );
   const hiddenBookmarkedResultCount = useMemo(
     () => hideBookmarkedResults ? locallyFilteredResults.filter((result) => bookmarkUrls.has(result.url.trim())).length : 0,
@@ -473,10 +473,10 @@ export default function Home() {
     if (contentSafetySettings.ageConfirmation === "adult" && ratingFilter !== "all") chips.push({ id: "rating", label: ratingFilter === "safe" ? "僅全年齡" : "僅 R18", clear: () => setRatingFilter("all") });
     if (activePlatformFilter) chips.push({ id: "result-platform", label: `${platformMeta(activePlatformFilter).label} 結果`, clear: () => { setActivePlatformFilter(null); setLocalResultPage(1); } });
     if (!usesDefaultPlatformSelection) chips.push({ id: "sources", label: `${selectedPlatforms.length} 個來源`, clear: () => setSelectedPlatforms(DEFAULT_SELECTED_PLATFORM_IDS) });
-    if (excludedKeywords.length > 0 && !showFilteredResults) chips.push({ id: "blacklist", label: "避雷生效中", clear: () => setShowFilteredResults(true) });
+    if (excludedKeywords.length > 0) chips.push({ id: "blacklist", label: contentSafetySettings.blacklistDisplayMode === "mask" ? "避雷遮罩中" : "避雷隱藏中", clear: () => setBlacklistDisplayMode("mask") });
     if (hideBookmarkedResults) chips.push({ id: "bookmarks", label: `隱藏已收藏${hiddenBookmarkedResultCount ? ` ${hiddenBookmarkedResultCount} 篇` : ""}`, clear: () => setHideBookmarkedResults(false) });
     return chips;
-  }, [selectedLanguage, wordCountFilter, completionFilter, sortMode, contentSafetySettings.ageConfirmation, ratingFilter, activePlatformFilter, selectedPlatforms.length, usesDefaultPlatformSelection, excludedKeywords.length, showFilteredResults, hideBookmarkedResults, hiddenBookmarkedResultCount]);
+  }, [selectedLanguage, wordCountFilter, completionFilter, sortMode, contentSafetySettings.ageConfirmation, contentSafetySettings.blacklistDisplayMode, ratingFilter, activePlatformFilter, selectedPlatforms.length, usesDefaultPlatformSelection, excludedKeywords.length, hideBookmarkedResults, hiddenBookmarkedResultCount]);
   const languageCounts = useMemo(
     () => Object.fromEntries(
       (["all", "zh", "zh-hant", "zh-hans", "en", "ja"] as const).map((language) => [language, countLanguageResults(results.filter((result) => !matchesExcludedKeyword(result, excludedKeywords)), language)]),
@@ -484,8 +484,8 @@ export default function Home() {
     [results, excludedKeywords],
   );
   const filteredResultCount = useMemo(
-    () => results.filter((result) => matchesExcludedKeyword(result, excludedKeywords)).length,
-    [results, excludedKeywords],
+    () => contentSafetySettings.blacklistDisplayMode === "hide" ? results.filter((result) => matchesExcludedKeyword(result, excludedKeywords)).length : 0,
+    [results, excludedKeywords, contentSafetySettings.blacklistDisplayMode],
   );
   const isRetryingSinglePlatform = isSearchPending && Boolean(retryingPlatformId);
   const sourceProgress = useMemo(() => {
@@ -516,6 +516,7 @@ export default function Home() {
     setExcludedKeywords(activeBlacklistKeywords(savedBlacklistGroups).length ? activeBlacklistKeywords(savedBlacklistGroups) : loadExcludedKeywords());
     const savedContentSafety = loadContentSafetySettings();
     setContentSafetySettings(savedContentSafety);
+    setShowFilteredResults(savedContentSafety.blacklistDisplayMode === "mask");
     if (savedContentSafety.ageConfirmation === "minor") setRatingFilter("safe");
     if (savedContentSafety.ageConfirmation === "adult") setRatingFilter("all");
     const preset = loadFilterPreset();
@@ -535,6 +536,7 @@ export default function Home() {
       setBlacklistGroups(snapshot.blacklistGroups);
       setExcludedKeywords(activeBlacklistKeywords(snapshot.blacklistGroups).length ? activeBlacklistKeywords(snapshot.blacklistGroups) : snapshot.excludedKeywords);
       setContentSafetySettings(snapshot.contentSafetySettings);
+      setShowFilteredResults(snapshot.contentSafetySettings.blacklistDisplayMode === "mask");
       if (snapshot.contentSafetySettings.ageConfirmation === "minor") setRatingFilter("safe");
       if (snapshot.contentSafetySettings.ageConfirmation === "adult") setRatingFilter("all");
       setWordCountFilter(snapshot.filterPreset.wordCount);
@@ -547,7 +549,7 @@ export default function Home() {
 
   useEffect(() => {
     setLocalResultPage(1);
-  }, [activeQuery, activePlatformFilter, selectedLanguage, wordCountFilter, completionFilter, sortMode, ratingFilter, showFilteredResults, hideBookmarkedResults, bookmarks, resultsPerPage, pagination.page]);
+  }, [activeQuery, activePlatformFilter, selectedLanguage, wordCountFilter, completionFilter, sortMode, ratingFilter, contentSafetySettings.blacklistDisplayMode, hideBookmarkedResults, bookmarks, resultsPerPage, pagination.page]);
 
   useEffect(() => {
     window.localStorage.setItem("fanfic-atlas-result-view", resultViewMode);
@@ -781,6 +783,17 @@ export default function Home() {
     if (usesSourcePagination) goToSourcePage(pagination.page + 1);
   };
 
+  const jumpToUnifiedPage = () => {
+    const requestedPage = Number.parseInt(jumpPageInput, 10);
+    if (!Number.isFinite(requestedPage)) {
+      setJumpPageInput("");
+      return;
+    }
+    const targetPage = Math.min(unifiedPageCount, Math.max(1, requestedPage));
+    setJumpPageInput(String(targetPage));
+    goToUnifiedPage(targetPage);
+  };
+
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
   const saveBookmark = (value: { result: SearchResult; rating: number; notes: string; tags: string[]; shelf: "to-read" | "favorite" }) => {
@@ -928,6 +941,15 @@ export default function Home() {
     persistContentSafetySettings(next);
   };
 
+  const setBlacklistDisplayMode = (blacklistDisplayMode: "hide" | "mask") => {
+    personalDataRevisionRef.current += 1;
+    const next = { ...contentSafetySettings, blacklistDisplayMode };
+    setContentSafetySettings(next);
+    setShowFilteredResults(blacklistDisplayMode === "mask");
+    if (blacklistDisplayMode === "hide") setRevealedFilteredUrls(new Set());
+    persistContentSafetySettings(next);
+  };
+
   const updateCpMappings = (nextCustomMappings: CpMapping[]) => {
     personalDataRevisionRef.current += 1;
     setCustomCpMappings(nextCustomMappings);
@@ -964,7 +986,7 @@ export default function Home() {
     setActivePlatformFilter(null);
     setSelectedPlatforms(DEFAULT_SELECTED_PLATFORM_IDS);
     setRatingFilter(contentSafetySettings.ageConfirmation === "minor" ? "safe" : "all");
-    setShowFilteredResults(false);
+    setShowFilteredResults(contentSafetySettings.blacklistDisplayMode === "mask");
     setHideBookmarkedResults(false);
     setRevealedFilteredUrls(new Set());
     persistFilterPreset({ wordCount: "all", completion: "all", sort: "relevance", hideBookmarked: false });
@@ -989,14 +1011,14 @@ export default function Home() {
             <span>搜尋</span><span>{PLATFORMS.length} 個來源</span><span>私人藏書</span>
           </div>
           <div className="flex items-center gap-2 text-xs font-medium text-[color:var(--atlas-muted)]">
-            <Button type="button" variant="ghost" onClick={() => setCpManagerOpen(true)} className="hidden h-9 border-0 bg-[color:var(--atlas-elevated)] px-3 text-xs font-semibold text-[color:var(--atlas-ink)] hover:bg-[color:var(--atlas-indigo-soft)] lg:inline-flex"><Tags className="mr-2 h-3.5 w-3.5" />CP 詞庫</Button>
+            <Button type="button" variant="ghost" onClick={() => setActiveView("cp-library")} className="hidden h-9 border-0 bg-[color:var(--atlas-elevated)] px-3 text-xs font-semibold text-[color:var(--atlas-ink)] hover:bg-[color:var(--atlas-indigo-soft)] lg:inline-flex"><Tags className="mr-2 h-3.5 w-3.5" />CP 詞庫</Button>
             <span className="h-2 w-2 rounded-full bg-[#0f766e]" />已連線
           </div>
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto max-w-[1160px] px-5 pb-20 pt-12 sm:px-8 lg:pt-16">
-        <section className="grid items-center gap-8 lg:grid-cols-[1.25fr_0.75fr]">
+      <main className={`relative z-10 mx-auto ${activeView === "cp-library" ? "max-w-6xl" : "max-w-[1160px]"} px-5 pb-20 pt-12 sm:px-8 lg:pt-16`}>
+        {activeView !== "cp-library" && <section className="grid items-center gap-8 lg:grid-cols-[1.25fr_0.75fr]">
           <div>
             <h1 className="max-w-3xl text-[clamp(2.65rem,5vw,4.6rem)] font-extrabold">把想讀的故事<br /><span className="text-[color:var(--atlas-indigo)]">留在這裡。</span></h1>
             <p className="mt-5 max-w-xl text-base leading-8 text-[color:var(--atlas-muted)]">從多個公開來源找到作品，依照你的閱讀習慣、分級與避雷設定，安靜地整理成自己的書架。</p>
@@ -1006,17 +1028,17 @@ export default function Home() {
             <p className="mt-3 text-sm leading-6 text-[color:var(--atlas-muted)]">搜尋結果只做索引與導流；收藏、筆記、避雷與閱讀進度都保留在你的裝置。</p>
             <div className="mt-6 flex items-center gap-2 text-sm text-[color:var(--atlas-indigo)]"><span className="h-2 w-2 rounded-full bg-current" />準備好開始搜尋</div>
           </div>
-        </section>
+        </section>}
 
-        <section className="mt-10 flex flex-col gap-3 border-b border-[color:var(--atlas-line)] pb-3 sm:mt-14 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="ghost" onClick={() => setActiveView("search")} className={`h-10 rounded-none border-b-2 px-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] ${activeView === "search" ? "border-[#10151b] bg-white/65 text-[#10151b]" : "border-transparent text-[#75838b] hover:bg-white/60"}`}><Search className="mr-2 h-3.5 w-3.5" />搜尋索引</Button>
-            <Button type="button" variant="ghost" onClick={() => setActiveView("bookmarks")} className={`h-10 rounded-none border-b-2 px-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] ${activeView === "bookmarks" ? "border-[#10151b] bg-white/65 text-[#10151b]" : "border-transparent text-[#75838b] hover:bg-white/60"}`}><BookMarked className="mr-2 h-3.5 w-3.5" />藏書閣 / 收藏夾 <span className="ml-2 text-[#e27d9d]">{bookmarks.length}</span></Button>
+        <section className="mt-10 border-b border-[color:var(--atlas-line)] pb-3 sm:mt-14">
+          <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1">
+            <Button type="button" variant="ghost" onClick={() => setActiveView("search")} className={`h-11 rounded-none border-b-2 px-4 text-sm font-semibold ${activeView === "search" ? "border-[#10151b] bg-white/65 text-slate-900 dark:text-slate-100" : "border-transparent text-slate-600 hover:bg-white/60 dark:text-slate-300"}`}><Search className="mr-2 h-4 w-4" />搜尋索引</Button>
+            <Button type="button" variant="ghost" onClick={() => setActiveView("bookmarks")} className={`h-11 rounded-none border-b-2 px-4 text-sm font-semibold ${activeView === "bookmarks" ? "border-[#10151b] bg-white/65 text-slate-900 dark:text-slate-100" : "border-transparent text-slate-600 hover:bg-white/60 dark:text-slate-300"}`}><BookMarked className="mr-2 h-4 w-4" />藏書閣 / 收藏夾 <span className="ml-2 text-[#e27d9d]">{bookmarks.length}</span></Button>
+            <Button type="button" variant="ghost" onClick={() => setActiveView("cp-library")} className={`h-11 shrink-0 rounded-none border-b-2 px-4 text-sm font-semibold ${activeView === "cp-library" ? "border-[#10151b] bg-white/65 text-slate-900 dark:text-slate-100" : "border-transparent text-slate-600 hover:bg-white/60 dark:text-slate-300"}`}><Tags className="mr-2 h-4 w-4" />CP 詞庫與世界觀</Button>
           </div>
-          <Button type="button" variant="outline" onClick={() => setCpManagerOpen(true)} className="h-9 rounded-none border-[#10151b]/15 bg-white/55 font-mono text-[10px] font-bold uppercase tracking-[0.13em] hover:border-[#45b9b2] lg:hidden"><Tags className="mr-2 h-3.5 w-3.5" />CP 詞庫管理</Button>
         </section>
 
-        <section className="reader-command relative mt-6 px-4 py-4 sm:px-6 sm:py-5">
+        {activeView === "search" && <section className="reader-command relative mt-6 px-4 py-4 sm:px-6 sm:py-5">
           <form onSubmit={submitSearch} className="flex flex-col gap-4 lg:flex-row lg:items-center">
             <div className="flex flex-1 items-center gap-3"><div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${searchMode === "author" ? "bg-amber-50 text-amber-700" : "bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]"}`}>{searchMode === "author" ? <UserRound className="h-5 w-5 shrink-0" /> : <Search className="h-5 w-5 shrink-0" />}</div><div className="relative min-w-0 flex-1"><div className="reader-segmented mb-2 flex w-fit"><Button type="button" variant="ghost" aria-pressed={searchMode === "keyword"} onClick={() => setSearchMode("keyword")} className={`h-7 px-3 text-xs font-semibold ${searchMode === "keyword" ? "bg-white text-[color:var(--atlas-indigo)] shadow-sm" : "text-[color:var(--atlas-muted)]"}`}>關鍵字 / CP</Button><Button type="button" variant="ghost" aria-pressed={searchMode === "author"} onClick={() => setSearchMode("author")} className={`h-7 px-3 text-xs font-semibold ${searchMode === "author" ? "bg-white text-amber-700 shadow-sm" : "text-[color:var(--atlas-muted)]"}`}>作者</Button></div><Input value={keyword} onChange={(event) => { setKeyword(event.target.value); setHistoryMenuOpen(false); }} onFocus={() => setHistoryMenuOpen(true)} onBlur={(event) => { const nextFocus = event.relatedTarget; if (!(nextFocus instanceof Node) || !historyMenuRef.current?.contains(nextFocus)) setHistoryMenuOpen(false); }} onKeyDown={(event) => { if (event.key === "Escape") setHistoryMenuOpen(false); }} placeholder={searchMode === "author" ? "輸入作者暱稱、繪師或社團名..." : "輸入角色、配對、作品名或關鍵字"} className="h-10 border-0 bg-transparent px-0 text-lg font-semibold shadow-none focus-visible:ring-0 sm:text-xl" aria-label="搜尋同人作品" />{matchedCpMapping && <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => applyCpSuggestion(matchedCpMapping)} className="mt-2 inline-flex max-w-full items-center gap-2 rounded-full border border-[color:var(--atlas-indigo)]/20 bg-[color:var(--atlas-indigo-soft)] px-3 py-1.5 text-left text-xs font-semibold text-[color:var(--atlas-indigo)] transition-colors hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--atlas-indigo)]" aria-label={`套用 ${matchedCpMapping.alias} 的跨語言 CP 對照搜尋`}><Sparkles className="h-3.5 w-3.5 shrink-0" /><span className="truncate">包含 AO3：{matchedCpMapping.ao3Query} ／ 本地：{matchedCpMapping.localQuery}{matchedCpMapping.japaneseQuery ? ` ／ 日文：${matchedCpMapping.japaneseQuery}` : ""}</span></button>}{historyMenuOpen && searchHistory.length > 0 && <div ref={historyMenuRef} aria-label="最近搜尋" className="absolute left-0 right-0 top-full z-30 mt-3 overflow-hidden rounded-2xl border border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)]/95 p-2 shadow-[0_18px_42px_rgba(29,28,45,0.16)] backdrop-blur-xl"><div className="mb-1 flex items-center justify-between px-2 py-1"><span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[color:var(--atlas-muted)]"><History className="h-3.5 w-3.5" />最近搜尋</span><button type="button" onClick={() => { clearHistory(); setHistoryMenuOpen(false); }} className="rounded-lg px-2 py-1 text-xs font-semibold text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)]">清空</button></div>{searchHistory.map((entry) => <div key={entry} className="group flex items-center gap-1 rounded-xl px-2 transition-colors hover:bg-[color:var(--atlas-indigo-soft)]"><button type="button" onClick={() => { setKeyword(entry); setSearchMode("keyword"); setHistoryMenuOpen(false); runSearch(false, entry); }} className="min-w-0 flex-1 truncate py-2 text-left text-sm font-semibold text-[color:var(--atlas-ink)]">{entry}</button><button type="button" onClick={() => removeHistoryEntry(entry)} aria-label={`刪除最近搜尋 ${entry}`} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[color:var(--atlas-muted)] opacity-0 transition-opacity hover:bg-white hover:text-[color:var(--atlas-danger)] focus-visible:opacity-100 group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button></div>)}</div>}{searchMode === "author" && <div className="mt-1 text-xs text-amber-700">正在搜尋作者：{keyword}</div>}</div></div>
             <div className="flex flex-wrap items-center gap-3">
@@ -1027,15 +1049,14 @@ export default function Home() {
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[color:var(--atlas-line)] pt-3"><Button type="button" variant="outline" onClick={pinCurrentQuery} disabled={!(keyword || activeQuery).trim()} className="h-8 rounded-full border-[color:var(--atlas-danger-line)] bg-[color:var(--atlas-danger-soft)] px-3 text-xs font-semibold text-[color:var(--atlas-danger)] hover:bg-[#ffe4eb]">釘選目前搜尋詞</Button>{pinnedQueries.map((entry) => <button key={entry} type="button" onClick={() => { setKeyword(entry); setSearchMode("keyword"); runSearch(false, entry); }} className="rounded-full bg-[color:var(--atlas-indigo-soft)] px-3 py-1.5 text-xs font-semibold text-[color:var(--atlas-indigo)] hover:bg-white">{entry}</button>)}</div>
           <div className="mt-3 border-t border-[#10151b]/10 pt-3">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-              <div className="flex min-w-0 flex-wrap items-center gap-3">
-                <div className="flex items-center gap-1 border border-[#111826]/15 bg-white/70 p-1" aria-label="語言快速篩選">
-                  {(["all", "zh-hant", "zh-hans", "ja", "en"] as const).map((lang) => <button key={lang} type="button" onClick={() => setSelectedLanguage(lang)} className={`h-7 px-2 font-mono text-[9px] font-bold tracking-[0.08em] transition-colors ${selectedLanguage === lang ? "bg-[#111826] text-white" : "text-[#61707a] hover:bg-[#f0ece1]"}`}>{lang === "all" ? "全部" : lang === "zh-hant" ? "繁體" : lang === "zh-hans" ? "簡體" : lang === "ja" ? "日文" : "英文"}</button>)}
-                </div>
-                <div className="flex items-center gap-1 border border-[#efb4c4] bg-[#fff7f9] p-1" aria-label="內容分級快速篩選">
-                  {(["all", "safe", "r18"] as const).map((rating) => <button key={rating} type="button" disabled={contentSafetySettings.ageConfirmation !== "adult" && rating !== "safe"} onClick={() => setRatingFilter(rating)} className={`h-7 px-2 font-mono text-[9px] font-bold tracking-[0.08em] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${ratingFilter === rating ? "bg-[#9b4358] text-white" : "text-[#8b3e59] hover:bg-[#ffe5eb]"}`}>{rating === "all" ? "全部" : rating === "safe" ? "全年齡" : "R18"}</button>)}
-                </div>
-                <Button type="button" variant="outline" onClick={() => setShowFilters((current) => !current)} className={`h-9 rounded-none border-[#111826]/20 bg-white/80 font-mono text-[9px] font-bold uppercase tracking-[0.12em] hover:border-[#2d70d6] hover:bg-[#e6efff] ${activeFilterCount ? "border-[#2d70d6] bg-[#e6efff] text-[#245da9]" : ""}`}><SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />進階篩選 {activeFilterCount > 0 && <span className="ml-1.5 inline-flex min-w-5 items-center justify-center bg-[#2d70d6] px-1.5 py-0.5 font-mono text-[9px] font-bold text-white">{activeFilterCount}</span>}<ChevronDown className={`ml-1.5 h-3.5 w-3.5 transition-transform ${showFilters ? "rotate-180" : ""}`} /></Button>
-                {activeFilterCount > 0 && <Button type="button" variant="outline" onClick={resetAllFilters} className="h-9 rounded-none border-[#e8a7bf] bg-[#fff5f7] px-3 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-[#8b3e59] hover:bg-[#ffe8f0]">清除本次條件</Button>}
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <label className="flex items-center gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-300">語言<select aria-label="語言快速篩選" value={selectedLanguage} onChange={(event) => setSelectedLanguage(event.target.value as LanguageFilter)} className="h-9 rounded-xl border border-[#111826]/15 bg-white px-2.5 text-sm text-[#10151b] outline-none transition-colors focus:border-[color:var(--atlas-indigo)]"><option value="all">全部</option><option value="zh-hant">繁體</option><option value="zh-hans">簡體</option><option value="ja">日文</option><option value="en">英文</option></select></label>
+                <label className="flex items-center gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-300">分級<select aria-label="內容分級快速篩選" value={ratingFilter} onChange={(event) => setRatingFilter(event.target.value as RatingFilter)} className="h-9 rounded-xl border border-[#efb4c4] bg-white px-2.5 text-sm text-[#10151b] outline-none transition-colors focus:border-[#9b4358]"><option value="all">全部</option><option value="safe">全年齡</option><option value="r18" disabled={contentSafetySettings.ageConfirmation !== "adult"}>R18</option></select></label>
+                <label className="flex items-center gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-300">字數<select aria-label="字數區間" value={wordCountFilter} onChange={(event) => setWordCountFilter(event.target.value as WordCountFilter)} className="h-9 rounded-xl border border-[#111826]/15 bg-white px-2.5 text-sm text-[#10151b] outline-none transition-colors focus:border-[color:var(--atlas-indigo)]"><option value="all">全部</option><option value="short">1,000 以下</option><option value="medium">1k–10k</option><option value="long">10,000 以上</option></select></label>
+                <label className="flex items-center gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-300">完結<select aria-label="完結狀態" value={completionFilter} onChange={(event) => setCompletionFilter(event.target.value as CompletionFilter)} className="h-9 rounded-xl border border-[#111826]/15 bg-white px-2.5 text-sm text-[#10151b] outline-none transition-colors focus:border-[color:var(--atlas-indigo)]"><option value="all">全部</option><option value="complete">僅看已完結</option><option value="ongoing">僅看連載中</option></select></label>
+                <label className="flex items-center gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-300">排序<select aria-label="排序方式" value={sortMode} onChange={(event) => setSortMode(event.target.value as ResultSortMode)} className="h-9 rounded-xl border border-[#111826]/15 bg-white px-2.5 text-sm text-[#10151b] outline-none transition-colors focus:border-[color:var(--atlas-indigo)]"><option value="relevance">相關度</option><option value="updated">最新更新</option><option value="words">字數最多</option></select></label>
+                <Button type="button" variant="outline" onClick={() => setShowFilters((current) => !current)} className={`h-9 rounded-xl border-[#111826]/20 bg-white/80 px-3 text-sm font-semibold text-slate-700 hover:border-[color:var(--atlas-indigo)] hover:bg-[color:var(--atlas-indigo-soft)] ${activeFilterCount ? "border-[color:var(--atlas-indigo)] bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]" : ""}`}><SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />進階篩選 {activeFilterCount > 0 && <span className="ml-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-[color:var(--atlas-indigo)] px-1.5 py-0.5 text-xs font-bold text-white">{activeFilterCount}</span>}<ChevronDown className={`ml-1.5 h-3.5 w-3.5 transition-transform ${showFilters ? "rotate-180" : ""}`} /></Button>
+                {activeFilterCount > 0 && <Button type="button" variant="outline" onClick={resetAllFilters} className="h-9 rounded-xl border-[#e8a7bf] bg-[#fff5f7] px-3 text-sm font-semibold text-[#8b3e59] hover:bg-[#ffe8f0]">清除本次條件</Button>}
               </div>
               {contentSafetySettings.ageConfirmation === "minor" && <span className="font-mono text-[9px] font-bold tracking-[0.1em] text-[#2d70d6]">全年齡保護已啟用</span>}
             </div>
@@ -1044,39 +1065,28 @@ export default function Home() {
           {desktopRuntime && sidecarState !== "ready" && <div className={`mt-3 border-t border-[#10151b]/10 pt-3 font-mono text-[10px] font-bold tracking-[0.13em] ${sidecarState === "error" ? "text-[#9b4358]" : "text-[#197b75]"}`} aria-live="polite">{sidecarState === "error" ? "搜尋引擎尚未就緒；系統會在搜尋時再次嘗試連線。" : "正在啟動搜尋引擎..."}</div>}
           {isSearchPending && <div className="mt-3 border-t border-[#10151b]/10 pt-3" aria-live="polite"><div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] font-bold tracking-[0.11em] text-[#197b75]"><Loader2 className="h-3.5 w-3.5 animate-spin" />{desktopRuntime && sidecarState === "starting" ? "正在等待搜尋引擎就緒..." : isRetryingSinglePlatform && retryingPlatformId ? `正在重試 ${platformMeta(retryingPlatformId).label} · 僅更新此來源` : `正在查詢 ${sourceProgress.total} 個來源 · ${sourceProgress.responded} 已回應 · ${sourceProgress.pending} 查詢中 · ${sourceProgress.blocked} 受阻`}<span className="text-[#75838b]">· {(elapsedMs / 1000).toFixed(1)} 秒</span></div><div className="mt-2 h-1 overflow-hidden bg-[#d6e5e1]"><div className="h-full w-2/5 animate-pulse bg-[#45b9b2]" /></div></div>}
           {showFilters && (
-            <div aria-label="進階篩選面板" className="mt-4 grid gap-4 border-t border-[#10151b]/10 pt-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+            <div aria-label="進階篩選面板" className="mt-4 space-y-4 border-t border-[#10151b]/10 pt-4">
               <div className="min-w-0 rounded-xl border border-[#10151b]/10 bg-white/45 p-3">
-                <div className="mb-3 flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#61707a]"><Filter className="h-3.5 w-3.5" /> SOURCE ADAPTERS</div>
-                <div className="grid grid-cols-3 gap-2">{PLATFORMS.map((platform) => { const active = selectedPlatforms.includes(platform.id); return <label key={platform.id} className={`group flex min-w-0 cursor-pointer items-center gap-1.5 border px-2 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.07em] transition-colors ${active ? platform.tone === "cyan" ? "border-[#5acbc4] bg-[#d9f8f5] text-[#126762]" : "border-[#ec9db8] bg-[#ffe3eb] text-[#8b3e59]" : "border-[#10151b]/15 bg-white/50 text-[#86929a]"}`}><Checkbox checked={active} onCheckedChange={() => togglePlatform(platform.id)} aria-label={`搜尋 ${platform.label}`} className="shrink-0 rounded-none border-[#10151b]/30 data-[state=checked]:border-[#10151b] data-[state=checked]:bg-[#10151b] data-[state=checked]:text-white" /><span className="truncate" title={platform.label}>{platform.label}</span></label>; })}</div>
+                <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300"><Filter className="h-3.5 w-3.5" />小說平台</div>
+                <div className="flex flex-wrap gap-2">{PLATFORMS.map((platform) => { const active = selectedPlatforms.includes(platform.id); return <label key={platform.id} className={`group inline-flex min-w-0 cursor-pointer items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold transition-colors md:text-sm ${active ? "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300" : "border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"}`}><Checkbox checked={active} onCheckedChange={() => togglePlatform(platform.id)} aria-label={`搜尋 ${platform.label}`} className="shrink-0 rounded border-current data-[state=checked]:border-indigo-600 data-[state=checked]:bg-indigo-600 data-[state=checked]:text-white" /><span className="truncate" title={platform.label}>{platform.label}</span></label>; })}</div>
               </div>
-              <div className="grid min-w-0 grid-cols-1 gap-3 rounded-xl border border-[#10151b]/10 bg-white/45 p-3 sm:grid-cols-3">
-                <label className="grid gap-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.11em] text-[#61707a]">字數區間
-                  <select value={wordCountFilter} onChange={(event) => setWordCountFilter(event.target.value as WordCountFilter)} className="h-9 min-w-0 border border-[#10151b]/15 bg-white px-2 text-xs normal-case tracking-normal text-[#10151b] outline-none focus:border-[#45b9b2]">
-                    <option value="all">全部</option><option value="short">1,000 字以下</option><option value="medium">1,000–10,000 字</option><option value="long">10,000 字以上</option>
-                  </select>
+              <section aria-label="顯示與隱私偏好" className="grid grid-cols-1 gap-4 rounded-xl border border-[color:var(--atlas-line)] bg-white/45 p-3 md:grid-cols-2">
+                <label className="flex items-start gap-3 rounded-lg border border-[#b7c9ef] bg-[#f4f7ff] px-3 py-2.5">
+                  <Checkbox checked={hideBookmarkedResults} onCheckedChange={(value) => updateHideBookmarkedResults(value === true)} aria-label="隱藏已在藏書閣作品" className="mt-0.5 rounded border-[#2d70d6] data-[state=checked]:bg-[#2d70d6]" />
+                  <span><span className="block text-sm font-semibold text-slate-800 dark:text-slate-200">📖 隱藏已在藏書閣作品</span><span className="mt-0.5 block text-xs text-slate-500">只在目前裝置即時比對 URL；不會重新搜尋。{bookmarks.length ? ` 已比對 ${bookmarks.length} 本藏書。` : ""}</span></span>
                 </label>
-                <label className="grid gap-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.11em] text-[#61707a]">完結狀態
-                  <select value={completionFilter} onChange={(event) => setCompletionFilter(event.target.value as CompletionFilter)} className="h-9 min-w-0 border border-[#10151b]/15 bg-white px-2 text-xs normal-case tracking-normal text-[#10151b] outline-none focus:border-[#45b9b2]">
-                    <option value="all">全部</option><option value="complete">僅看已完結</option><option value="ongoing">僅看連載中</option>
-                  </select>
+                <label className="flex items-start gap-3 rounded-lg border border-[#efb4c4] bg-[#fff7f9] px-3 py-2.5">
+                  <Checkbox checked={contentSafetySettings.blurRestrictedSummaries} disabled={contentSafetySettings.ageConfirmation === "minor"} onCheckedChange={(value) => setSensitiveSummaryBlur(value === true)} aria-label="敏感內容模糊" className="mt-0.5 rounded border-[#9b4358] data-[state=checked]:bg-[#9b4358]" />
+                  <span><span className="block text-sm font-semibold text-slate-800 dark:text-slate-200">🔞 敏感內容模糊</span><span className="mt-0.5 block text-xs text-slate-500">限制級作品的摘要預設模糊，點擊後才會展開。</span></span>
                 </label>
-                <label className="grid gap-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.11em] text-[#61707a]">排序方式
-                  <select value={sortMode} onChange={(event) => setSortMode(event.target.value as ResultSortMode)} className="h-9 min-w-0 border border-[#10151b]/15 bg-white px-2 text-xs normal-case tracking-normal text-[#10151b] outline-none focus:border-[#45b9b2]">
-                    <option value="relevance">相關度最高</option><option value="updated">最新更新</option><option value="words">字數最多</option>
-                  </select>
-                </label>
-              </div>
-              <label className="flex items-center gap-3 border border-[#b7c9ef] bg-[#f4f7ff] px-3 py-2.5 xl:col-span-full">
-                <Checkbox checked={hideBookmarkedResults} onCheckedChange={(value) => updateHideBookmarkedResults(value === true)} aria-label="隱藏已在藏書閣作品" className="rounded-none border-[#2d70d6] data-[state=checked]:bg-[#2d70d6]" />
-                <span><span className="block font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#245da9]">隱藏已在藏書閣作品</span><span className="mt-0.5 block text-xs text-[#69777f]">只在目前裝置即時比對 URL；不會重新搜尋。{bookmarks.length ? ` 已比對 ${bookmarks.length} 本藏書。` : ""}</span></span>
-              </label>
-              <div className="xl:col-span-full"><BlacklistGroupManager groups={blacklistGroups} onGroupsChange={updateBlacklistGroups} /></div>
-              {contentSafetySettings.ageConfirmation === "adult" && <label className="flex items-center gap-3 border border-[#efb4c4] bg-[#fff7f9] px-3 py-2.5 xl:col-span-full"><Checkbox checked={contentSafetySettings.blurRestrictedSummaries} onCheckedChange={(value) => setSensitiveSummaryBlur(value === true)} aria-label="敏感內容模糊" className="rounded-none border-[#9b4358] data-[state=checked]:bg-[#9b4358]" /><span><span className="block font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#9b4358]">敏感內容模糊</span><span className="mt-0.5 block text-xs text-[#69777f]">限制級作品的摘要預設模糊，點擊後才會展開。</span></span></label>}
-              <div className="flex flex-wrap items-center gap-3 xl:col-span-full"><Button type="button" variant="outline" onClick={saveCurrentFilters} className="h-9 rounded-none border-[#10151b]/15 bg-white/65 font-mono text-[10px] font-bold uppercase tracking-[0.13em] hover:border-[#45b9b2] hover:bg-[#d9f8f5] hover:text-[#197b75]"><Save className="mr-2 h-3.5 w-3.5" />設為預設篩選</Button><span className="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#8b979d]">保留字數、完結、排序與藏書閣隱藏偏好</span></div>
+              </section>
+              <div><BlacklistGroupManager groups={blacklistGroups} onGroupsChange={updateBlacklistGroups} displayMode={contentSafetySettings.blacklistDisplayMode} onDisplayModeChange={setBlacklistDisplayMode} /></div>
+              <div className="flex flex-wrap items-center gap-3"><Button type="button" variant="outline" onClick={saveCurrentFilters} className="h-9 rounded-none border-[#10151b]/15 bg-white/65 font-mono text-[10px] font-bold uppercase tracking-[0.13em] hover:border-[#45b9b2] hover:bg-[#d9f8f5] hover:text-[#197b75]"><Save className="mr-2 h-3.5 w-3.5" />設為預設篩選</Button><span className="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#8b979d]">保留字數、完結、排序與藏書閣隱藏偏好</span></div>
             </div>
           )}
-        </section>
+        </section>}
 
+        {activeView !== "cp-library" && <>
         <section className="mt-10 flex flex-col gap-3 border-b border-[color:var(--atlas-line)] pb-5 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="text-3xl font-extrabold sm:text-4xl">{activeView === "bookmarks" ? `藏書閣 · ${bookmarks.length.toLocaleString()} 本` : searchMutation.isPending ? "正在尋找作品" : hasSearched ? pagination.totalWorks > 0 ? `找到 ${pagination.totalWorks.toLocaleString()} 篇作品` : "暫時沒有可驗證的作品" : "開始探索"}</h2>{activeView === "search" && searchMode === "author" && <div className="mt-2 flex items-center gap-2 text-sm text-amber-700"><UserRound className="h-3.5 w-3.5" /> 搜尋作者：{activeQuery || keyword}</div>}{activeView === "search" && hasSearched && pagination.totalWorks > 0 && <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[color:var(--atlas-muted)]"><span>已載入第 {pagination.loadedThroughPage} / {pagination.totalPages} 頁</span><span>顯示 {displayedResults.length} / {results.length} 筆</span>{hideBookmarkedResults && <span className="text-[color:var(--atlas-indigo)]">藏書閣隱藏：{hiddenBookmarkedResultCount} 篇</span>}{excludedKeywords.length > 0 && <span className="text-[color:var(--atlas-danger)]">避雷中：{excludedKeywords.length} 詞</span>}{completedElapsedMs !== null && <span className="text-[color:var(--atlas-success)]">{(completedElapsedMs / 1000).toFixed(1)} 秒完成</span>}</div>}</div><div className="flex flex-wrap items-center gap-2"><div className="text-xs text-[color:var(--atlas-muted)]">{activeView === "bookmarks" ? desktopRuntime ? "只保留在這台裝置" : "保留在這個瀏覽器" : `${selectedPlatforms.length} 個來源已啟用`}</div>{activeView === "search" && hasSearched && filteredResultCount > 0 && <Button type="button" variant="outline" aria-label="顯示已避雷作品" aria-pressed={showFilteredResults} onClick={() => setShowFilteredResults((current) => { const next = !current; if (!next) setRevealedFilteredUrls(new Set()); return next; })} className={`h-9 rounded-full border px-3 text-xs font-semibold ${showFilteredResults ? "border-[color:var(--atlas-amber)] bg-[color:var(--atlas-amber-soft)] text-[color:var(--atlas-amber)]" : "border-[color:var(--atlas-danger-line)] bg-white text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)]"}`}>{showFilteredResults ? <EyeOff className="mr-1.5 h-3.5 w-3.5" /> : <Eye className="mr-1.5 h-3.5 w-3.5" />}{showFilteredResults ? "隱藏已避雷作品" : "顯示已避雷作品"}<span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-current px-1.5 py-0.5 text-[10px] font-bold text-white">{filteredResultCount}</span></Button>}</div></section>
 
         {activeView === "search" && hasSearched && platformStatuses.length > 0 && (
@@ -1216,9 +1226,12 @@ export default function Home() {
             </div>}
           </section>
         )}
+        </>}
 
         <div className="mt-8">
-          {activeView === "bookmarks" ? (
+          {activeView === "cp-library" ? (
+            <CpMappingLibraryPage mappings={cpMappings} customMappings={customCpMappings} onChange={updateCpMappings} />
+          ) : activeView === "bookmarks" ? (
             <BookshelfView
               bookmarks={bookmarks}
               onEdit={(bookmark) => { setBookmarkTarget(bookmark.result); setBookmarkDialogOpen(true); }}
@@ -1300,7 +1313,7 @@ export default function Home() {
                   const blacklistMatches = blacklistGroups.filter((group) => group.enabled).map((group) => ({ group, keywords: group.keywords.filter((item) => [result.title, result.summary, result.tags, ...(result.characters || []), ...(result.relationships || [])].join(" ").toLocaleLowerCase().includes(item.toLocaleLowerCase())) })).filter((item) => item.keywords.length > 0);
                   const isMaskedByBlacklist = showFilteredResults && blacklistMatches.length > 0 && !revealedFilteredUrls.has(result.url);
                   return (
-                    <Card key={`${result.url}-${index}`} className={`reader-story-card group relative ${resultViewMode === "cards" ? "flex h-full flex-col overflow-hidden" : "overflow-hidden"} ${isRestricted ? "border-[#efb4c4]" : ""}`}>
+                    <Card key={`${result.url}-${index}`} className={`reader-story-card group relative ${resultViewMode === "cards" ? "flex h-full flex-col gap-0 overflow-hidden py-0" : "overflow-hidden"} ${isRestricted ? "border-[#efb4c4]" : ""}`}>
                       <CardContent className={`p-0 transition-[filter,opacity] duration-200 ${resultViewMode === "cards" ? "flex h-full flex-col" : ""} ${isMaskedByBlacklist ? "pointer-events-none select-none blur-[5px] opacity-45" : ""}`}>
                         {resultViewMode === "cards" && <BlueprintCover src={result.coverUrl} title={result.title} />}
                         <div className={`flex items-center justify-between border-b border-[#111826]/10 ${resultViewMode === "list" ? "px-4 py-2.5" : "px-5 py-3"}`}>
@@ -1315,7 +1328,7 @@ export default function Home() {
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-2"><button type="button" onClick={() => bookmark ? removeBookmark(result.url) : (setBookmarkTarget(result), setBookmarkDialogOpen(true))} aria-label={bookmark ? `取消收藏 ${result.title}` : `收藏 ${result.title}`} className={`inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition-colors ${bookmark ? "bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]" : "bg-[color:var(--atlas-elevated)] text-[color:var(--atlas-muted)] hover:text-[color:var(--atlas-indigo)]"}`}>{bookmark ? <BookmarkCheck className="h-3.5 w-3.5" /> : <Bookmark className="h-3.5 w-3.5" />}{bookmark ? "已收藏" : "收藏"}</button><span className="text-xs text-[color:var(--atlas-muted)]">{formatDate(result.scraped_at)}</span></div>
+                          <div className="flex items-center gap-2"><button type="button" onClick={() => bookmark ? removeBookmark(result.url) : (setBookmarkTarget(result), setBookmarkDialogOpen(true))} aria-label={bookmark ? `取消收藏 ${result.title}` : `收藏 ${result.title}`} className={`inline-flex h-8 items-center gap-1 rounded-full border px-2.5 text-xs font-semibold shadow-sm transition-colors ${bookmark ? "border-[color:var(--atlas-indigo)]/20 bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]" : "border-slate-300 bg-white/90 text-slate-700 hover:border-indigo-400 hover:text-indigo-600"}`}>{bookmark ? <BookmarkCheck className="h-3.5 w-3.5" /> : <Bookmark className="h-3.5 w-3.5" />}{bookmark ? "已收藏" : "收藏"}</button><span className="text-xs text-[color:var(--atlas-muted)]">{formatDate(result.scraped_at)}</span></div>
                         </div>
                         <div className={resultViewMode === "list" ? "grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1.5fr)_minmax(10rem,0.7fr)_auto] md:items-center" : "flex flex-1 flex-col p-5 sm:p-6"}>
                           <div className={resultViewMode === "list" ? "min-w-0" : "flex min-h-0 flex-1 flex-col"}>
@@ -1344,7 +1357,7 @@ export default function Home() {
                   );
                 })}
               </div>
-              {(localResultPageCount > 1 || pagination.totalPages > 1) && <div className="flex flex-col gap-3 border-t border-[color:var(--atlas-line)] pt-6 sm:flex-row sm:items-center sm:justify-between" aria-label="搜尋結果分頁"><div><div className="text-sm font-semibold text-[color:var(--atlas-ink)]">第 {unifiedCurrentPage} / {unifiedPageCount} 頁{usesSourcePagination && localResultPageCount > 1 ? <span className="ml-2 text-xs font-medium text-[color:var(--atlas-muted)]">· 本頁區段 {localResultPage} / {localResultPageCount}</span> : null}</div><div className="mt-1 text-xs text-[color:var(--atlas-muted)]">顯示 {Math.min((localResultPage - 1) * resultsPerPage + 1, displayedResults.length)}–{Math.min(localResultPage * resultsPerPage, displayedResults.length)} / {displayedResults.length} 筆{usesSourcePagination ? " · 切換來源頁時會優先使用本機快取" : ""}</div></div><div className="flex flex-wrap items-center gap-1"><Button type="button" variant="outline" size="icon" aria-label="上一頁" disabled={(localResultPage === 1 && (!usesSourcePagination || pagination.page === 1)) || isSearchPending} onClick={goToPreviousUnifiedPage} className="h-9 w-9 rounded-lg border-[color:var(--atlas-line)] bg-white/70"><ChevronLeft className="h-4 w-4" /></Button>{resultPageWindow(unifiedCurrentPage, unifiedPageCount).map((page, index, pages) => <React.Fragment key={page}>{index > 0 && page - pages[index - 1] > 1 && <span className="px-1 text-xs text-[color:var(--atlas-muted)]">…</span>}<Button type="button" variant={page === unifiedCurrentPage ? "default" : "outline"} size="icon" aria-current={page === unifiedCurrentPage ? "page" : undefined} disabled={isSearchPending} onClick={() => goToUnifiedPage(page)} className={`h-9 w-9 rounded-lg ${page === unifiedCurrentPage ? "bg-[color:var(--atlas-indigo)] text-white hover:bg-[#4338ca]" : "border-[color:var(--atlas-line)] bg-white/70"}`}>{page}</Button></React.Fragment>)}<Button type="button" variant="outline" size="icon" aria-label="下一頁" disabled={(localResultPage === localResultPageCount && (!usesSourcePagination || pagination.page === pagination.totalPages)) || isSearchPending} onClick={goToNextUnifiedPage} className="h-9 w-9 rounded-lg border-[color:var(--atlas-line)] bg-white/70"><ChevronRight className="h-4 w-4" /></Button></div></div>}
+              {(localResultPageCount > 1 || pagination.totalPages > 1) && <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto rounded-2xl border border-[color:var(--atlas-line)] bg-white/65 p-2 shadow-[0_8px_20px_rgba(36,33,52,0.035)]" aria-label="搜尋結果分頁"><div className="hidden min-w-0 flex-1 whitespace-nowrap px-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300 lg:block">顯示 {Math.min((localResultPage - 1) * resultsPerPage + 1, displayedResults.length)}–{Math.min(localResultPage * resultsPerPage, displayedResults.length)} / {displayedResults.length} 筆 <span className="text-xs text-slate-500 dark:text-slate-400">（第 {unifiedCurrentPage}/{unifiedPageCount} 頁{usesSourcePagination && localResultPageCount > 1 ? ` · 本頁區段 ${localResultPage}/${localResultPageCount}` : ""}）</span></div><div className="flex shrink-0 items-center gap-1"><Button type="button" variant="outline" size="icon" aria-label="上一頁" disabled={(localResultPage === 1 && (!usesSourcePagination || pagination.page === 1)) || isSearchPending} onClick={goToPreviousUnifiedPage} className="h-9 w-9 rounded-lg border-[color:var(--atlas-line)] bg-white/85"><ChevronLeft className="h-4 w-4" /></Button><span className="inline-flex h-9 items-center rounded-lg bg-[color:var(--atlas-elevated)] px-2 text-sm font-semibold text-slate-700 sm:hidden">{unifiedCurrentPage}/{unifiedPageCount}</span><div className="hidden items-center gap-1 sm:flex">{resultPageWindow(unifiedCurrentPage, unifiedPageCount).map((page, index, pages) => <React.Fragment key={page}>{index > 0 && page - pages[index - 1] > 1 && <span className="px-1 text-xs text-slate-500">…</span>}<Button type="button" variant={page === unifiedCurrentPage ? "default" : "outline"} size="icon" aria-current={page === unifiedCurrentPage ? "page" : undefined} disabled={isSearchPending} onClick={() => goToUnifiedPage(page)} className={`h-9 w-9 rounded-lg ${page === unifiedCurrentPage ? "bg-[color:var(--atlas-indigo)] text-white hover:bg-[#4338ca]" : "border-[color:var(--atlas-line)] bg-white/85"}`}>{page}</Button></React.Fragment>)}</div><Button type="button" variant="outline" size="icon" aria-label="下一頁" disabled={(localResultPage === localResultPageCount && (!usesSourcePagination || pagination.page === pagination.totalPages)) || isSearchPending} onClick={goToNextUnifiedPage} className="h-9 w-9 rounded-lg border-[color:var(--atlas-line)] bg-white/85"><ChevronRight className="h-4 w-4" /></Button></div><form onSubmit={(event) => { event.preventDefault(); jumpToUnifiedPage(); }} className="flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-slate-700 dark:text-slate-200"><span className="hidden sm:inline">前往</span><Input aria-label="前往指定頁數" type="number" inputMode="numeric" min={1} max={unifiedPageCount} value={jumpPageInput} onChange={(event) => setJumpPageInput(event.target.value)} className="h-9 w-12 rounded-lg border-[color:var(--atlas-line)] bg-white/85 px-1 text-center text-sm" /><span className="hidden sm:inline">頁</span><Button type="submit" variant="outline" disabled={isSearchPending} className="h-9 rounded-lg border-[color:var(--atlas-line)] bg-white/85 px-2 text-sm font-semibold"><span className="hidden sm:inline">前往</span><span className="sm:hidden">Go</span></Button></form></div>}
             </div>
           )}
           </>}
@@ -1358,7 +1371,6 @@ export default function Home() {
           onRemove={removeBookmark}
         />
         <AgeConfirmationDialog open={contentSafetySettings.ageConfirmation === "unknown"} onConfirm={confirmAge} />
-        <CpMappingManagerDialog open={cpManagerOpen} mappings={cpMappings} customMappings={customCpMappings} onOpenChange={setCpManagerOpen} onChange={updateCpMappings} />
         <Dialog open={updateDialogOpen} onOpenChange={(open) => { if (!updateInstallPending) setUpdateDialogOpen(open); }}>
           <DialogContent showCloseButton={!updateInstallPending} overlayClassName="bg-[color:var(--atlas-ink)]/32 backdrop-blur-md" className="max-w-lg rounded-3xl border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)] p-0 shadow-[0_28px_80px_rgba(34,31,57,0.26)]">
             <DialogHeader className="border-b border-[color:var(--atlas-line)] px-6 pb-5 pt-6 sm:px-8">

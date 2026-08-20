@@ -30,7 +30,8 @@ export type BookmarkInput = Omit<BookmarkRecord, "savedAt" | "updatedAt" | "shel
 
 export type CpMapping = { alias: string; ao3Query: string; localQuery: string; japaneseQuery: string };
 export type AgeConfirmation = "unknown" | "adult" | "minor";
-export type ContentSafetySettings = { ageConfirmation: AgeConfirmation; blurRestrictedSummaries: boolean };
+export type BlacklistDisplayMode = "hide" | "mask";
+export type ContentSafetySettings = { ageConfirmation: AgeConfirmation; blurRestrictedSummaries: boolean; blacklistDisplayMode: BlacklistDisplayMode };
 export type BlacklistGroup = { id: string; name: string; keywords: string[]; enabled: boolean };
 export type BlacklistMatch = { groupId: string; groupName: string; keywords: string[] };
 export type FullPersonalBackup = {
@@ -44,7 +45,7 @@ export type FullPersonalBackup = {
   filterPreset: ResultViewFilters;
   contentSafetySettings: ContentSafetySettings;
 };
-export const DEFAULT_CONTENT_SAFETY_SETTINGS: ContentSafetySettings = { ageConfirmation: "unknown", blurRestrictedSummaries: true };
+export const DEFAULT_CONTENT_SAFETY_SETTINGS: ContentSafetySettings = { ageConfirmation: "unknown", blurRestrictedSummaries: true, blacklistDisplayMode: "hide" };
 export const DEFAULT_CP_MAPPINGS: CpMapping[] = [
   { alias: "義忍", ao3Query: "Tomioka Giyuu/Kochou Shinobu", localQuery: "義忍 富岡義勇 胡蝶忍", japaneseQuery: "ぎゆしの" },
   { alias: "五夏", ao3Query: "Gojo Satoru/Geto Suguru", localQuery: "五夏 五條悟 夏油傑", japaneseQuery: "五夏" },
@@ -188,6 +189,7 @@ function normalizeContentSafetySettings(value: Partial<ContentSafetySettings> | 
   return {
     ageConfirmation: value?.ageConfirmation === "adult" || value?.ageConfirmation === "minor" ? value.ageConfirmation : "unknown",
     blurRestrictedSummaries: value?.blurRestrictedSummaries !== false,
+    blacklistDisplayMode: value?.blacklistDisplayMode === "mask" ? "mask" : "hide",
   };
 }
 export function loadContentSafetySettings(): ContentSafetySettings { return normalizeContentSafetySettings(readJson<Partial<ContentSafetySettings>>(CONTENT_SAFETY_SETTINGS_STORAGE_KEY, DEFAULT_CONTENT_SAFETY_SETTINGS)); }

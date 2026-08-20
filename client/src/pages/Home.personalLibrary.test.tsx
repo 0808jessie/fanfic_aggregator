@@ -87,13 +87,16 @@ describe("Home personal reading tools", () => {
     expect(screen.getAllByText("#神作").length).toBeGreaterThan(0);
     expect(screen.getAllByText("#重讀").length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getAllByRole("button", { name: /CP 詞庫管理/ })[0]);
-    expect(document.querySelector("[data-slot='dialog-content']")?.className).toContain("rounded-3xl");
+    fireEvent.click(screen.getByRole("button", { name: /CP 詞庫與世界觀/ }));
+    expect(screen.getByRole("heading", { name: "CP 詞庫與世界觀" })).toBeTruthy();
+    expect(document.querySelector("[data-slot='dialog-content']")).toBeNull();
+    expect(screen.getByLabelText("搜尋 CP 詞庫")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "新增自訂 CP 對照" }));
     fireEvent.change(screen.getByLabelText("中文縮寫"), { target: { value: "黑邪" } });
     fireEvent.change(screen.getByLabelText("AO3 關係標籤"), { target: { value: "Heiyan/Wu Xie" } });
     fireEvent.change(screen.getByLabelText("繁中本地關鍵字"), { target: { value: "黑邪 吳邪" } });
     fireEvent.change(screen.getByLabelText("日文關係標籤"), { target: { value: "黒邪" } });
-    fireEvent.click(screen.getByRole("button", { name: "新增自訂對照" }));
+    fireEvent.click(screen.getByRole("button", { name: "儲存" }));
     expect(screen.getByText("黑邪")).toBeTruthy();
     expect(screen.getByText("Heiyan/Wu Xie")).toBeTruthy();
     expect(screen.getByText("黑邪 吳邪")).toBeTruthy();
@@ -102,6 +105,13 @@ describe("Home personal reading tools", () => {
     expect(screen.getByText("題材與世界觀詞庫")).toBeTruthy();
     expect(screen.getByText("ABO / 歐米茄")).toBeTruthy();
     expect(screen.getByText("Alpha/Beta/Omega Dynamics")).toBeTruthy();
+    expect(screen.getAllByText("中文／通用").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/別名：/)).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("搜尋 CP 詞庫"), { target: { value: "黑邪" } });
+    expect(screen.getByText("黑邪")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("搜尋 CP 詞庫"), { target: { value: "不存在" } });
+    expect(screen.getByText("沒有符合的 CP 對照。")).toBeTruthy();
   });
 
   it("adds an exclusion keyword and immediately hides matching loaded works", async () => {
@@ -119,7 +129,8 @@ describe("Home personal reading tools", () => {
     expect(screen.getByText("通用避雷")).toBeTruthy();
     await waitFor(() => expect(screen.queryByText("義忍閱讀測試")).toBeNull());
 
-    fireEvent.click(screen.getByRole("button", { name: "顯示已避雷作品" }));
+    fireEvent.click(screen.getByRole("button", { name: "警示遮罩" }));
+    expect(JSON.parse(window.localStorage.getItem("sui-read-content-safety-settings") || "{}")).toMatchObject({ blacklistDisplayMode: "mask" });
     await waitFor(() => expect(screen.getByText("⚠️ 此作品命中避雷設定")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "⚠️ 暫時查看這一篇" }));
     await waitFor(() => expect(screen.getByText("義忍閱讀測試")).toBeTruthy());

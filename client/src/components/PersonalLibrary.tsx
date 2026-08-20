@@ -13,7 +13,7 @@ import { isCustomCpMapping, upsertCpMapping, type BookmarkRecord, type BookmarkS
 import type { SearchResult } from "@/lib/searchResults";
 import { DEFAULT_TROPE_MAPPINGS } from "@/lib/tropeMappings";
 import { BlueprintCover } from "@/components/BlueprintCover";
-import { ArrowUpRight, Bookmark, CheckSquare, Pencil, Plus, Star, Tag, Trash2 } from "lucide-react";
+import { ArrowUpRight, Bookmark, CheckSquare, Pencil, Plus, Search, Star, Tag, Trash2 } from "lucide-react";
 import React, { useEffect, useState } from "react";
 
 type BookmarkEditorDialogProps = {
@@ -95,65 +95,87 @@ export function BookmarkEditorDialog({
   );
 }
 
-type CpMappingManagerDialogProps = {
-  open: boolean;
+type CpMappingLibraryPageProps = {
   mappings: CpMapping[];
   customMappings: CpMapping[];
-  onOpenChange: (open: boolean) => void;
   onChange: (customMappings: CpMapping[]) => void;
 };
 
-export function CpMappingManagerDialog({ open, mappings, customMappings, onOpenChange, onChange }: CpMappingManagerDialogProps) {
+export function CpMappingLibraryPage({ mappings, customMappings, onChange }: CpMappingLibraryPageProps) {
   const [alias, setAlias] = useState("");
   const [ao3Query, setAo3Query] = useState("");
   const [localQuery, setLocalQuery] = useState("");
   const [japaneseQuery, setJapaneseQuery] = useState("");
   const [editingAlias, setEditingAlias] = useState<string | null>(null);
+  const [inlineEditorKey, setInlineEditorKey] = useState<string | null>(null);
+  const [mappingFilter, setMappingFilter] = useState("");
 
   const reset = () => { setAlias(""); setAo3Query(""); setLocalQuery(""); setJapaneseQuery(""); setEditingAlias(null); };
+  const openEditor = (mapping?: CpMapping) => {
+    setEditingAlias(mapping?.alias || null);
+    setAlias(mapping?.alias || "");
+    setAo3Query(mapping?.ao3Query || "");
+    setLocalQuery(mapping?.localQuery || "");
+    setJapaneseQuery(mapping?.japaneseQuery || "");
+    setInlineEditorKey(mapping?.alias || "__new__");
+  };
+  const closeEditor = () => { setInlineEditorKey(null); reset(); };
   const save = () => {
     if (!alias.trim() || !ao3Query.trim() || !localQuery.trim()) return;
     onChange(upsertCpMapping(customMappings, { alias, ao3Query, localQuery, japaneseQuery }, editingAlias || undefined));
-    reset();
+    closeEditor();
   };
   const resetToDefaults = () => { onChange([]); reset(); };
+  const normalizedFilter = mappingFilter.trim().toLocaleLowerCase();
+  const visibleMappings = normalizedFilter
+    ? mappings.filter((mapping) => [mapping.alias, mapping.ao3Query, mapping.localQuery, mapping.japaneseQuery].join(" ").toLocaleLowerCase().includes(normalizedFilter))
+    : mappings;
+  const renderInlineEditor = () => (
+    <div className="grid grid-cols-1 gap-3 border-y border-[color:var(--atlas-line)] bg-[color:var(--atlas-elevated)]/55 px-4 py-4 md:grid-cols-2">
+      <label className="grid gap-1.5 text-sm font-semibold text-slate-900 dark:text-slate-100">中文縮寫<input value={alias} onChange={(event) => setAlias(event.target.value)} placeholder="例：義忍" className="h-10 min-w-0 rounded-xl border border-[color:var(--atlas-line)] bg-white px-3 text-sm font-normal text-slate-700 dark:text-slate-200 outline-none transition-colors focus:border-[color:var(--atlas-indigo)]" /></label>
+      <label className="grid gap-1.5 text-sm font-semibold text-slate-900 dark:text-slate-100">AO3 關係標籤<input value={ao3Query} onChange={(event) => setAo3Query(event.target.value)} placeholder="例：Uchiha Sasuke/Haruno Sakura" className="h-10 min-w-0 rounded-xl border border-[color:var(--atlas-line)] bg-white px-3 text-sm font-normal text-slate-700 dark:text-slate-200 outline-none transition-colors focus:border-[color:var(--atlas-indigo)]" /></label>
+      <label className="grid gap-1.5 text-sm font-semibold text-slate-900 dark:text-slate-100">繁中本地關鍵字<input value={localQuery} onChange={(event) => setLocalQuery(event.target.value)} placeholder="例：佐櫻 宇智波佐助 春野櫻" className="h-10 min-w-0 rounded-xl border border-[color:var(--atlas-line)] bg-white px-3 text-sm font-normal text-slate-700 dark:text-slate-200 outline-none transition-colors focus:border-[color:var(--atlas-indigo)]" /></label>
+      <label className="grid gap-1.5 text-sm font-semibold text-slate-900 dark:text-slate-100">日文關係標籤<input value={japaneseQuery} onChange={(event) => setJapaneseQuery(event.target.value)} placeholder="例：ぎゆしの、五夏、出勝" className="h-10 min-w-0 rounded-xl border border-[color:var(--atlas-line)] bg-white px-3 text-sm font-normal text-slate-700 dark:text-slate-200 outline-none transition-colors focus:border-[color:var(--atlas-indigo)]" /></label>
+      <div className="flex items-center justify-end gap-2 md:col-span-2"><Button type="button" variant="outline" onClick={closeEditor} className="h-9 rounded-xl border-[color:var(--atlas-line)] bg-white/70">取消</Button><Button type="button" onClick={save} disabled={!alias.trim() || !ao3Query.trim() || !localQuery.trim()} className="h-9 rounded-xl bg-[color:var(--atlas-indigo)] text-white hover:bg-[#4338ca]">儲存</Button></div>
+    </div>
+  );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent overlayClassName="bg-[#171623]/35 backdrop-blur-[3px]" className="max-h-[85vh] overflow-y-auto rounded-3xl border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)]/95 p-0 shadow-[0_24px_70px_rgba(29,28,45,0.24)] backdrop-blur-2xl sm:max-w-2xl">
-        <DialogHeader className="border-b border-[color:var(--atlas-line)] px-6 py-5 pr-14 text-left">
-          <div className="flex items-center gap-2 text-xs font-semibold text-[color:var(--atlas-indigo)]"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[color:var(--atlas-indigo-soft)]"><Tag className="h-3.5 w-3.5" /></span>你的搜尋詞庫</div>
-          <DialogTitle className="pt-1 text-xl font-extrabold">CP 詞庫管理</DialogTitle>
-          <DialogDescription className="text-[color:var(--atlas-muted)]">系統預設與你的自訂對照會合併使用；自訂值只儲存在這台裝置，於下一次搜尋即時套用。</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-5 px-6 py-5">
-          <div className="grid gap-3 rounded-2xl border border-[color:var(--atlas-line)] bg-[color:var(--atlas-elevated)]/70 p-4 sm:grid-cols-2">
-            <label className="grid gap-2 text-xs font-semibold text-[color:var(--atlas-muted)]">中文縮寫
-              <input value={alias} onChange={(event) => setAlias(event.target.value)} placeholder="例：義忍" className="h-10 rounded-xl border border-[color:var(--atlas-line)] bg-white px-3 text-sm text-[color:var(--atlas-ink)] outline-none transition-colors focus:border-[color:var(--atlas-indigo)]" />
-            </label>
-            <label className="grid gap-2 text-xs font-semibold text-[color:var(--atlas-muted)]">AO3 關係標籤
-              <input value={ao3Query} onChange={(event) => setAo3Query(event.target.value)} placeholder="例：Uchiha Sasuke/Haruno Sakura" className="h-10 rounded-xl border border-[color:var(--atlas-line)] bg-white px-3 text-sm text-[color:var(--atlas-ink)] outline-none transition-colors focus:border-[color:var(--atlas-indigo)]" />
-            </label>
-            <label className="grid gap-2 text-xs font-semibold text-[color:var(--atlas-muted)] sm:col-span-2">繁中本地關鍵字
-              <input value={localQuery} onChange={(event) => setLocalQuery(event.target.value)} placeholder="例：佐櫻 宇智波佐助 春野櫻" className="h-10 rounded-xl border border-[color:var(--atlas-line)] bg-white px-3 text-sm text-[color:var(--atlas-ink)] outline-none transition-colors focus:border-[color:var(--atlas-indigo)]" />
-            </label>
-            <label className="grid gap-2 text-xs font-semibold text-[color:var(--atlas-muted)] sm:col-span-2">日文關係標籤
-              <input value={japaneseQuery} onChange={(event) => setJapaneseQuery(event.target.value)} placeholder="例：ぎゆしの、五夏、出勝 / 勝デク" className="h-10 rounded-xl border border-[color:var(--atlas-line)] bg-white px-3 text-sm text-[color:var(--atlas-ink)] outline-none transition-colors focus:border-[color:var(--atlas-indigo)]" />
-            </label>
-            <div className="sm:col-span-2"><Button type="button" onClick={save} disabled={!alias.trim() || !ao3Query.trim() || !localQuery.trim()} className="h-10 rounded-xl bg-[color:var(--atlas-indigo)] text-sm font-semibold text-white hover:bg-[#4338ca]"><Plus className="mr-1.5 h-3.5 w-3.5" />{editingAlias ? "更新自訂對照" : "新增自訂對照"}</Button></div>
+    <section aria-label="CP 詞庫與世界觀" className="mx-auto max-w-6xl space-y-6">
+      <header className="flex flex-col gap-4 border-b border-[color:var(--atlas-line)] pb-6 sm:flex-row sm:items-end sm:justify-between">
+        <div><div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]"><Tag className="h-3.5 w-3.5" /></span>你的搜尋詞庫</div><h2 className="mt-2 text-3xl font-extrabold tracking-[-0.035em] text-[color:var(--atlas-ink)]">CP 詞庫與世界觀</h2><p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">系統預設與自訂對照會合併使用；自訂值只儲存在這台裝置，於下一次搜尋即時套用。</p></div>
+        <span className="text-xs font-semibold text-[color:var(--atlas-muted)]">{mappings.length} 組跨平台對照</span>
+      </header>
+      <div className="space-y-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <label className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--atlas-muted)]" /><input value={mappingFilter} onChange={(event) => setMappingFilter(event.target.value)} aria-label="搜尋 CP 詞庫" placeholder="搜尋配對、AO3、中文或日文標籤" className="h-10 w-full rounded-xl border border-[color:var(--atlas-line)] bg-white pl-9 pr-3 text-sm text-[color:var(--atlas-ink)] outline-none transition-colors placeholder:text-[color:var(--atlas-muted)] focus:border-[color:var(--atlas-indigo)]" /></label>
+            <Button type="button" onClick={() => openEditor()} className="h-10 shrink-0 rounded-xl bg-[color:var(--atlas-indigo)] text-sm font-semibold text-white hover:bg-[#4338ca]"><Plus className="mr-1.5 h-4 w-4" />新增自訂 CP 對照</Button>
           </div>
-          <div className="overflow-hidden rounded-2xl border border-[color:var(--atlas-line)] bg-white/55">
-            <div className="grid gap-2 border-b border-[color:var(--atlas-line)] bg-[color:var(--atlas-elevated)] px-3 py-2 text-[11px] font-semibold text-[color:var(--atlas-muted)] sm:grid-cols-[0.5fr_1.1fr_1.15fr_0.8fr_auto]"><span>配對</span><span>AO3 關係</span><span>本地關鍵字</span><span>日文標籤</span><span>類型</span></div>
-            <div className="divide-y divide-[color:var(--atlas-line)]">{mappings.map((mapping) => { const custom = isCustomCpMapping(mapping, customMappings); return <div key={mapping.alias} className="grid gap-2 px-3 py-3 sm:grid-cols-[0.5fr_1.1fr_1.15fr_0.8fr_auto] sm:items-center"><div className="text-sm font-bold text-[color:var(--atlas-indigo)]">{mapping.alias}</div><div className="break-all text-xs text-[color:var(--atlas-muted)]">{mapping.ao3Query}</div><div className="break-all text-xs text-[color:var(--atlas-muted)]">{mapping.localQuery}</div><div className="break-all text-xs text-[color:var(--atlas-muted)]">{mapping.japaneseQuery || "—"}</div><div className="flex items-center gap-1"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${custom ? "bg-[color:var(--atlas-success-soft)] text-[color:var(--atlas-success)]" : "bg-white text-[color:var(--atlas-muted)]"}`}>{custom ? "自訂" : "系統"}</span><Button type="button" variant="ghost" size="icon" onClick={() => { setEditingAlias(mapping.alias); setAlias(mapping.alias); setAo3Query(mapping.ao3Query); setLocalQuery(mapping.localQuery); setJapaneseQuery(mapping.japaneseQuery); }} aria-label={`${custom ? "編輯" : "自訂覆寫"} ${mapping.alias}`} className="h-8 w-8 rounded-full hover:bg-[color:var(--atlas-indigo-soft)]"><Pencil className="h-3.5 w-3.5" /></Button>{custom && <Button type="button" variant="ghost" size="icon" onClick={() => onChange(customMappings.filter((item) => item.alias !== mapping.alias))} aria-label={`刪除 ${mapping.alias}`} className="h-8 w-8 rounded-full text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)] hover:text-[color:var(--atlas-danger)]"><Trash2 className="h-3.5 w-3.5" /></Button>}</div></div>; })}</div>
+          {inlineEditorKey === "__new__" && <div className="overflow-hidden rounded-2xl border border-[color:var(--atlas-line)]">{renderInlineEditor()}</div>}
+          <div className="space-y-3" aria-label="CP 對照清單">
+            {visibleMappings.length ? visibleMappings.map((mapping) => {
+              const custom = isCustomCpMapping(mapping, customMappings);
+              return <article key={mapping.alias} className="overflow-hidden rounded-2xl border border-[color:var(--atlas-line)] bg-white/65 shadow-[0_8px_20px_rgba(36,33,52,0.035)]">
+                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
+                  <div className="flex min-w-0 items-center gap-2.5"><div className="truncate text-lg font-extrabold tracking-[-0.025em] text-[color:var(--atlas-indigo)]">{mapping.alias}</div><span className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${custom ? "bg-[color:var(--atlas-success-soft)] text-[color:var(--atlas-success)]" : "bg-[color:var(--atlas-elevated)] text-[color:var(--atlas-muted)]"}`}>{custom ? "自訂" : "系統"}</span></div>
+                  <div className="flex shrink-0 items-center gap-1"><Button type="button" variant="ghost" size="sm" onClick={() => openEditor(mapping)} aria-label={`編輯 ${mapping.alias}`} className="h-8 rounded-lg px-2.5 text-sm font-semibold hover:bg-[color:var(--atlas-indigo-soft)]"><Pencil className="mr-1 h-3.5 w-3.5" />編輯</Button>{custom && <Button type="button" variant="ghost" size="icon" onClick={() => onChange(customMappings.filter((item) => item.alias !== mapping.alias))} aria-label={`刪除 ${mapping.alias}`} className="h-8 w-8 rounded-full text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)] hover:text-[color:var(--atlas-danger)]"><Trash2 className="h-3.5 w-3.5" /></Button>}</div>
+                </div>
+                <div className="flex flex-col gap-2 border-t border-[color:var(--atlas-line)] bg-[color:var(--atlas-elevated)]/38 px-4 py-3 md:flex-row md:items-center md:gap-4 sm:px-5">
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2"><span className="rounded-full border border-[color:var(--atlas-indigo)]/15 bg-[color:var(--atlas-indigo-soft)] px-2.5 py-1 text-xs font-bold text-[color:var(--atlas-indigo)]">AO3</span><span className="min-w-0 break-words text-sm font-medium text-[color:var(--atlas-ink)]">{mapping.ao3Query}</span></div>
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2"><span className="rounded-full border border-[color:var(--atlas-success)]/15 bg-[color:var(--atlas-success-soft)] px-2.5 py-1 text-xs font-bold text-[color:var(--atlas-success)]">繁中</span><span className="min-w-0 break-words text-sm font-medium text-[color:var(--atlas-ink)]">{mapping.localQuery}</span></div>
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2"><span className="rounded-full border border-fuchsia-300/35 bg-fuchsia-50 px-2.5 py-1 text-xs font-bold text-fuchsia-700">日文</span><span className={`min-w-0 break-words text-sm font-medium ${mapping.japaneseQuery ? "text-[color:var(--atlas-ink)]" : "text-[color:var(--atlas-muted)]"}`}>{mapping.japaneseQuery || "暫無"}</span></div>
+                </div>
+                {inlineEditorKey === mapping.alias && renderInlineEditor()}
+              </article>;
+            }) : <div className="rounded-2xl border border-dashed border-[color:var(--atlas-line)] px-4 py-10 text-center text-sm text-[color:var(--atlas-muted)]">沒有符合的 CP 對照。</div>}
           </div>
           <section aria-label="題材與世界觀詞庫" className="overflow-hidden rounded-2xl border border-[color:var(--atlas-line)] bg-white/55">
-            <div className="flex flex-col gap-1 border-b border-[color:var(--atlas-line)] bg-[color:var(--atlas-elevated)] px-3 py-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="text-sm font-semibold text-[color:var(--atlas-ink)]">題材與世界觀詞庫</div><div className="mt-1 text-xs text-[color:var(--atlas-muted)]">系統預設，搜尋時會自動轉譯</div></div></div>
-            <div className="divide-y divide-[color:var(--atlas-line)]">{DEFAULT_TROPE_MAPPINGS.map((trope) => <div key={trope.key} className="grid gap-2 px-3 py-3 sm:grid-cols-[0.75fr_1.25fr_1fr] sm:items-center"><div><div className="text-sm font-semibold text-[color:var(--atlas-amber)]">{trope.label}</div><div className="mt-1 text-[11px] text-[color:var(--atlas-muted)]">別名：{trope.aliases.join(" · ")}</div></div><div className="break-all text-xs text-[color:var(--atlas-muted)]"><span className="mr-2 font-semibold text-[color:var(--atlas-indigo)]">AO3</span>{trope.ao3Query}</div><div className="break-all text-xs text-[color:var(--atlas-muted)]"><span className="mr-2 font-semibold text-[color:var(--atlas-success)]">本地</span>{trope.localQuery}<span className="ml-2 text-[color:var(--atlas-danger)]">/ CxC {trope.cxcQuery}</span></div></div>)}</div>
+            <div className="flex flex-col gap-1 border-b border-[color:var(--atlas-line)] bg-[color:var(--atlas-elevated)] px-3 py-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="text-sm font-semibold text-slate-900 dark:text-slate-100">題材與世界觀詞庫</div><div className="mt-1 text-xs text-slate-500 dark:text-slate-400">系統預設，搜尋時會自動轉譯</div></div></div>
+            <div className="divide-y divide-[color:var(--atlas-line)]">{DEFAULT_TROPE_MAPPINGS.map((trope) => <div key={trope.key} className="grid gap-3 px-4 py-3 sm:grid-cols-[minmax(9rem,0.55fr)_minmax(19rem,1.25fr)_minmax(13rem,0.8fr)] sm:items-center"><div className="text-sm font-semibold text-[color:var(--atlas-amber)]">{trope.label}</div><span className="inline-flex min-w-0 items-center rounded-full border border-[color:var(--atlas-indigo)]/15 bg-[color:var(--atlas-indigo-soft)] px-2.5 py-1 text-xs font-medium text-[color:var(--atlas-indigo)]"><span className="mr-1.5 shrink-0 text-[10px] font-bold uppercase tracking-wide">AO3</span><span className="truncate">{trope.ao3Query}</span></span><span className="inline-flex min-w-0 items-center rounded-full border border-[color:var(--atlas-success)]/15 bg-[color:var(--atlas-success-soft)] px-2.5 py-1 text-xs font-medium text-[color:var(--atlas-success)]"><span className="mr-1.5 shrink-0 text-[10px] font-bold tracking-wide">中文／通用</span><span className="truncate">{trope.localQuery}</span></span></div>)}</div>
           </section>
         </div>
-        <DialogFooter className="border-t border-[color:var(--atlas-line)] bg-white/35 px-6 py-4 sm:justify-between"><Button type="button" variant="ghost" onClick={resetToDefaults} disabled={!customMappings.length} className="rounded-xl text-sm font-semibold text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)]">重設為系統預設</Button><Button type="button" variant="outline" onClick={reset} className="rounded-xl border-[color:var(--atlas-line)] bg-white/70 text-sm font-semibold hover:border-[color:var(--atlas-indigo)] hover:text-[color:var(--atlas-indigo)]">清除表單</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <footer className="flex flex-col gap-3 border-t border-[color:var(--atlas-line)] pt-5 sm:flex-row sm:items-center sm:justify-between"><Button type="button" variant="ghost" onClick={resetToDefaults} disabled={!customMappings.length} className="w-fit rounded-xl text-sm font-semibold text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)]">重設為系統預設</Button><span className="text-xs text-[color:var(--atlas-muted)]">自訂對照只保留在這台裝置</span></footer>
+    </section>
   );
 }
 
@@ -185,7 +207,7 @@ export function SavedBookmarksGrid({ bookmarks, onEdit, onRemove, selectionMode 
     };
     return <div key={bookmark.url} className={`reader-shelf-card group relative overflow-hidden ${selectionMode && selectedUrls.has(bookmark.url) ? "ring-2 ring-[color:var(--atlas-indigo)] ring-offset-2 ring-offset-[color:var(--atlas-bg)]" : ""}`}>
       <div className="flex items-center justify-between border-b border-[color:var(--atlas-line)] px-5 py-3"><div className="flex items-center gap-2"><span className="rounded-full bg-[color:var(--atlas-indigo-soft)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--atlas-indigo)]">已收藏 · {bookmark.result.platform}</span>{selectionMode && <Checkbox checked={selectedUrls.has(bookmark.url)} onCheckedChange={() => onToggleSelected?.(bookmark.url)} aria-label={`選取 ${bookmark.result.title}`} className="rounded border-[color:var(--atlas-indigo)] data-[state=checked]:bg-[color:var(--atlas-indigo)]" />}</div><div className="flex items-center text-amber-500">{[1, 2, 3, 4, 5].map((star) => <Star key={star} className="h-3.5 w-3.5" fill={star <= bookmark.rating ? "currentColor" : "none"} />)}</div></div>
-      {viewMode === "cards" && <BlueprintCover src={bookmark.result.coverUrl} title={bookmark.result.title} className="h-40" />}
+      {viewMode === "cards" && <BlueprintCover src={bookmark.result.coverUrl} title={bookmark.result.title} />}
       <div className={viewMode === "list" ? "grid gap-4 px-4 py-3 md:grid-cols-[minmax(0,1.45fr)_minmax(12rem,0.85fr)_auto] md:items-center" : "space-y-4 p-5"}><div className="min-w-0"><h3 className={`line-clamp-2 font-extrabold leading-tight ${viewMode === "list" ? "text-base" : "text-xl"}`}>{bookmark.result.title}</h3><div className="mt-2 text-sm text-[color:var(--atlas-muted)]">作者 · {bookmark.result.author}</div>{bookmark.notes && <p className={`whitespace-pre-wrap text-sm leading-6 text-[color:var(--atlas-muted)] ${viewMode === "list" ? "mt-2 line-clamp-1" : "mt-4"}`}>{bookmark.notes}</p>}<div className={`flex flex-wrap gap-1.5 ${viewMode === "list" ? "mt-2" : "mt-4"}`}>{bookmark.tags.map((tag) => <span key={tag} className="rounded-full bg-[color:var(--atlas-indigo-soft)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--atlas-indigo)]">#{tag}</span>)}</div></div>
         <div className="reader-progress p-3"><div className="flex items-center justify-between gap-3"><button type="button" onClick={cycleStatus} aria-label={`${bookmark.result.title} 閱讀狀態：${statusLabel}；點擊切換`} className="inline-flex items-center gap-1.5 rounded-full bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700 hover:bg-teal-100"><CheckSquare className="h-3.5 w-3.5" />{statusLabel}</button><Popover open={progressPopoverUrl === bookmark.url} onOpenChange={(open) => setProgressPopoverUrl(open ? bookmark.url : null)}><PopoverTrigger asChild><button type="button" aria-label={`編輯 ${bookmark.result.title} 閱讀進度`} className="text-xs font-semibold text-[color:var(--atlas-indigo)] hover:text-[#4338ca]">{progress.percent}%{progress.chapter ? ` · ${progress.chapter}` : " · 編輯進度"}</button></PopoverTrigger><PopoverContent align="end" className="w-64 border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)] p-4 shadow-[var(--atlas-shadow)]"><div className="text-sm font-semibold">閱讀進度</div><label className="mt-3 grid gap-1 text-xs text-[color:var(--atlas-muted)]">進度 %<input aria-label={`${bookmark.result.title} 閱讀進度`} type="number" min="0" max="100" value={progress.percent} onChange={(event) => { const percent = Math.max(0, Math.min(100, Number(event.target.value) || 0)); updateProgress({ percent, status: percent >= 100 ? "finished" : percent > 0 ? "reading" : "unread" }); }} className="h-8 border border-[color:var(--atlas-line)] bg-white px-2 text-xs" /></label><label className="mt-3 grid gap-1 text-xs text-[color:var(--atlas-muted)]">章節／備註<input aria-label={`${bookmark.result.title} 閱讀章節`} value={progress.chapter} onChange={(event) => updateProgress({ chapter: event.target.value })} placeholder="例：第 12 章" className="h-8 border border-[color:var(--atlas-line)] bg-white px-2 text-xs" /></label></PopoverContent></Popover></div><div className="mt-3 h-1 overflow-hidden rounded-full bg-[color:var(--atlas-line)]"><div className="h-full bg-[color:var(--atlas-indigo)] transition-[width] duration-200" style={{ width: `${progress.percent}%` }} /></div></div>
         <div className={`flex gap-2 ${viewMode === "list" ? "md:justify-self-end md:items-center" : "items-center justify-between"}`}><a href={bookmark.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--atlas-indigo)] hover:text-[#4338ca]">前往原站閱讀 <ArrowUpRight className="h-3.5 w-3.5" /></a><div className="flex gap-1"><Button type="button" variant="ghost" size="icon" onClick={() => onEdit(bookmark)} aria-label={`編輯 ${bookmark.result.title} 的閱讀卡`} className="h-8 w-8 rounded-full hover:bg-[color:var(--atlas-indigo-soft)]"><Pencil className="h-3.5 w-3.5" /></Button><Button type="button" variant="ghost" size="icon" onClick={() => onRemove(bookmark.url)} aria-label={`取消收藏 ${bookmark.result.title}`} className="h-8 w-8 rounded-full text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)] hover:text-[color:var(--atlas-danger)]"><Trash2 className="h-3.5 w-3.5" /></Button></div></div></div>

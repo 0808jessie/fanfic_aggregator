@@ -21,8 +21,9 @@ describe("BlueprintCover", () => {
     });
     fireEvent.load(image);
 
-    expect(image.className).toContain("object-contain");
+    expect(image.className).toContain("object-cover");
     expect(container.querySelector("img[aria-hidden='true']")?.className).toContain("blur-2xl");
+    expect(container.querySelector("[data-testid='result-cover']")?.className).toContain("aspect-[16/9]");
   });
 
   it("switches to the reading-cover fallback when a third-party cover fails", () => {
@@ -30,7 +31,7 @@ describe("BlueprintCover", () => {
     const cover = within(container);
 
     fireEvent.error(cover.getByRole("img", { name: "《封面測試》封面" }));
-    expect(cover.getByRole("img", { name: "封面測試 的預設作品封面" })).toBeTruthy();
-    expect(cover.getByText("閱讀索引")).toBeTruthy();
+    expect(cover.getByRole("img", { name: "封面測試 的預設作品封面" }).className).toContain("from-indigo-50/60");
+    expect(cover.queryByText("閱讀索引")).toBeNull();
   });
 });

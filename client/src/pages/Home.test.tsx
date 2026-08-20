@@ -120,7 +120,7 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(screen.queryByText("限制級測試作品")).toBeNull());
 
     expect(screen.getByText("全年齡保護已啟用")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "R18" }).getAttribute("disabled")).not.toBeNull();
+    expect(within(screen.getByLabelText("內容分級快速篩選")).getByRole("option", { name: "R18" }).getAttribute("disabled")).not.toBeNull();
   });
 
   it("lets an adult select R18 locally and marks restricted cards", async () => {
@@ -136,7 +136,7 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(screen.getByText("限制級作品")).toBeTruthy());
     expect(screen.getByText("18+ / R18")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "R18" }));
+    fireEvent.change(screen.getByLabelText("內容分級快速篩選"), { target: { value: "r18" } });
     expect(screen.getByText("限制級作品")).toBeTruthy();
     expect(screen.queryByText("全年齡作品")).toBeNull();
   });
@@ -154,13 +154,13 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(screen.getByText("這是繁體作品")).toBeTruthy());
     const callsAfterSearch = mockState.mutationCalls;
 
-    fireEvent.click(screen.getByRole("button", { name: "繁體" }));
+    fireEvent.change(screen.getByLabelText("語言快速篩選"), { target: { value: "zh-hant" } });
     expect(screen.getByText("這是繁體作品")).toBeTruthy();
     expect(screen.queryByText("これはR18作品")).toBeNull();
     expect(mockState.mutationCalls).toBe(callsAfterSearch);
 
-    fireEvent.click(within(screen.getByLabelText("語言快速篩選")).getByRole("button", { name: "全部" }));
-    fireEvent.click(screen.getByRole("button", { name: "R18" }));
+    fireEvent.change(screen.getByLabelText("語言快速篩選"), { target: { value: "all" } });
+    fireEvent.change(screen.getByLabelText("內容分級快速篩選"), { target: { value: "r18" } });
     expect(screen.getByText("これはR18作品")).toBeTruthy();
     expect(screen.queryByText("這是繁體作品")).toBeNull();
     expect(mockState.mutationCalls).toBe(callsAfterSearch);
@@ -201,13 +201,13 @@ describe("Home pagination interactions", () => {
     const relationshipTag = screen.getByText("♡ 富岡義勇/胡蝶忍");
     expect(relationshipTag.className).toContain("bg-[#ffe8f0]");
     expect(screen.getByText("◇ 富岡義勇")).toBeTruthy();
-    expect(screen.getByText("第 1 / 3 頁")).toBeTruthy();
+    expect(screen.getByText(/第 1\/3 頁/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
 
     await waitFor(() => expect(screen.getByText("PAGE TWO")).toBeTruthy());
     expect(screen.queryByText("PAGE ONE")).toBeNull();
-    expect(screen.getByText("第 2 / 3 頁")).toBeTruthy();
+    expect(screen.getByText(/第 2\/3 頁/)).toBeTruthy();
     expect(mockState.lastVariables).toMatchObject({ data: { page: 2 } });
   });
 
@@ -236,7 +236,7 @@ describe("Home pagination interactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "條列模式" }));
     expect(screen.getByRole("button", { name: "條列模式" }).getAttribute("aria-pressed")).toBe("true");
     fireEvent.change(screen.getByDisplayValue("24 篇"), { target: { value: "12" } });
-    expect(screen.getByText("第 1 / 3 頁")).toBeTruthy();
+    expect(screen.getByText(/第 1\/3 頁/)).toBeTruthy();
     expect(screen.getAllByText("#General")).toHaveLength(12);
     expect(screen.getAllByRole("button", { name: "+3 標籤" })).toHaveLength(12);
     fireEvent.click(screen.getAllByRole("button", { name: "+3 標籤" })[0]);
@@ -245,6 +245,12 @@ describe("Home pagination interactions", () => {
     expect(screen.queryByText("#Slow burn")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
     expect(screen.getByText("LOCAL RESULT 13")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("前往指定頁數"), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: /前往|Go/ }));
+    expect(screen.getByText("LOCAL RESULT 25")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("前往指定頁數"), { target: { value: "99" } });
+    fireEvent.click(screen.getByRole("button", { name: /前往|Go/ }));
+    expect(screen.getByText("LOCAL RESULT 25")).toBeTruthy();
 
     fireEvent.scroll(window);
     fireEvent.click(screen.getByRole("button", { name: "回到頂部搜尋列" }));
@@ -538,6 +544,6 @@ describe("Home pagination interactions", () => {
 
     await waitFor(() => expect(screen.getByText("有封面作品")).toBeTruthy());
     expect(screen.getAllByTestId("result-cover")).toHaveLength(2);
-    expect(screen.getAllByTestId("result-cover").every((cover) => cover.className.includes("aspect-video"))).toBe(true);
+    expect(screen.getAllByTestId("result-cover").every((cover) => cover.className.includes("aspect-[16/9]"))).toBe(true);
     expect(document.getElementById("search-results")?.className).toContain("auto-rows-fr");
   });
