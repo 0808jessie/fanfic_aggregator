@@ -114,6 +114,25 @@ describe("Home personal reading tools", () => {
     expect(screen.getByText("沒有符合的 CP 對照。")).toBeTruthy();
   });
 
+  it("confirms whether to retain or clear reader cache before removing a saved work", async () => {
+    render(<Home />);
+
+    expect(screen.queryByRole("button", { name: "CP 詞庫" })).toBeNull();
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "月光" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+    await waitFor(() => expect(screen.getByText("義忍閱讀測試")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /收藏 義忍閱讀測試/ }));
+    fireEvent.click(screen.getByRole("button", { name: "儲存閱讀卡" }));
+    fireEvent.click(screen.getByRole("button", { name: /藏書閣 \/ 收藏夾/ }));
+
+    fireEvent.click(screen.getByRole("button", { name: /取消收藏 義忍閱讀測試/ }));
+    expect(screen.getByRole("heading", { name: "移出藏書閣" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "僅移出書架" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "完整刪除（含快取）" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "僅移出書架" }));
+    await waitFor(() => expect(screen.queryByText("義忍閱讀測試")).toBeNull());
+  });
+
   it("adds an exclusion keyword and immediately hides matching loaded works", async () => {
     render(<Home />);
 

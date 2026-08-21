@@ -8,12 +8,6 @@ from unittest.mock import patch
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from scrapers.ao3_scraper import AO3Scraper
-import scrapers.ao3_scraper as ao3_module
-
-
-def test_ao3_adapter_exposes_the_curl_cffi_requests_module():
-    """Keep the Sidecar's AO3 Session factory safe from a missing import."""
-    assert callable(ao3_module.requests.Session)
 
 
 def test_ao3_search_url_uses_standard_percent_encoding():

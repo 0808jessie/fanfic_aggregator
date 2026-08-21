@@ -108,6 +108,7 @@ class ReaderDocument(BaseModel):
     author: str
     source: str
     coverUrl: Optional[str] = None
+    seriesTitle: Optional[str] = None
     currentChapterIndex: int = 0
     tableOfContents: list[ReaderChapter] = Field(default_factory=list)
     chapters: list[ReaderChapter] = Field(default_factory=list)

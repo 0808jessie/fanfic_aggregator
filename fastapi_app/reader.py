@@ -88,6 +88,7 @@ class ExtractedReaderDocument:
     paragraphs: list[str]
     table_of_contents: list["ReaderChapterEntry"] = field(default_factory=list)
     current_chapter_index: int = 0
+    series_title: str | None = None
 
 
 @dataclass(frozen=True)
@@ -122,6 +123,17 @@ def _normalize_bahamut_url(url: str) -> str:
         if serial_number.isdecimal():
             return urlunparse(("https", "home.gamer.com.tw", "/artwork.php", "", urlencode({"sn": serial_number}), parsed.fragment))
     return url
+
+
+def _normalize_ao3_url(url: str) -> str:
+    """Request AO3's documented public adult-view variant without handling user cookies."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower().removeprefix("www.")
+    if host != "archiveofourown.org" or not re.match(r"^/(?:works|chapters)/\d+", parsed.path):
+        return url
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    query.setdefault("view_adult", ["true"])
+    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, urlencode(query, doseq=True), parsed.fragment))
 
 
 def _is_protection_page(html: str) -> bool:
@@ -178,7 +190,7 @@ async def _cxc_public_api_get(path: str) -> dict[str, object]:
 async def fetch_public_work_html(url: str) -> str:
     """Fetch one public work with a bounded browser-like request, never credentials."""
     source_for_reader_url(url)
-    target_url = _normalize_bahamut_url(url)
+    target_url = _normalize_bahamut_url(_normalize_ao3_url(url))
     try:
         response = await (_bahamut_public_get(target_url) if source_for_reader_url(target_url) == "巴哈姆特創作大廳" else _public_get(target_url))
     except Exception as error:  # curl_cffi exposes transport-specific error classes.
@@ -210,6 +222,30 @@ def _first_text(soup: BeautifulSoup, selectors: Iterable[str], fallback: str) ->
             if text:
                 return text
     return fallback
+
+
+def _ao3_title_and_author(soup: BeautifulSoup) -> tuple[str, str]:
+    """Extract AO3's work metadata from its dedicated work header.
+
+    AO3's OpenGraph title can include site-level suffixes, while its generic page
+    title is often just ``Archive of Our Own`` on an interstitial.  The visible
+    work header is therefore the source of truth whenever it is present.
+    """
+    title = _first_text(soup, ("h2.title.heading", "#workskin h2.title"), "")
+    if not title:
+        title = _meta_content(soup, "meta[property='og:title']")
+    if title.casefold() in {"archive of our own", "organization for transformative works"}:
+        title = ""
+
+    author = _first_text(soup, ("h3.byline.heading a", "h3.byline a", "a[rel='author']"), "")
+    if not author:
+        author = _first_text(soup, ("h3.byline.heading", ".byline.heading", ".byline"), "")
+        author = re.sub(r"^by\s+", "", author, flags=re.IGNORECASE)
+    if not author:
+        author = _meta_content(soup, "meta[name='author']")
+    if author.casefold() in {"archive of our own", "organization for transformative works"}:
+        author = ""
+    return title or "未命名 AO3 作品", author or "原始作者以 AO3 來源頁為準"
 
 
 def _content_root(soup: BeautifulSoup, source: str) -> Tag | None:
@@ -259,7 +295,11 @@ def _paragraphs_from(root: Tag) -> list[str]:
     for node in root.select("br"):
         node.replace_with("\n")
     for node in root.select("p, blockquote, li"):
-        text = _clean_text(node.get_text(" ", strip=True))
+        # A source-level <br> is an intentional line break (often dialogue), not
+        # a whitespace separator.  ReaderView renders this newline with
+        # whitespace-pre-line inside one semantic paragraph.
+        text = re.sub(r"[^\S\r\n]+", " ", node.get_text("\n", strip=True))
+        text = re.sub(r"\s*\n\s*", "\n", text).strip()
         if len(text) < 2 or text in seen or re.match(r"^(作者|發表|閱讀|回覆)[：:]", text):
             continue
         seen.add(text)
@@ -296,10 +336,10 @@ def _waterwriter_rich_paragraphs(root: Tag) -> list[str]:
         node.replace_with("\n")
     paragraphs: list[str] = []
     seen: set[str] = set()
-    for node in root.select("p, div, blockquote, li"):
+    for node in root.select("p, div, details, blockquote, li"):
         # Container divs repeat text from nested child blocks; only consume leaf
         # blocks and let the complete-root fallback handle plain text nodes.
-        if node.name == "div" and node.select_one("p, div, blockquote, li"):
+        if node.name in {"div", "details"} and node.select_one("p, div, details, blockquote, li"):
             continue
         for block in re.split(r"\n\s*\n", node.get_text("\n", strip=True)):
             text = re.sub(r"[^\S\r\n]+", " ", block)
@@ -325,6 +365,15 @@ def _is_penana_story_home(url: str) -> bool:
 
 def _is_penana_issue_url(url: str) -> bool:
     return bool(re.search(r"/(?:issue|chapter)/", urlparse(url).path.lower()))
+
+
+def _penana_story_root_url(url: str) -> str | None:
+    """Return a Penana work landing URL for an issue URL without guessing a chapter."""
+    parsed = urlparse(url)
+    match = re.match(r"^(?P<story>/story/\d+(?:/[^/?#]+)?)", parsed.path, re.IGNORECASE)
+    if not match:
+        return None
+    return urlunparse((parsed.scheme, parsed.netloc, match.group("story"), "", "", ""))
 
 
 def _cxc_work_reference(url: str) -> tuple[str, str, str | None] | None:
@@ -401,36 +450,91 @@ def _waterwriter_owner_name(soup: BeautifulSoup) -> str:
     return ""
 
 
-def _waterwriter_floor_nodes(soup: BeautifulSoup, owner: str) -> list[Tag]:
-    """Return the first continuous run of original-poster floors.
+def _waterwriter_identity_values(candidate: Tag) -> set[str]:
+    """Collect public author name/UID values exposed by a Discuz floor."""
+    values: set[str] = set()
+    nodes = [candidate, *candidate.select(".authi a, .author a, .username, [data-username], [data-author], [data-author-name], [data-user-name], [data-uid], [data-user-id], [data-author-id], a[href*='uid=']")]
+    for node in nodes:
+        for attribute in ("data-username", "data-author", "data-author-name", "data-user-name", "data-uid", "data-user-id", "data-author-id"):
+            value = _clean_text(str(node.get(attribute) or ""))
+            if value:
+                values.add(value.casefold())
+        href = str(node.get("href") or "")
+        uid = parse_qs(urlparse(href).query).get("uid", [""])[0]
+        if uid:
+            values.add(uid.casefold())
+        text = _clean_text(node.get_text(" ", strip=True))
+        if text:
+            values.add(text.casefold())
+    return values
 
-    Discuz pages expose one `post_*` wrapper per floor.  The newer SSR fallback
-    exposes a single article, which naturally becomes one complete chapter.
+
+def _waterwriter_content_root(container: Tag) -> Tag | None:
+    """Find an individual public floor's prose without relying on one forum skin."""
+    for selector in (
+        "td[id^='postmessage_']",
+        "div.pct .t_f",
+        "div.t_f",
+        "[data-post-content]",
+        "[data-role='content']",
+        ".post-content",
+        ".thread-content",
+        ".message-content",
+        "article",
+    ):
+        candidate = container.select_one(selector)
+        if candidate:
+            return candidate
+    return container if container.get_text(" ", strip=True) else None
+
+
+def _waterwriter_floor_nodes(soup: BeautifulSoup, owner: str) -> list[Tag]:
+    """Return every public prose floor authored by the original poster.
+
+    Legacy Discuz pages expose `post_*` wrappers.  The current SSR surface uses
+    article/data attributes instead, so both structures are accepted.  Reader
+    chapters deliberately exclude other readers' replies but retain every later
+    original-poster floor even when a discussion reply appears in between.
     """
-    candidates = soup.select("[id^='post_'], .post, article")
+    candidates = soup.select("[id^='post_'], [data-floor], [data-post-id], [data-thread-floor], .thread-post, .post-item, .floor, .reply-item, .post, [role='article'], article")
     unique: list[Tag] = []
     for candidate in candidates:
-        if candidate.find_parent(lambda parent: isinstance(parent, Tag) and parent in candidates):
+        if any(parent is other for parent in candidate.parents for other in candidates):
             continue
-        if candidate not in unique:
+        if _waterwriter_content_root(candidate) is not None and candidate not in unique:
             unique.append(candidate)
+    owner_identities = {owner.casefold()} if owner else set()
+    if unique:
+        # First floor is the only authoritative fallback when SSR omitted a
+        # meta author. Preserve UID matching for subsequent self-replies.
+        owner_identities.update(_waterwriter_identity_values(unique[0]))
     floors: list[Tag] = []
     started = False
     for candidate in unique:
         text = _clean_text(candidate.get_text(" ", strip=True))
         if not text:
             continue
-        author_nodes = candidate.select(".authi a, .author a, .username, [data-username], [data-author]")
-        candidate_authors = {_clean_text(str(node.get("data-username") or node.get("data-author") or node.get_text(" ", strip=True))) for node in author_nodes}
-        owns_floor = bool(owner and (owner in candidate_authors or re.search(rf"作者[：:]\s*{re.escape(owner)}", text)))
-        if not author_nodes and not floors:
+        candidate_identities = _waterwriter_identity_values(candidate)
+        owns_floor = bool(owner_identities and candidate_identities.intersection(owner_identities))
+        if owner and re.search(rf"作者[：:]\s*{re.escape(owner)}", text, re.IGNORECASE):
+            owns_floor = True
+        if not candidate_identities and not floors:
             owns_floor = True
         if owns_floor:
             floors.append(candidate)
             started = True
-        elif started:
-            break
-    return floors or ([soup.select_one("#ssr-content article") or soup.select_one("article")] if soup.select_one("article") else [])
+    fallback = soup.select_one("#ssr-content article") or soup.select_one("article")
+    return floors or ([fallback] if fallback else [])
+
+
+def _waterwriter_floor_number(floor: Tag, fallback_index: int) -> int:
+    """Prefer the public floor identifier so Reader navigation mirrors the thread."""
+    for attribute in ("data-floor", "data-thread-floor", "data-post-id", "id"):
+        value = str(floor.get(attribute) or "")
+        match = re.search(r"(\d+)(?!.*\d)", value)
+        if match:
+            return int(match.group(1))
+    return fallback_index
 
 
 def _waterwriter_document(url: str, html: str) -> ExtractedReaderDocument:
@@ -439,23 +543,28 @@ def _waterwriter_document(url: str, html: str) -> ExtractedReaderDocument:
     author = _waterwriter_owner_name(soup) or _first_text(soup, (".authi a", ".author a"), "原始作者以來源頁為準")
     cover_url = _meta_content(soup, "meta[property='og:image']") or None
     floors = _waterwriter_floor_nodes(soup, author)
-    chapters: list[tuple[Tag, list[str]]] = []
-    for floor in floors:
+    chapters: list[tuple[int, list[str]]] = []
+    used_floor_numbers: set[int] = set()
+    for ordinal, floor in enumerate(floors, start=1):
         copied = BeautifulSoup(str(floor), "html.parser")
-        root = copied.select_one("td[id^='postmessage_'], div.pct .t_f, div.t_f, article") or copied
+        root = _waterwriter_content_root(copied) or copied
         for node in root.select(".sign, .signature, .reply, .quote, .authi, .pi, .pls"):
             node.decompose()
         paragraphs = _waterwriter_rich_paragraphs(root)
         if paragraphs:
-            chapters.append((floor, paragraphs))
+            floor_number = _waterwriter_floor_number(floor, ordinal)
+            while floor_number in used_floor_numbers:
+                floor_number += 1
+            used_floor_numbers.add(floor_number)
+            chapters.append((floor_number, paragraphs))
     if not chapters:
         raise ReaderUnavailableError("在水裡寫字未提供可辨識的樓主公開正文；請改由原始網站閱讀。")
     base_url = url.split("#", 1)[0]
-    toc = [_toc_entry(f"{base_url}#floor-{index}", f"第 {index} 章", index) for index in range(1, len(chapters) + 1)]
+    toc = [_toc_entry(f"{base_url}#floor-{floor_number}", f"第 {floor_number} 樓", index) for index, (floor_number, _) in enumerate(chapters, start=1)]
     fragment = urlparse(url).fragment
-    current_index = int(fragment.removeprefix("floor-")) - 1 if fragment.removeprefix("floor-").isdigit() else 0
-    current_index = max(0, min(current_index, len(chapters) - 1))
-    return ExtractedReaderDocument(url, title, author, "在水裡寫字", cover_url, toc[current_index].title, chapters[current_index][1], toc, current_index)
+    requested_fragment = fragment.removeprefix("floor-")
+    current_index = next((index for index, (floor_number, _) in enumerate(chapters) if str(floor_number) == requested_fragment), 0)
+    return ExtractedReaderDocument(url, title, author, "在水裡寫字", cover_url, toc[current_index].title, chapters[current_index][1], toc, current_index, title if len(toc) > 1 else None)
 
 
 def _html_table_of_contents(url: str, source: str, soup: BeautifulSoup, title: str) -> list[ReaderChapterEntry]:
@@ -463,7 +572,7 @@ def _html_table_of_contents(url: str, source: str, soup: BeautifulSoup, title: s
         "AO3": ("select#selected_id option[value]", "ol.chapter.index a[href]", ".chapter.index a[href]"),
         "Penana": (".issue_li a[href]", ".chapter-list a[href]", ".episode-list a[href]", "a[href*='chapter']", "a[href*='issue']"),
         "CxC 創利市集": (".chapter-list a[href]", ".episode-list a[href]", "a[href*='chapter']", "a[href*='episode']"),
-        "巴哈姆特創作大廳": (".ct-btn-box a[href*='artwork.php']", ".article-list a[href*='creationDetail.php']", ".article-list a[href*='artwork.php']", ".creation-list a[href*='creationDetail.php']", ".creation-list a[href*='artwork.php']", "a[href*='creationDetail.php']"),
+        "巴哈姆特創作大廳": (".article-list a[href*='creationDetail.php']", ".article-list a[href*='artwork.php']", ".creation-list a[href*='creationDetail.php']", ".creation-list a[href*='artwork.php']", ".series-list a[href*='artwork.php']"),
         "KadoKado 角角者": ("a[href*='/chapters/']", "a[href*='/episode/']", ".chapter-list a[href]"),
     }.get(source, ())
     entries: list[ReaderChapterEntry] = []
@@ -482,16 +591,23 @@ def _html_table_of_contents(url: str, source: str, soup: BeautifulSoup, title: s
             if source == "Penana" and not _is_penana_issue_url(chapter_url):
                 continue
             chapter_title = _clean_text(node.get_text(" ", strip=True)) or _clean_text(str(node.get("title") or ""))
+            if source == "Penana":
+                # Penana's issue cards append public engagement counters and a
+                # menu glyph after the title. They are UI metadata, not prose.
+                chapter_title = re.sub(r"^\s*#\d+\s+", "", chapter_title)
+                chapter_title = re.split(r"\s+\d+\s*喜歡\b", chapter_title, maxsplit=1)[0]
+                chapter_title = _clean_text(chapter_title)
             if not chapter_title:
                 continue
             entries.append(_toc_entry(chapter_url, chapter_title, len(entries) + 1))
     entries = _dedupe_toc(entries)
     if source == "巴哈姆特創作大廳":
-        previous = next((entry for entry in entries if "上一篇" in entry.title), None)
-        following = next((entry for entry in entries if "下一篇" in entry.title), None)
-        if previous or following:
-            navigation = [entry for entry in (previous, _toc_entry(url, title, 2), following) if entry]
-            return [ReaderChapterEntry(entry.id, entry.title, entry.url, position) for position, entry in enumerate(navigation, start=1)]
+        # `.ct-btn-box` is only previous/next navigation, not a chapter list.
+        # If the page does not expose a genuine series list, present one stable
+        # one-shot entry rather than falsely labelling adjacent articles as chapters.
+        entries = [entry for entry in entries if entry.title not in {"上一篇", "下一篇"}]
+        if not entries:
+            return [_toc_entry(url, "全一話", 1)]
     if not entries:
         label = "全一話" if source in {"同人誌中心", "POPO 原創市集"} else title
         entries = [_toc_entry(url, label, 1)]
@@ -509,7 +625,29 @@ async def _penana_story_document(url: str, html: str) -> ExtractedReaderDocument
     issue_html = await fetch_public_work_html(first_issue.url)
     document = extract_reader_document(first_issue.url, issue_html)
     current_index = next((index for index, entry in enumerate(table_of_contents) if entry.url == first_issue.url), 0)
-    return ExtractedReaderDocument(document.url, document.title, document.author, document.source, document.cover_url, document.chapter_title, document.paragraphs, table_of_contents, current_index)
+    return ExtractedReaderDocument(document.url, title, document.author, document.source, document.cover_url, document.chapter_title, document.paragraphs, table_of_contents, current_index, title if len(table_of_contents) > 1 else None)
+
+
+async def _penana_issue_document(url: str, html: str) -> ExtractedReaderDocument:
+    """Keep the full public Penana TOC when a reader enters on a chapter URL."""
+    document = extract_reader_document(url, html)
+    story_url = _penana_story_root_url(url)
+    if not story_url or story_url == url:
+        return document
+    try:
+        story_html = await fetch_public_work_html(story_url)
+        story_soup = BeautifulSoup(story_html, "html.parser")
+        table_of_contents = _html_table_of_contents(story_url, "Penana", story_soup, document.title)
+    except ReaderUnavailableError:
+        # A source may allow direct public issues while protecting its landing
+        # page. Keep the readable chapter rather than turning it into an error.
+        return document
+    issue_entries = [entry for entry in table_of_contents if _is_penana_issue_url(entry.url)]
+    if not issue_entries:
+        return document
+    current_index = next((index for index, entry in enumerate(issue_entries) if entry.url == url), 0)
+    story_title = _meta_content(story_soup, "meta[property='og:title']") or _first_text(story_soup, ("h1", ".title"), document.title)
+    return ExtractedReaderDocument(document.url, story_title, document.author, document.source, document.cover_url, document.chapter_title, document.paragraphs, issue_entries, current_index, story_title if len(issue_entries) > 1 else None)
 
 
 async def _cxc_document(url: str) -> ExtractedReaderDocument:
@@ -531,7 +669,14 @@ async def _cxc_document(url: str) -> ExtractedReaderDocument:
     base_url = f"https://cxc.today/@{store}/work/{work_id}"
     toc = [_toc_entry(f"{base_url}/reader/{section['id']}", str(section.get("name") or f"第 {position} 章"), position) for position, section in enumerate(readable_sections, start=1)]
     section = await _cxc_public_api_get(f"store/{store}/work/{work_id}/section/{selected_section_id}")
-    content = str(section.get("content_hant") or section.get("content") or section.get("trial_content_hant") or "")
+    content = str(
+        section.get("content_hant")
+        or section.get("content_html")
+        or section.get("content")
+        or section.get("trial_content_hant")
+        or section.get("trial_content")
+        or ""
+    )
     if _has_cxc_text_protection(content):
         raise ReaderUnavailableError("CxC 此章節以原始網站的字型內容保護呈現；本應用程式不會解碼或繞過該保護，請改由原始網站閱讀。")
     content_root = BeautifulSoup(content, "html.parser")
@@ -557,6 +702,96 @@ async def _cxc_document(url: str) -> ExtractedReaderDocument:
     )
 
 
+def _pixiv_paragraphs_from_text(text: str) -> list[str]:
+    """Turn Pixiv's newlines and page breaks into ReaderView-safe prose blocks."""
+    normalized = re.sub(r"\[newpage\]", "\n\n", text, flags=re.IGNORECASE).replace("\r\n", "\n")
+    paragraphs: list[str] = []
+    seen: set[str] = set()
+    for block in re.split(r"\n\s*\n+", normalized):
+        cleaned = re.sub(r"[^\S\r\n]+", " ", block)
+        cleaned = re.sub(r"\s*\n\s*", "\n", cleaned).strip()
+        if len(cleaned) < 2 or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        paragraphs.append(cleaned)
+    return paragraphs
+
+
+def _pixiv_series_id(body: dict[str, object]) -> str | None:
+    navigation = body.get("seriesNavData")
+    candidates = [body.get("seriesId"), body.get("series_id")]
+    if isinstance(navigation, dict):
+        candidates.extend([navigation.get("seriesId"), navigation.get("series_id")])
+    for candidate in candidates:
+        value = str(candidate or "")
+        if value.isdecimal():
+            return value
+    return None
+
+
+def _pixiv_series_entries(payload: object) -> list[ReaderChapterEntry]:
+    """Parse documented Pixiv series responses across their public payload variants."""
+    body = payload.get("body") if isinstance(payload, dict) else None
+    if isinstance(body, list):
+        entries: list[ReaderChapterEntry] = []
+        for item in body:
+            if not isinstance(item, dict) or item.get("available") is False:
+                continue
+            novel_id = str(item.get("id") or item.get("novelId") or "")
+            if not novel_id.isdecimal():
+                continue
+            title = _clean_text(str(item.get("title") or f"第 {len(entries) + 1} 章"))
+            entries.append(_toc_entry(f"https://www.pixiv.net/novel/show.php?id={novel_id}", title, len(entries) + 1))
+        return entries
+    if not isinstance(body, dict):
+        return []
+    containers = [body]
+    page = body.get("page")
+    if isinstance(page, dict):
+        containers.append(page)
+    raw_items: list[object] = []
+    for container in containers:
+        for key in ("novels", "items", "contents", "seriesContents"):
+            value = container.get(key)
+            if isinstance(value, list):
+                raw_items.extend(value)
+        series = container.get("series")
+        if isinstance(series, dict):
+            for key in ("novels", "items", "contents"):
+                value = series.get(key)
+                if isinstance(value, list):
+                    raw_items.extend(value)
+    entries: list[ReaderChapterEntry] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        novel_id = str(item.get("id") or item.get("novelId") or item.get("novel_id") or "")
+        if not novel_id.isdecimal():
+            continue
+        order_value = item.get("order") or item.get("seriesOrder") or item.get("series_order") or len(entries) + 1
+        order = int(order_value) if str(order_value).isdigit() else len(entries) + 1
+        title = _clean_text(str(item.get("title") or item.get("name") or f"第 {order} 章"))
+        entries.append(_toc_entry(f"https://www.pixiv.net/novel/show.php?id={novel_id}", title, order))
+    return sorted(_dedupe_toc(entries), key=lambda entry: entry.index)
+
+
+async def _pixiv_series_table_of_contents(body: dict[str, object], referer: str) -> list[ReaderChapterEntry]:
+    series_id = _pixiv_series_id(body)
+    if not series_id:
+        return []
+    try:
+        response = await _public_get(
+            f"https://www.pixiv.net/ajax/novel/series/{series_id}/content_titles",
+            headers={**PIXIV_AJAX_HEADERS, "Referer": referer},
+        )
+        if response.status_code != 200:
+            return []
+        payload = response.json()
+    except Exception:
+        return []
+    return _pixiv_series_entries(payload)
+
+
 async def _pixiv_document(url: str) -> ExtractedReaderDocument:
     """Fetch Pixiv's public Novel JSON instead of its JavaScript application shell."""
     novel_id = _pixiv_novel_id(url)
@@ -578,16 +813,16 @@ async def _pixiv_document(url: str) -> ExtractedReaderDocument:
     body = payload.get("body") if isinstance(payload, dict) else None
     if payload.get("error") or not isinstance(body, dict):
         raise ReaderUnavailableError("Pixiv 未提供可辨識的公開小說正文；請改由原始網站閱讀。")
-    paragraphs = _paragraphs_from_text(str(body.get("content") or ""))
+    paragraphs = _pixiv_paragraphs_from_text(str(body.get("content") or ""))
     if not paragraphs:
         raise ReaderUnavailableError("Pixiv 作品未提供可辨識的公開正文；請改由原始網站閱讀。")
     title = _clean_text(str(body.get("title") or "")) or "未命名 Pixiv 小說"
     author = _clean_text(str(body.get("userName") or "")) or "原始作者以 Pixiv 來源頁為準"
-    chapter_title = _clean_text(str(body.get("seriesTitle") or "")) or "正文"
+    chapter_title = _clean_text(str(body.get("title") or "")) or _clean_text(str(body.get("seriesTitle") or "")) or "正文"
     cover_url = _clean_text(str(body.get("coverUrl") or "")) or None
     navigation = body.get("seriesNavData") if isinstance(body.get("seriesNavData"), dict) else {}
     current_order = int(navigation.get("order") or 1) if str(navigation.get("order") or "").isdigit() else 1
-    toc: list[ReaderChapterEntry] = []
+    toc = await _pixiv_series_table_of_contents(body, url)
     for relation, fallback_order in (("prev", current_order - 1), ("next", current_order + 1)):
         item = navigation.get(relation) if isinstance(navigation, dict) else None
         if not isinstance(item, dict) or not item.get("available") or not str(item.get("id") or "").isdigit():
@@ -598,24 +833,30 @@ async def _pixiv_document(url: str) -> ExtractedReaderDocument:
     toc.append(_toc_entry(url, chapter_title, current_order))
     toc = sorted(_dedupe_toc(toc), key=lambda entry: entry.index)
     current_index = next((index for index, entry in enumerate(toc) if entry.url == url), 0)
-    return ExtractedReaderDocument(url, title, author, "Pixiv", cover_url, chapter_title, paragraphs, toc, current_index)
+    series_title = _clean_text(str(body.get("seriesTitle") or navigation.get("title") or "")) if len(toc) > 1 else ""
+    return ExtractedReaderDocument(url, title, author, "Pixiv", cover_url, chapter_title, paragraphs, toc, current_index, series_title or None)
 
 
 def extract_reader_document(url: str, html: str) -> ExtractedReaderDocument:
     """Extract a single chapter's readable paragraphs from verified public HTML."""
     source = source_for_reader_url(url)
     soup = BeautifulSoup(html, "html.parser")
-    title = _meta_content(soup, "meta[property='og:title']") or _first_text(soup, ("h1", ".title", "header h2"), "未命名作品")
-    author = _meta_content(soup, "meta[name='author']") or _first_text(soup, ("a[rel='author']", ".byline a", ".author a", ".byline", ".author"), "原始作者以來源頁為準")
+    if source == "AO3":
+        title, author = _ao3_title_and_author(soup)
+    else:
+        title = _meta_content(soup, "meta[property='og:title']") or _first_text(soup, ("h1", ".title", "header h2"), "未命名作品")
+        author = _meta_content(soup, "meta[name='author']") or _first_text(soup, ("a[rel='author']", ".byline a", ".author a", ".byline", ".author"), "原始作者以來源頁為準")
     cover_url = _meta_content(soup, "meta[property='og:image']") or None
     root = _content_root(soup, source)
+    if source == "Penana" and root is not None:
+        _clean_penana_reader_root(root)
     if root is None or not _paragraphs_from(root):
         root = _readability_fallback(soup)
     if root is None:
         raise ReaderUnavailableError("找不到可辨識的公開正文區塊；請改由原始網站閱讀。")
     if source == "Penana":
         _clean_penana_reader_root(root)
-    chapter_title = _first_text(root, ("h2", "h3", ".chapter-title"), "正文")
+    chapter_title = _first_text(soup, ("#chapters .chapter h3.title", "#chapters h3.title", "h3.title.heading", ".chapter-title", "#chapters h2"), "正文") if source == "AO3" else _first_text(root, ("h2", "h3", ".chapter-title"), "正文")
     paragraphs = _paragraphs_from(root)
     if not paragraphs:
         raise ReaderUnavailableError("來源頁未提供可辨識的公開正文；請改由原始網站閱讀。")
@@ -631,12 +872,13 @@ def extract_reader_document(url: str, html: str) -> ExtractedReaderDocument:
         paragraphs=paragraphs,
         table_of_contents=toc,
         current_chapter_index=current_index,
+        series_title=title if len(toc) > 1 else None,
     )
 
 
 async def read_public_work(url: str, chapter_url: str | None = None) -> ExtractedReaderDocument:
     """Fetch and extract on demand; content is deliberately never persisted."""
-    target_url = _normalize_bahamut_url(chapter_url or url)
+    target_url = _normalize_bahamut_url(_normalize_ao3_url(chapter_url or url))
     if not _same_reader_source(url, target_url):
         raise ReaderRequestError("指定章節不屬於原始作品的平台；請改由原始網站閱讀。")
     source = source_for_reader_url(target_url)
@@ -647,6 +889,8 @@ async def read_public_work(url: str, chapter_url: str | None = None) -> Extracte
     html = await fetch_public_work_html(target_url)
     if source == "Penana" and _is_penana_story_home(target_url):
         return await _penana_story_document(target_url, html)
+    if source == "Penana" and _is_penana_issue_url(target_url):
+        return await _penana_issue_document(target_url, html)
     if source == "在水裡寫字":
         return _waterwriter_document(target_url, html)
     return extract_reader_document(target_url, html)

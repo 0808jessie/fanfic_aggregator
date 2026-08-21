@@ -21,6 +21,8 @@ import {
   Search,
   RotateCw,
   Save,
+  Settings2,
+  ShieldAlert,
   SlidersHorizontal,
   Sparkles,
   Tags,
@@ -42,6 +44,7 @@ import {
   readSearchRequestCache,
   writeSearchRequestCache,
 } from "@/lib/searchRequestCache";
+import { clearAllReaderDocumentCache, clearReaderDocumentCache, getReaderCacheStats } from "@/lib/readerCache";
 import {
   appendUniqueResults,
   countLanguageResults,
@@ -68,6 +71,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -75,7 +79,7 @@ import { BlueprintCover } from "@/components/BlueprintCover";
 import { BookshelfView } from "@/components/BookshelfView";
 import { ReaderView, type ReaderDocument } from "@/components/ReaderView";
 import { BlacklistGroupManager } from "@/components/ExcludeKeywordEditor";
-import { AgeConfirmationDialog, RestrictedSummary } from "@/components/ContentSafety";
+import { AgeConfirmationDialog, ReadingPreferencesDialog, RestrictedSummary } from "@/components/ContentSafety";
 import { BookmarkEditorDialog, CpMappingLibraryPage } from "@/components/PersonalLibrary";
 import {
   loadBookmarks,
@@ -130,7 +134,7 @@ const PLATFORMS = [
   { id: "kadokado", label: "KadoKado 角角者", detail: "KADOKADO API · 手動啟用", tone: "amber" },
 ] as const;
 
-const FALLBACK_DESKTOP_VERSION = "1.2.10";
+const FALLBACK_DESKTOP_VERSION = "1.2.11";
 const UPDATER_MANIFEST_URL = "https://github.com/0808jessie/fanfic_aggregator/releases/latest/download/latest.json";
 const READER_SESSION_PROGRESS_PREFIX = "fanfic-atlas-reader-progress:";
 
@@ -282,6 +286,9 @@ export default function Home() {
   const [readerResume, setReaderResume] = useState<{ url: string; percent: number; chapter: string; chapterUrl?: string } | null>(null);
   const [readingHistory, setReadingHistory] = useState<ReadingHistoryRecord[]>([]);
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
+  const [pendingBookmarkRemoval, setPendingBookmarkRemoval] = useState<BookmarkRecord | null>(null);
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [readerCacheStats, setReaderCacheStats] = useState(() => getReaderCacheStats());
   const [cpMappings, setCpMappings] = useState<CpMapping[]>([]);
   const [customCpMappings, setCustomCpMappings] = useState<CpMapping[]>([]);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
@@ -413,6 +420,13 @@ export default function Home() {
 
   const desktopRuntime = isTauriDesktopRuntime();
   const isSearchPending = searchMutation.isPending || desktopSearchPending;
+
+  const refreshReaderCacheStats = useCallback(() => setReaderCacheStats(getReaderCacheStats()), []);
+  const clearAllReaderCache = useCallback(() => {
+    clearAllReaderDocumentCache();
+    refreshReaderCacheStats();
+    toast.success("已清空所有閱讀快取", { description: "藏書、筆記與閱讀進度均已保留。" });
+  }, [refreshReaderCacheStats]);
 
   const loadReaderDocument = useCallback(async (url: string, chapterUrl?: string): Promise<ReaderDocument> => {
     if (desktopRuntime) {
@@ -885,6 +899,23 @@ export default function Home() {
     showInfoToast("已從閱讀清單移除");
   };
 
+  const requestBookmarkRemoval = (url: string) => {
+    const target = bookmarks.find((bookmark) => bookmark.url === url);
+    if (target) setPendingBookmarkRemoval(target);
+  };
+
+  const completeBookmarkRemoval = (clearCachedDocument: boolean) => {
+    const target = pendingBookmarkRemoval;
+    if (!target) return;
+    removeBookmark(target.url);
+    if (clearCachedDocument) {
+      clearReaderDocumentCache(target.url);
+      refreshReaderCacheStats();
+      toast.success("已完整刪除作品與閱讀快取");
+    }
+    setPendingBookmarkRemoval(null);
+  };
+
   const importBookmarks = (incoming: BookmarkRecord[]) => {
     if (!incoming.length) { toast.error("找不到可還原的 JSON 藏書資料"); return; }
     personalDataRevisionRef.current += 1;
@@ -991,7 +1022,7 @@ export default function Home() {
 
   const confirmAge = (ageConfirmation: "adult" | "minor") => {
     personalDataRevisionRef.current += 1;
-    const next = { ...contentSafetySettings, ageConfirmation };
+    const next = { ...contentSafetySettings, ageConfirmation, blurRestrictedSummaries: ageConfirmation === "minor" ? true : contentSafetySettings.blurRestrictedSummaries };
     setContentSafetySettings(next);
     if (ageConfirmation === "minor") setRatingFilter("safe");
     if (ageConfirmation === "adult") setRatingFilter("all");
@@ -1075,7 +1106,7 @@ export default function Home() {
             <span>搜尋</span><span>{PLATFORMS.length} 個來源</span><span>私人藏書</span>
           </div>
           <div className="flex items-center gap-2 text-xs font-medium text-[color:var(--atlas-muted)]">
-            <Button type="button" variant="ghost" onClick={() => setActiveView("cp-library")} className="hidden h-9 border-0 bg-[color:var(--atlas-elevated)] px-3 text-xs font-semibold text-[color:var(--atlas-ink)] hover:bg-[color:var(--atlas-indigo-soft)] lg:inline-flex"><Tags className="mr-2 h-3.5 w-3.5" />CP 詞庫</Button>
+            <Button type="button" variant="ghost" aria-label="開啟偏好與快取設定" onClick={() => { refreshReaderCacheStats(); setPreferencesOpen(true); }} className="h-9 rounded-xl border-0 bg-[color:var(--atlas-elevated)] px-3 text-xs font-semibold text-[color:var(--atlas-ink)] hover:bg-[color:var(--atlas-indigo-soft)]"><Settings2 className="mr-1.5 h-3.5 w-3.5" />設定</Button>
             <span className="h-2 w-2 rounded-full bg-[#0f766e]" />已連線
           </div>
         </div>
@@ -1115,7 +1146,7 @@ export default function Home() {
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <label className="flex items-center gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-300">語言<select aria-label="語言快速篩選" value={selectedLanguage} onChange={(event) => setSelectedLanguage(event.target.value as LanguageFilter)} className="h-9 rounded-xl border border-[#111826]/15 bg-white px-2.5 text-sm text-[#10151b] outline-none transition-colors focus:border-[color:var(--atlas-indigo)]"><option value="all">全部</option><option value="zh-hant">繁體</option><option value="zh-hans">簡體</option><option value="ja">日文</option><option value="en">英文</option></select></label>
-                <label className="flex items-center gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-300">分級<select aria-label="內容分級快速篩選" value={ratingFilter} onChange={(event) => setRatingFilter(event.target.value as RatingFilter)} className="h-9 rounded-xl border border-[#efb4c4] bg-white px-2.5 text-sm text-[#10151b] outline-none transition-colors focus:border-[#9b4358]"><option value="all">全部</option><option value="safe">全年齡</option><option value="r18" disabled={contentSafetySettings.ageConfirmation !== "adult"}>R18</option></select></label>
+                <label className="flex items-center gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-300">分級<select aria-label="內容分級快速篩選" value={contentSafetySettings.ageConfirmation === "minor" ? "safe" : ratingFilter} disabled={contentSafetySettings.ageConfirmation === "minor"} onChange={(event) => setRatingFilter(event.target.value as RatingFilter)} className="h-9 rounded-xl border border-[#efb4c4] bg-white px-2.5 text-sm text-[#10151b] outline-none transition-colors focus:border-[#9b4358] disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500">{contentSafetySettings.ageConfirmation === "minor" ? <option value="safe">全年齡</option> : <><option value="all">全部</option><option value="safe">全年齡</option><option value="r18">R18</option></>}</select></label>
                 <label className="flex items-center gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-300">字數<select aria-label="字數區間" value={wordCountFilter} onChange={(event) => setWordCountFilter(event.target.value as WordCountFilter)} className="h-9 rounded-xl border border-[#111826]/15 bg-white px-2.5 text-sm text-[#10151b] outline-none transition-colors focus:border-[color:var(--atlas-indigo)]"><option value="all">全部</option><option value="short">1,000 以下</option><option value="medium">1k–10k</option><option value="long">10,000 以上</option></select></label>
                 <label className="flex items-center gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-300">完結<select aria-label="完結狀態" value={completionFilter} onChange={(event) => setCompletionFilter(event.target.value as CompletionFilter)} className="h-9 rounded-xl border border-[#111826]/15 bg-white px-2.5 text-sm text-[#10151b] outline-none transition-colors focus:border-[color:var(--atlas-indigo)]"><option value="all">全部</option><option value="complete">僅看已完結</option><option value="ongoing">僅看連載中</option></select></label>
                 <label className="flex items-center gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-300">排序<select aria-label="排序方式" value={sortMode} onChange={(event) => setSortMode(event.target.value as ResultSortMode)} className="h-9 rounded-xl border border-[#111826]/15 bg-white px-2.5 text-sm text-[#10151b] outline-none transition-colors focus:border-[color:var(--atlas-indigo)]"><option value="relevance">相關度</option><option value="updated">最新更新</option><option value="words">字數最多</option></select></label>
@@ -1139,10 +1170,7 @@ export default function Home() {
                   <Checkbox checked={hideBookmarkedResults} onCheckedChange={(value) => updateHideBookmarkedResults(value === true)} aria-label="隱藏已在藏書閣作品" className="mt-0.5 rounded border-[#2d70d6] data-[state=checked]:bg-[#2d70d6]" />
                   <span><span className="block text-sm font-semibold text-slate-800 dark:text-slate-200">📖 隱藏已在藏書閣作品</span><span className="mt-0.5 block text-xs text-slate-500">只在目前裝置即時比對 URL；不會重新搜尋。{bookmarks.length ? ` 已比對 ${bookmarks.length} 本藏書。` : ""}</span></span>
                 </label>
-                <label className="flex items-start gap-3 rounded-lg border border-[#efb4c4] bg-[#fff7f9] px-3 py-2.5">
-                  <Checkbox checked={contentSafetySettings.blurRestrictedSummaries} disabled={contentSafetySettings.ageConfirmation === "minor"} onCheckedChange={(value) => setSensitiveSummaryBlur(value === true)} aria-label="敏感內容模糊" className="mt-0.5 rounded border-[#9b4358] data-[state=checked]:bg-[#9b4358]" />
-                  <span><span className="block text-sm font-semibold text-slate-800 dark:text-slate-200">🔞 敏感內容模糊</span><span className="mt-0.5 block text-xs text-slate-500">限制級作品的摘要預設模糊，點擊後才會展開。</span></span>
-                </label>
+                {contentSafetySettings.ageConfirmation === "minor" ? <div className="flex items-start gap-3 rounded-lg border border-[color:var(--atlas-line)] bg-[color:var(--atlas-elevated)] px-3 py-2.5"><ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--atlas-indigo)]" /><span><span className="block text-sm font-semibold text-slate-800 dark:text-slate-200">全年齡保護中</span><span className="mt-0.5 block text-xs text-slate-500">限制級作品已完全隱藏，敏感摘要設定暫時不可調整。</span></span></div> : <label className="flex items-start gap-3 rounded-lg border border-[#efb4c4] bg-[#fff7f9] px-3 py-2.5"><Checkbox checked={contentSafetySettings.blurRestrictedSummaries} onCheckedChange={(value) => setSensitiveSummaryBlur(value === true)} aria-label="敏感內容模糊" className="mt-0.5 rounded border-[#9b4358] data-[state=checked]:bg-[#9b4358]" /><span><span className="block text-sm font-semibold text-slate-800 dark:text-slate-200">🔞 敏感內容模糊</span><span className="mt-0.5 block text-xs text-slate-500">限制級作品的摘要預設模糊，點擊後才會展開。</span></span></label>}
               </section>
               <div><BlacklistGroupManager groups={blacklistGroups} onGroupsChange={updateBlacklistGroups} displayMode={contentSafetySettings.blacklistDisplayMode} onDisplayModeChange={setBlacklistDisplayMode} /></div>
               <div className="flex flex-wrap items-center gap-3"><Button type="button" variant="outline" onClick={saveCurrentFilters} className="h-9 rounded-none border-[#10151b]/15 bg-white/65 font-mono text-[10px] font-bold uppercase tracking-[0.13em] hover:border-[#45b9b2] hover:bg-[#d9f8f5] hover:text-[#197b75]"><Save className="mr-2 h-3.5 w-3.5" />設為預設篩選</Button><span className="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-[#8b979d]">保留字數、完結、排序與藏書閣隱藏偏好</span></div>
@@ -1299,12 +1327,13 @@ export default function Home() {
             <BookshelfView
               bookmarks={bookmarks}
               onEdit={(bookmark) => { setBookmarkTarget(bookmark.result); setBookmarkDialogOpen(true); }}
-              onRemove={removeBookmark}
+              onRemove={requestBookmarkRemoval}
               onImport={importBookmarks}
               onBatchRemove={batchRemoveBookmarks}
               onBatchUpdate={batchUpdateBookmarks}
               onProgressChange={updateBookmarkProgress}
               onRead={(bookmark) => { setReaderResume(null); setReaderTarget(bookmark.result); }}
+              onOpenSource={(url) => void openReaderSource(url)}
               loadReaderDocument={loadReaderDocument}
               readingHistory={readingHistory}
               onResumeHistory={(record) => { setReaderResume({ url: record.url, percent: record.percent, chapter: record.chapter, chapterUrl: record.chapterUrl }); setReaderTarget(record.result); }}
@@ -1396,7 +1425,7 @@ export default function Home() {
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-2"><button type="button" onClick={() => bookmark ? removeBookmark(result.url) : (setBookmarkTarget(result), setBookmarkDialogOpen(true))} aria-label={bookmark ? `取消收藏 ${result.title}` : `收藏 ${result.title}`} className={`inline-flex h-8 items-center gap-1 rounded-full border px-2.5 text-xs font-semibold shadow-sm transition-colors ${bookmark ? "border-[color:var(--atlas-indigo)]/20 bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]" : "border-slate-300 bg-white/90 text-slate-700 hover:border-indigo-400 hover:text-indigo-600"}`}>{bookmark ? <BookmarkCheck className="h-3.5 w-3.5" /> : <Bookmark className="h-3.5 w-3.5" />}{bookmark ? "已收藏" : "收藏"}</button><span className="text-xs text-[color:var(--atlas-muted)]">{formatDate(result.scraped_at)}</span></div>
+                          <div className="flex items-center gap-2"><button type="button" onClick={() => bookmark ? requestBookmarkRemoval(result.url) : (setBookmarkTarget(result), setBookmarkDialogOpen(true))} aria-label={bookmark ? `取消收藏 ${result.title}` : `收藏 ${result.title}`} className={`inline-flex h-8 items-center gap-1 rounded-full border px-2.5 text-xs font-semibold shadow-sm transition-colors ${bookmark ? "border-[color:var(--atlas-indigo)]/20 bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]" : "border-slate-300 bg-white/90 text-slate-700 hover:border-indigo-400 hover:text-indigo-600"}`}>{bookmark ? <BookmarkCheck className="h-3.5 w-3.5" /> : <Bookmark className="h-3.5 w-3.5" />}{bookmark ? "已收藏" : "收藏"}</button><span className="text-xs text-[color:var(--atlas-muted)]">{formatDate(result.scraped_at)}</span></div>
                         </div>
                         <div className={resultViewMode === "list" ? "grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1.5fr)_minmax(10rem,0.7fr)_auto] md:items-center" : "flex flex-1 flex-col p-5 sm:p-6"}>
                           <div className={resultViewMode === "list" ? "min-w-0" : "flex min-h-0 flex-1 flex-col"}>
@@ -1407,15 +1436,15 @@ export default function Home() {
                           {isNavigableAuthor(result.author) ? <button type="button" onClick={() => navigateToAuthor(result.author)} className="group/author inline-flex items-center gap-1.5 text-sm font-medium text-[color:var(--atlas-muted)] transition-colors hover:text-[color:var(--atlas-indigo)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--atlas-indigo)]" aria-label={`搜尋作者 ${result.author}`}><UserRound className="h-3.5 w-3.5" /><span className="border-b border-transparent group-hover/author:border-current">{result.author}</span></button> : <div className="text-sm font-medium text-[color:var(--atlas-muted)]">{result.author || "未知創作者"}</div>}
                           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[color:var(--atlas-muted)]"><span>{result.wordCount ? `${result.wordCount} 字` : "字數以原站為準"}</span>{result.isComplete !== null && result.isComplete !== undefined && <span className={result.isComplete ? "text-[color:var(--atlas-success)]" : "text-[color:var(--atlas-amber)]"}>{result.isComplete ? "已完結" : "連載中"}</span>}{typeof result.relevanceScore === "number" && <span>相關度 {result.relevanceScore}</span>}</div>
                           <div className={`${resultViewMode === "list" ? "mt-3" : "mt-6"} ${tagsExpanded ? "flex flex-wrap" : "flex h-7 flex-nowrap overflow-hidden"} gap-1.5`} aria-label={`${result.title} 的標籤`}>
-                            {relationshipTags.map((tag) => <span key={`relationship-${tag}`} className="inline-flex max-w-40 items-center justify-center truncate border border-[#e8a7bf] bg-[#ffe8f0] px-2.5 py-1 text-xs font-semibold leading-none text-[#8b3e59]">♡ {tag}</span>)}
-                            {characterTags.map((tag) => <span key={`character-${tag}`} className="inline-flex max-w-40 items-center justify-center truncate border border-[#c9bcf2] bg-[#f0ecff] px-2.5 py-1 text-xs font-semibold leading-none text-[#5c4e87]">◇ {tag}</span>)}
-                            {tags.map((tag) => <span key={`tag-${tag}`} className="inline-flex max-w-40 items-center justify-center truncate border border-slate-200 bg-slate-100/90 px-2.5 py-1 text-xs font-semibold leading-none text-slate-700">#{tag}</span>)}
+                            {relationshipTags.map((tag) => <span key={`relationship-${tag}`} title={tag} className="inline-flex min-w-0 max-w-[180px] items-center justify-center truncate border border-[#e8a7bf] bg-[#ffe8f0] px-2.5 py-1 text-xs font-semibold leading-none text-[#8b3e59]">♡ {tag}</span>)}
+                            {characterTags.map((tag) => <span key={`character-${tag}`} title={tag} className="inline-flex min-w-0 max-w-[180px] items-center justify-center truncate border border-[#c9bcf2] bg-[#f0ecff] px-2.5 py-1 text-xs font-semibold leading-none text-[#5c4e87]">◇ {tag}</span>)}
+                            {tags.map((tag) => <span key={`tag-${tag}`} title={tag} className="inline-flex min-w-0 max-w-[180px] items-center justify-center truncate border border-slate-200 bg-slate-100/90 px-2.5 py-1 text-xs font-semibold leading-none text-slate-700">#{tag}</span>)}
                             {hiddenTagCount > 0 && <button type="button" onClick={() => setExpandedTagUrls((current) => { const next = new Set(current); next.add(result.url); return next; })} title="展開完整標籤" className="inline-flex shrink-0 items-center justify-center border border-dashed border-slate-300 bg-white px-2.5 py-1 text-xs font-bold leading-none text-slate-700 hover:border-[color:var(--atlas-indigo)] hover:text-[color:var(--atlas-indigo)]">+{hiddenTagCount} 標籤</button>}
                             {tagsExpanded && hiddenTagCount === 0 && (allRelationshipTags.length + allCharacterTags.length + allCategoryTags.length) > 0 && <button type="button" onClick={() => setExpandedTagUrls((current) => { const next = new Set(current); next.delete(result.url); return next; })} className="inline-flex items-center justify-center border border-dashed border-slate-300 bg-white px-2.5 py-1 text-xs font-bold leading-none text-slate-700 hover:border-[color:var(--atlas-indigo)] hover:text-[color:var(--atlas-indigo)]">收合標籤</button>}
                           </div>
                           {resultViewMode === "cards" && <RestrictedSummary summary={result.summary || "No summary available."} shouldBlur={isRestricted && contentSafetySettings.blurRestrictedSummaries} />}
                           </div>
-                          <div className={`${resultViewMode === "list" ? "md:justify-self-end" : "mt-6"} flex flex-wrap items-center gap-3`}><Button type="button" variant="outline" onClick={() => { setReaderResume(null); setReaderTarget(result); }} aria-label={`閱讀 ${result.title}`} className="h-9 rounded-full border-[color:var(--atlas-indigo)]/20 bg-[color:var(--atlas-indigo-soft)] px-3 text-xs font-semibold text-[color:var(--atlas-indigo)] hover:bg-[color:var(--atlas-indigo)] hover:text-white"><BookOpen className="mr-1.5 h-3.5 w-3.5" />閱讀</Button><a href={result.url} target="_blank" rel="noreferrer" onClick={(event) => void openExternalUrl(event, result.url)} className="inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--atlas-indigo)] hover:text-[#4338ca]">前往原始作品 <ArrowUpRight className="h-3.5 w-3.5" /></a></div>
+                          <div className={`${resultViewMode === "list" ? "md:justify-self-end" : "mt-6"} flex flex-wrap items-center gap-3`}>{result.platform !== "同人誌中心" && <Button type="button" variant="outline" onClick={() => { setReaderResume(null); setReaderTarget(result); }} aria-label={`閱讀 ${result.title}`} className="h-9 rounded-full border-[color:var(--atlas-indigo)]/20 bg-[color:var(--atlas-indigo-soft)] px-3 text-xs font-semibold text-[color:var(--atlas-indigo)] hover:bg-[color:var(--atlas-indigo)] hover:text-white"><BookOpen className="mr-1.5 h-3.5 w-3.5" />閱讀</Button>}<a href={result.url} target="_blank" rel="noreferrer" onClick={(event) => void openExternalUrl(event, result.url)} className="inline-flex items-center gap-2 text-sm font-semibold text-[color:var(--atlas-indigo)] hover:text-[#4338ca]">前往原始作品 <ArrowUpRight className="h-3.5 w-3.5" /></a></div>
                         </div>
                       </CardContent>
                       {isMaskedByBlacklist && <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 border border-[#e27d9d] bg-[#fff7f9]/75 p-6 text-center backdrop-blur-sm"><div className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-[#9b4358]">⚠️ 此作品命中避雷設定</div><div className="font-mono text-[9px] font-bold tracking-[0.08em] text-[#8b3e59]">{blacklistMatches.map((item) => item.group.name).join(" · ")}</div><div className="flex flex-wrap justify-center gap-1.5">{blacklistMatches.flatMap((item) => item.keywords.map((keyword) => <span key={`${item.group.id}-${keyword}`} className="border border-[#e8a7bf] bg-[#fff0f4] px-2 py-1 font-mono text-[9px] font-bold text-[#8b3e59]">{keyword}</span>))}</div><Button type="button" onClick={() => setRevealedFilteredUrls((current) => { const next = new Set(current); next.add(result.url); return next; })} className="h-9 rounded-none bg-[#8b3e59] font-mono text-[9px] font-bold uppercase tracking-[0.12em]">⚠️ 暫時查看這一篇</Button><span className="font-mono text-[8px] font-medium tracking-[0.08em] text-[#75838b]">不會修改全局避雷設定</span></div>}
@@ -1434,9 +1463,16 @@ export default function Home() {
           existing={bookmarkTarget ? bookmarks.find((bookmark) => bookmark.url === bookmarkTarget.url) || null : null}
           onOpenChange={setBookmarkDialogOpen}
           onSave={saveBookmark}
-          onRemove={removeBookmark}
+          onRemove={requestBookmarkRemoval}
         />
+        <AlertDialog open={Boolean(pendingBookmarkRemoval)} onOpenChange={(open) => { if (!open) setPendingBookmarkRemoval(null); }}>
+          <AlertDialogContent className="w-[calc(100vw-2rem)] max-w-md rounded-2xl border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)]">
+            <AlertDialogHeader><AlertDialogTitle>移出藏書閣</AlertDialogTitle><AlertDialogDescription>「{pendingBookmarkRemoval?.result.title}」將從書架中移除。是否一併清除本篇已下載的離線正文快取？</AlertDialogDescription></AlertDialogHeader>
+            <AlertDialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end"><AlertDialogCancel className="w-full sm:w-auto">取消</AlertDialogCancel><Button type="button" variant="outline" onClick={() => completeBookmarkRemoval(false)} className="w-full border-[color:var(--atlas-line)] bg-white sm:w-auto">僅移出書架</Button><AlertDialogAction onClick={() => completeBookmarkRemoval(true)} className="w-full bg-[color:var(--atlas-danger)] text-white hover:bg-[#b64962] sm:w-auto">完整刪除（含快取）</AlertDialogAction></AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         <AgeConfirmationDialog open={contentSafetySettings.ageConfirmation === "unknown"} onConfirm={confirmAge} />
+        <ReadingPreferencesDialog open={preferencesOpen} onOpenChange={(open) => { setPreferencesOpen(open); if (open) refreshReaderCacheStats(); }} settings={contentSafetySettings} cacheStats={readerCacheStats} onConfirmAge={confirmAge} onClearCache={clearAllReaderCache} />
         <Dialog open={updateDialogOpen} onOpenChange={(open) => { if (!updateInstallPending) setUpdateDialogOpen(open); }}>
           <DialogContent showCloseButton={!updateInstallPending} overlayClassName="bg-[color:var(--atlas-ink)]/32 backdrop-blur-md" className="max-w-lg rounded-3xl border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)] p-0 shadow-[0_28px_80px_rgba(34,31,57,0.26)]">
             <DialogHeader className="border-b border-[color:var(--atlas-line)] px-6 pb-5 pt-6 sm:px-8">

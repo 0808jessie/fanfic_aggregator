@@ -120,7 +120,13 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(screen.queryByText("限制級測試作品")).toBeNull());
 
     expect(screen.getByText("全年齡保護已啟用")).toBeTruthy();
-    expect(within(screen.getByLabelText("內容分級快速篩選")).getByRole("option", { name: "R18" }).getAttribute("disabled")).not.toBeNull();
+    const ratingSelect = screen.getByLabelText("內容分級快速篩選") as HTMLSelectElement;
+    expect(ratingSelect.value).toBe("safe");
+    expect(ratingSelect.disabled).toBe(true);
+    expect(within(ratingSelect).queryByRole("option", { name: "R18" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /進階篩選/ }));
+    expect(screen.getByText("全年齡保護中")).toBeTruthy();
+    expect(screen.queryByLabelText("敏感內容模糊")).toBeNull();
   });
 
   it("lets an adult select R18 locally and marks restricted cards", async () => {
@@ -209,6 +215,27 @@ describe("Home pagination interactions", () => {
     expect(screen.queryByText("PAGE ONE")).toBeNull();
     expect(screen.getByText(/第 2\/3 頁/)).toBeTruthy();
     expect(mockState.lastVariables).toMatchObject({ data: { page: 2 } });
+  });
+
+  it("truncates extremely long relationship, character, and general tags without expanding the result card", async () => {
+    const relationship = "Kochou Shinobu/Tomioka Giyuu Alternate Universe Canon Divergence With An Extremely Long English Relationship Tag";
+    const character = "一個名字非常非常長的角色標籤，用來確認不會撐破搜尋結果卡片的可讀範圍";
+    const generalTag = "This Is An Intentionally Long General Tag That Must Be Truncated Instead Of Overflowing The Search Card";
+    mockState.primaryPayload = {
+      items: [{ title: "長標籤測試作品", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/long-tags", tags: generalTag, relationships: [relationship], characters: [character], summary: "摘要", scraped_at: "2026-01-01T00:00:00Z" }],
+      totalWorks: 1, totalPages: 1, page: 1, loadedThroughPage: 1, nextPage: null, hasMore: false,
+    };
+    render(<Home />);
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "長標籤" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+
+    await waitFor(() => expect(screen.getByText("長標籤測試作品")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "+1 標籤" }));
+    for (const tag of [relationship, character, generalTag]) {
+      const chip = screen.getByTitle(tag);
+      expect(chip.className).toContain("max-w-[180px]");
+      expect(chip.className).toContain("truncate");
+    }
   });
 
   it("switches result views, pages locally, and offers a smooth return-to-top control", async () => {
@@ -418,6 +445,22 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(screen.getByText("WATERWRITER UPDATE")).toBeTruthy());
     expect(screen.getByText("PAGE ONE")).toBeTruthy();
     expect(screen.getByText("已連線 · 25 筆")).toBeTruthy();
+  });
+});
+
+describe("source-specific Reader access", () => {
+  it("keeps 同人誌中心 searchable while exposing only the original-site link", async () => {
+    mockState.primaryPayload = {
+      items: [{ title: "同人誌公開刊物", author: "原作者", platform: "同人誌中心", url: "https://www.doujin.com.tw/books/info/42", tags: "同人誌", summary: "刊物資訊", scraped_at: "2026-01-01T00:00:00Z" }],
+      totalWorks: 1, totalPages: 1, page: 1, loadedThroughPage: 1, nextPage: null, hasMore: false,
+    };
+    render(<Home />);
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "刊物" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+
+    await waitFor(() => expect(screen.getByText("同人誌公開刊物")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "閱讀 同人誌公開刊物" })).toBeNull();
+    expect(screen.getByRole("link", { name: /前往原始作品/ }).getAttribute("href")).toBe("https://www.doujin.com.tw/books/info/42");
   });
 });
 

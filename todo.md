@@ -581,9 +581,40 @@
 - [x] 修復在水裡寫字 waterfall.slashtw.space 文章的全文段落與 br 換行保留，確保指定尾段持續完整呈現；新版 SSR 單一 p／多 br 與指定尾段均有回歸測試，現時公開回應可正確保留 187 個 br 的自然換行，但來源返回內容本身未含指定尾段，Reader 不會虛構補足
 - [x] 補強 CxC 公開免費章節的 HTML／狀態資料正文擷取與來源級安全降級；匿名 API 已實測可回傳公開章節目錄與 content_hant，若正文採私用字元字型內容保護則明確降級，不解碼或繞過來源保護
 - [x] 建立 Reader 已讀章節本地快取，讓同一作品或章節的二次開啟優先以快取內容立即渲染，並補足回歸與端對端驗證；使用 sessionStorage 的 24 篇 LRU 快取，6 項 ReaderView 測試已驗證二次開啟不再呼叫來源請求
-- [x] 執行 v1.2.9 發布前完整 FastAPI pytest、Vitest、production build 與 cargo check，確認 Reader 清洗、快取及既有跨平台功能全部通過；136 pytest、105 Vitest、production build 與 cargo check 通過。pnpm 設定與大型 bundle 警示未阻擋建置。
-- [x] 將 package.json、FastAPI、Cargo.toml 與 tauri.conf.json 的桌面版本同步升至 v1.2.9，並建立發布提交與 Git tag
-- [x] 推送 v1.2.9 至 GitHub main，驗證 Actions 成功產出 Apple Silicon、Intel macOS、Windows 簽名安裝資產與 latest.json；commit c91a0a7、tag v1.2.9、Actions run 32358781624 三個 job 均成功，公開 latest.json 已確認 version 1.2.9 與 darwin-aarch64／darwin-x86_64／windows-x86_64 OTA 平台資產。
-- [x] 修復 v1.2.10 Python Sidecar 的 certifi CA bundle 封裝與 PyInstaller `_MEIPASS` 執行期環境變數，避免桌面端 TLS CA 路徑失效；onefile 封存已確認 `certifi/cacert.pem`，以隔離埠啟動的新二進位 health 回傳成功
-- [x] 修復 AO3 Adapter 的 curl_cffi requests 匯入，補足可重現的回歸測試與 Sidecar 搜尋 smoke test；AO3 module requests.Session 回歸通過，Sidecar 成功啟動並可回應健康端點
-- [x] 執行 v1.2.10 PyInstaller、完整測試與跨平台發布，驗證 GitHub Release 簽名資產及 latest.json 更新清單；141 pytest、105 Vitest、production build、cargo check 與 onefile Sidecar health 均通過。Actions run 32362751462 三個 job 成功，公開 latest.json 為 1.2.10 並含 darwin-aarch64／darwin-x86_64／windows-x86_64 OTA 資產。
+- [x] 執行 v1.2.9 發布前完整 FastAPI pytest、Vitest、production build 與 cargo check，確認 Reader 清洗、快取及既有跨平台功能全部通過；136 pytest、105 Vitest、production build 與 cargo check 通過
+- [x] 將 package.json、FastAPI、Cargo.toml 與 tauri.conf.json 的桌面版本同步升至 v1.2.9，並建立發布提交與 Git tag；commit c91a0a7、tag v1.2.9
+- [x] 推送 v1.2.9 至 GitHub main，驗證 Actions 成功產出 Apple Silicon、Intel macOS、Windows 簽名安裝資產與 latest.json；Actions run 32358781624 三個 job 成功，latest.json 已確認 darwin-aarch64／darwin-x86_64／windows-x86_64 OTA 資產
+- [x] Penana 保留完整章節目錄、跳章回頂、正文段落與 br 分行，並校正第一章開始閱讀時的藏書閣「閱讀中」進度；指定故事 195625 由本機 Reader API 回傳完整 issue 目錄，按讚／閱讀／留言附加資訊已清除
+- [x] 修復在水裡寫字 waterfall.slashtw.space 長文的全文節點與樓主連續回覆解析，保留自然分段並以指定尾段回歸驗證；以 UID／公開作者識別連續樓主樓層，不設字數或節點上限；現時來源回應本身未含指定尾段，Reader 不會虛構補足
+- [x] CxC 使用匿名公開 API／SSR 狀態解析免費正文並保留段落，維持來源內容保護時的安全降級；content_hant、content_html 與試閱欄位均有回歸，真實受私用字元字型保護頁會引導回原站而不解碼
+- [x] Pixiv 系列小說回傳完整章節目錄，將換行與 `[newpage]` 轉為自然段落和對話分行；實測 series 1242862 的 content_titles 公開端點回傳完整可讀章節清單
+- [x] 巴哈姆特改為系列目錄或單篇「全一話」契約，不將上一篇／下一篇控制連結誤作章節；公開 artwork 單篇已實測顯示全一話
+- [x] 於卡片與藏書閣停用同人誌中心 Reader，維持原站外連與收藏；閱讀器跳章一律回頂並同步持久閱讀進度。本輪僅在本機，不推送 GitHub
+- [x] 以 Penana 實際多章作品復現並修正章節切換後掉到底部、目錄退化為 1/1、段落黏連及第一章閱讀進度被寫回未讀的問題；Reader 現會在後續 issue 僅回傳單章時保留首章完整目錄，9 項 ReaderView 回歸覆蓋 2/2 目錄、回頂與閱讀中；本次重測公開來源暫時回傳 502 降級
+- [x] 以 waterfall.slashtw.space/thread/90144 實際來源檢查一樓尾段與二樓樓主自回覆，釐清來源回應是否提供全文並修正可取得內容的多樓層合併；UID／作者連續樓層與完整 br 回歸已覆蓋，直接 curl 與 Reader 公開請求於本輪重測均逾時，無法將來源未回應的二樓或尾段虛構為正文
+- [x] 以可公開閱讀的 CxC 免費作品驗證 API／SSR 正文；僅對來源明示免費且無內容保護的文章渲染，否則清楚導回原站；公開 API fields 與受私用字元字型保護降級均有回歸，本輪匿名 API 重測逾時
+- [x] 以 Pixiv 系列真實作品驗證全章目錄、指定章節切換與對話分行，並以巴哈作品驗證目錄不再受上一篇／下一篇控制連結影響；content_titles 全系列與全一話回歸通過，本輪兩個公開來源暫時回傳 502 降級
+- [x] 復核搜尋卡片與藏書閣的同人誌中心 Reader 按鈕均已隱藏，原站連結使用桌面外連流程；Home 與 Bookshelf 共 27 項前端回歸通過。本輪僅在本機，不推送 GitHub
+- [x] 系列作品回傳完整目錄與當前章節定位，Reader 標題顯示《系列名稱》、章節序號與當前章節標題，並在任意切章後維持完整目錄；Pixiv 實際以 seriesNavData.title 回填 seriesTitle，系列公開章回傳《鬼滅之刃》富岡義勇x胡蝶忍與正確第 3 章定位
+- [x] 補強 AO3 成人公開視圖、在水裡寫字完整節點與折疊內容、Penana 單一 issue 正文與前端清空，避免警告雜訊、截斷或重複段落
+- [x] 將 CxC Reader 調整為原站最佳排版引導，不嘗試呈現來源 WebFont／Canvas 保護文字
+- [x] 將閱讀器手機控制列收斂為關閉、目錄與排版設定按鈕，於底部設定 Sheet 提供字級、主題、行距、字型與直橫排，桌機保留既有並列控制
+- [x] 逐一重測 AO3、在水裡寫字、Penana、CxC、Pixiv與巴哈的公開來源可達性，並完成桌面與手機 Reader RWD 驗證；AO3 受 Cloudflare 公開防護時安全降級，水裡寫字、Penana、Pixiv與巴哈本機 Reader 皆 HTTP 200，前端 Reader 11 項回歸、手機首頁視覺檢視通過。本輪僅在本機，不推送 GitHub
+- [x] 修正 AO3 Reader 的作品標題、作者與多章節目錄解析，排除站方名稱被誤當作品資料；優先採用 h2.title.heading、h3.byline.heading 與 selected_id 完整章節選單，並保留 AO3 公開成人視圖參數
+- [x] 針對在水裡寫字 thread/92521 合併樓主多樓層正文並保留自然段落與換行；同時支援傳統 Discuz UID／作者欄位與 SSR article／data attribute 樓層結構，略過非樓主回覆
+- [x] 鞏固 Pixiv 與 Penana 系列完整章節目錄、當前章節 Index 與指定章正文的一致性；實測 Penana issue 10 為第 10 章、Pixiv 系列為第 3 章且均保有全目錄
+- [x] 修復閱讀器底部、搜尋結果卡、藏書閣卡與最近閱讀清單的長文字截斷與容器溢出；長標籤固定 max-w-[180px]，章節、標題、百分比與行動按鈕使用可縮放單行容器及完整提示文字
+- [x] 補足來源解析與文字溢出回歸測試，完成公開來源、桌面與手機本機驗證；146 pytest、115 Vitest、正式建置與 cargo check 通過，AO3 以 fixture 驗證標題／作者／目錄且遠端防護維持安全降級；僅保存本機，不推送 GitHub
+- [x] 重塑年齡確認 Modal 為現代圓角毛玻璃卡片，新增可隨時調整年齡保護與閱讀快取的偏好設定入口；桌面實機檢視確認設定面板、雙色保護選項及零快取狀態均無容器溢出
+- [x] 建立全域閱讀快取統計、單篇／全域清理與確認流程，支援取消收藏時選擇保留或刪除正文快取；快取清除不影響藏書、筆記與閱讀進度
+- [x] 修復收藏編輯彈窗高度、內部捲動與底部操作列在窄螢幕下的可用性
+- [x] 將在水裡寫字樓主每個樓層建立為獨立章節目錄並可自由切換；沿用公開樓層識別而非重新編號，目錄顯示「第 N 樓」
+- [x] 修復 Pixiv 從本機閱讀快取秒開時遺失完整目錄與當前章節定位的問題；快取現完整保存 seriesTitle、tableOfContents 與 currentChapterIndex
+- [x] 移除頂部導航右側過時的 CP 詞庫入口，保留主導航分頁作為唯一入口
+- [x] 補足偏好、快取清理、樓層章節與快取目錄自動化回歸，完成桌面／手機本機驗證；146 pytest、120 Vitest、正式建置、cargo check 與介面機械檢核通過。waterwriter 92521 與 Pixiv 本機即時來源皆受安全驗證回應 502，維持安全降級並以公開資料 fixture 驗證解析契約；僅保存本機，不推送 GitHub
+- [x] 在全年齡保護模式下全域隱藏 R18 搜尋結果，鎖定分級篩選為全年齡並收斂敏感摘要設定；R18 選項不渲染，限制級卡片與摘要控制一律不顯示
+- [x] 由全年齡保護切換為自由選擇分級時新增二次成人確認，僅在確認已滿 18 歲後解鎖
+- [x] 為全域閱讀快取清空流程建立包含篇數與容量的二次確認文案，並確保確認後即時更新統計
+- [x] 校正偏好設定中分級與快取按鈕的圖示及文字水平對齊
+- [x] 補足內容保護、二次確認與設定按鈕的回歸測試，完成完整本機驗證；146 pytest、121 Vitest、production build、cargo check 與介面機械檢核通過，準備建立 GitHub Release
+- [ ] 將嚴格內容保護與快取確認修復同步升版至 v1.2.11，建立 GitHub 提交、標籤與 Release，並驗證 Apple Silicon、Intel macOS 與 Windows 自動打包資產

@@ -31,5 +31,4 @@ def stop_if_onefile_launcher_exits() -> None:
 
 if __name__ == "__main__":
     stop_if_onefile_launcher_exits()
-    port = int(os.environ.get("FANFIC_SIDECAR_PORT", "8000"))
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
+    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")

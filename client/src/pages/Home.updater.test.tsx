@@ -98,12 +98,12 @@ describe("Tauri updater interaction", () => {
     });
     updaterState.install.mockResolvedValue(undefined);
     updaterState.relaunch.mockResolvedValue(undefined);
-    updaterState.check.mockResolvedValue({ version: "1.3.0", body: "Reader 清洗、本機快取與閱讀體驗修復", download: updaterState.download, install: updaterState.install });
+    updaterState.check.mockResolvedValue({ version: "1.2.8", body: "Sidecar TLS 修復、沉浸閱讀器與藏書閣 TXT／EPUB 匯出", download: updaterState.download, install: updaterState.install });
 
     render(<Home />);
 
-    await waitFor(() => expect(screen.getByText("發現新版本 v1.3.0")).toBeTruthy());
-    expect(screen.getByText("Reader 清洗、本機快取與閱讀體驗修復")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("發現新版本 v1.2.8")).toBeTruthy());
+    expect(screen.getByText("Sidecar TLS 修復、沉浸閱讀器與藏書閣 TXT／EPUB 匯出")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "立即更新並重啟" }));
 
     await waitFor(() => expect(updaterState.relaunch).toHaveBeenCalledOnce());
@@ -117,7 +117,7 @@ describe("Tauri updater interaction", () => {
     await waitFor(() => expect(updaterState.check).toHaveBeenCalledOnce());
 
     fireEvent.click(screen.getByRole("button", { name: /藏書閣 \/ 收藏夾/ }));
-    expect(screen.getByText("v1.2.10")).toBeTruthy();
+    expect(screen.getByText("v1.2.11")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "檢查更新" }));
 
     await waitFor(() => expect(updaterState.check).toHaveBeenCalledTimes(2));

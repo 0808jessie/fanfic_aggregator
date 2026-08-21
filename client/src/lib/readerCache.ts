@@ -7,6 +7,11 @@ const MAX_DOCUMENT_BYTES = 500_000;
 
 type CachedReaderDocument = { cachedAt: string; document: ReaderDocument };
 
+export type ReaderCacheStats = {
+  entryCount: number;
+  byteSize: number;
+};
+
 function sessionStore(): Storage | null {
   try {
     return typeof window === "undefined" ? null : window.sessionStorage;
@@ -17,13 +22,13 @@ function sessionStore(): Storage | null {
 
 function cacheKey(url: string): string { return `${CACHE_PREFIX}${encodeURIComponent(url)}`; }
 
-function normalizeChapter(value: unknown): ReaderChapter | null {
+function normalizeChapter(value: unknown, requireParagraphs = true): ReaderChapter | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
   const id = typeof record.id === "string" ? record.id.trim() : "";
   const title = typeof record.title === "string" ? record.title.trim() : "";
   const paragraphs = Array.isArray(record.paragraphs) ? record.paragraphs.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).map((item) => item.trim()) : [];
-  if (!id || !title || !paragraphs.length) return null;
+  if (!id || !title || (requireParagraphs && !paragraphs.length)) return null;
   return {
     id,
     title,
@@ -40,8 +45,10 @@ function normalizeDocument(value: unknown): ReaderDocument | null {
   const title = typeof record.title === "string" ? record.title.trim() : "";
   const author = typeof record.author === "string" ? record.author.trim() : "";
   const source = typeof record.source === "string" ? record.source.trim() : "";
-  const chapters = Array.isArray(record.chapters) ? record.chapters.map(normalizeChapter).filter((chapter): chapter is ReaderChapter => Boolean(chapter)) : [];
-  const tableOfContents = Array.isArray(record.tableOfContents) ? record.tableOfContents.map(normalizeChapter).filter((chapter): chapter is ReaderChapter => Boolean(chapter)) : undefined;
+  const chapters = Array.isArray(record.chapters) ? record.chapters.map((chapter) => normalizeChapter(chapter, true)).filter((chapter): chapter is ReaderChapter => Boolean(chapter)) : [];
+  // TOC entries intentionally omit body paragraphs. Normalizing them as chapter bodies
+  // used to discard the entire Pixiv/Penana series menu on a cache hit.
+  const tableOfContents = Array.isArray(record.tableOfContents) ? record.tableOfContents.map((chapter) => normalizeChapter(chapter, false)).filter((chapter): chapter is ReaderChapter => Boolean(chapter)) : undefined;
   if (!url || !title || !author || !source || !chapters.length) return null;
   return {
     url,
@@ -50,6 +57,7 @@ function normalizeDocument(value: unknown): ReaderDocument | null {
     source,
     chapters,
     coverUrl: typeof record.coverUrl === "string" && record.coverUrl.trim() ? record.coverUrl : null,
+    seriesTitle: typeof record.seriesTitle === "string" && record.seriesTitle.trim() ? record.seriesTitle.trim() : null,
     tableOfContents: tableOfContents?.length ? tableOfContents : undefined,
     currentChapterIndex: typeof record.currentChapterIndex === "number" && Number.isFinite(record.currentChapterIndex) ? record.currentChapterIndex : 0,
   };
@@ -106,4 +114,40 @@ export function cacheReaderDocument(url: string, document: ReaderDocument): void
   } catch {
     // A quota error must never block the live reader or its source fallback.
   }
+}
+
+function storageByteLength(value: string): number {
+  try {
+    return new TextEncoder().encode(value).byteLength;
+  } catch {
+    return value.length;
+  }
+}
+
+/** Return the live size of Reader documents stored for this browser or desktop session. */
+export function getReaderCacheStats(): ReaderCacheStats {
+  const store = sessionStore();
+  if (!store) return { entryCount: 0, byteSize: 0 };
+  const urls = Array.from(new Set(readIndex(store)));
+  return urls.reduce<ReaderCacheStats>((stats, url) => {
+    const raw = store.getItem(cacheKey(url));
+    if (!raw) return stats;
+    return { entryCount: stats.entryCount + 1, byteSize: stats.byteSize + storageByteLength(raw) };
+  }, { entryCount: 0, byteSize: 0 });
+}
+
+/** Remove every cached chapter associated with one source URL while keeping other Reader sessions warm. */
+export function clearReaderDocumentCache(url: string): void {
+  const store = sessionStore();
+  if (!store || !url.trim()) return;
+  store.removeItem(cacheKey(url));
+  writeIndex(store, readIndex(store).filter((item) => item !== url));
+}
+
+/** Clear the current-session Reader document pool and its LRU index. */
+export function clearAllReaderDocumentCache(): void {
+  const store = sessionStore();
+  if (!store) return;
+  const keys = Array.from({ length: store.length }, (_, index) => store.key(index)).filter((key): key is string => Boolean(key && key.startsWith(CACHE_PREFIX)));
+  keys.forEach((key) => store.removeItem(key));
 }

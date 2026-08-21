@@ -58,6 +58,18 @@ describe("BookshelfView interaction polish", () => {
     expect(onRead).toHaveBeenCalledWith(bookmark);
   });
 
+  it("keeps 同人誌中心 as an original-site-only bookshelf source", () => {
+    const doujinBookmark: BookmarkRecord = { ...bookmark, url: "https://www.doujin.com.tw/books/info/42", result: { ...bookmark.result, title: "同人誌刊物", platform: "同人誌中心", url: "https://www.doujin.com.tw/books/info/42" } };
+    const onRead = vi.fn();
+    const onOpenSource = vi.fn();
+    render(<BookshelfView bookmarks={[doujinBookmark]} onEdit={vi.fn()} onRemove={vi.fn()} onImport={vi.fn()} onBatchRemove={vi.fn()} onBatchUpdate={vi.fn()} onProgressChange={vi.fn()} onRead={onRead} onOpenSource={onOpenSource} onExportAll={vi.fn()} onImportAll={vi.fn()} />);
+
+    expect(screen.queryByRole("button", { name: "閱讀 同人誌刊物" })).toBeNull();
+    fireEvent.click(screen.getByRole("link", { name: /前往原站閱讀/ }));
+    expect(onRead).not.toHaveBeenCalled();
+    expect(onOpenSource).toHaveBeenCalledWith(doujinBookmark.url);
+  });
+
   it("shows recent reading and resumes the saved chapter and position", () => {
     const onResumeHistory = vi.fn();
     const history = [{ url: bookmark.url, result: bookmark.result, chapter: "第 4 章", chapterUrl: `${bookmark.url}#chapter-4`, percent: 63, lastReadAt: "2026-08-20T08:00:00Z" }];
@@ -66,6 +78,21 @@ describe("BookshelfView interaction polish", () => {
     expect(screen.getByRole("heading", { name: "最近閱讀" })).toBeTruthy();
     fireEvent.click(screen.getAllByRole("button", { name: /批次操作測試作品/ })[0]);
     expect(onResumeHistory).toHaveBeenCalledWith(history[0]);
+  });
+
+  it("truncates an overlong recent-reading title and chapter label without losing the full tooltip", () => {
+    const longTitle = "這是一個跨平台同人小說搜尋結果的超長作品標題，用來確認最近閱讀卡片不會撐破容器";
+    const longChapter = "第十二章：這是一段很長很長的章節名稱，仍應該留在單行進度資訊中";
+    const longBookmark: BookmarkRecord = { ...bookmark, result: { ...bookmark.result, title: longTitle } };
+    const history = [{ url: longBookmark.url, result: longBookmark.result, chapter: longChapter, percent: 42, lastReadAt: "2026-08-20T00:00:00Z" }];
+
+    render(<BookshelfView bookmarks={[longBookmark]} onEdit={vi.fn()} onRemove={vi.fn()} onImport={vi.fn()} onBatchRemove={vi.fn()} onBatchUpdate={vi.fn()} onProgressChange={vi.fn()} onExportAll={vi.fn()} onImportAll={vi.fn()} readingHistory={history} />);
+
+    const title = screen.getAllByText(longTitle).find((element) => element.className.includes("truncate"));
+    if (!title) throw new Error("最近閱讀標題應使用可截斷容器。");
+    expect(title.className).toContain("truncate");
+    expect(title.getAttribute("title")).toBe(longTitle);
+    expect(screen.getByTitle(`AO3 · ${longChapter}`).className).toContain("truncate");
   });
 
   it("exports selected readable works as a Reader-backed UTF-8 TXT anthology", async () => {
