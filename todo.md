@@ -617,4 +617,4 @@
 - [x] 為全域閱讀快取清空流程建立包含篇數與容量的二次確認文案，並確保確認後即時更新統計
 - [x] 校正偏好設定中分級與快取按鈕的圖示及文字水平對齊
 - [x] 補足內容保護、二次確認與設定按鈕的回歸測試，完成完整本機驗證；146 pytest、121 Vitest、production build、cargo check 與介面機械檢核通過，準備建立 GitHub Release
-- [ ] 將嚴格內容保護與快取確認修復同步升版至 v1.2.11，建立 GitHub 提交、標籤與 Release，並驗證 Apple Silicon、Intel macOS 與 Windows 自動打包資產
+- [x] 將嚴格內容保護與快取確認修復同步升版至 v1.2.11，建立 GitHub 提交、標籤與 Release，並驗證 Apple Silicon、Intel macOS 與 Windows 自動打包資產；GitHub Actions 32470639405 三平台建置成功，Release 已公開 latest.json 及簽名更新 manifest
