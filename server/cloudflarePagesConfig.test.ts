@@ -12,7 +12,12 @@ describe("Cloudflare Pages static deployment contract", () => {
 
     expect(viteConfig).toContain('outDir: path.resolve(import.meta.dirname, "dist")');
     expect(viteConfig).not.toContain('outDir: path.resolve(import.meta.dirname, "dist/public")');
-    expect(packageJson).toContain('"cf:pages:build": "vite build"');
+    expect(viteConfig).toContain("process.env.VITE_API_BASE_URL");
+    expect(viteConfig).toContain("process.env.VITE_REQUIRE_API_BASE_URL");
+    expect(viteConfig).toContain("vitePluginPagesApiOrigin");
+    expect(viteConfig).toContain("window.__FANFIC_WEB_API_ORIGIN__");
+    expect(viteConfig).toContain("window.__FANFIC_REQUIRE_API_ORIGIN__");
+    expect(packageJson).toContain('"cf:pages:build": "VITE_REQUIRE_API_BASE_URL=true vite build --mode production"');
     expect(tauriConfig).toContain('"frontendDist": "../dist"');
   });
 

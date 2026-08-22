@@ -676,3 +676,6 @@
 - [x] 稽核 PWA、Cloudflare Worker 與 FastAPI 的 search／reader 請求方法、路徑、Body 與 OPTIONS CORS 預檢契約
 - [x] 修正端到端 HTTP 方法處理，消除 Render FastAPI 的 405 並維持安全路徑白名單與快取規則
 - [x] 補足方法轉發回歸測試、執行本機端到端驗證與 GitHub CI，將 405 修正推送至 main
+- [x] 稽核 PWA API origin fallback、實際搜尋呼叫鏈與 Vite production mode 的 VITE_API_BASE_URL 注入行為
+- [x] 移除 Cloudflare Pages production 的相對 `/api` fallback，改為缺少 Worker origin 時顯示明確設定錯誤
+- [ ] 補足環境注入回歸測試、驗證 Pages production build 與 GitHub CI，將修正推送至 main

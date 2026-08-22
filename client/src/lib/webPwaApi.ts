@@ -2,15 +2,41 @@ import { isTauriDesktopRuntime } from "./desktopApi";
 
 type FetchLike = typeof globalThis.fetch;
 
+const PAGES_API_ORIGIN_ERROR = "Cloudflare Pages 尚未設定 VITE_API_BASE_URL。請在 Pages Environment variables 填入 Cloudflare Worker HTTPS 網址後重新部署。";
+
+type PagesRuntimeConfig = typeof globalThis & {
+  __FANFIC_WEB_API_ORIGIN__?: unknown;
+  __FANFIC_REQUIRE_API_ORIGIN__?: unknown;
+};
+
+function injectedWebApiOrigin(): string {
+  const runtimeValue = (globalThis as PagesRuntimeConfig).__FANFIC_WEB_API_ORIGIN__;
+  return typeof runtimeValue === "string"
+    ? runtimeValue
+    : (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_WEB_API_ORIGIN || "");
+}
+
+function requiresInjectedWebApiOrigin(): boolean {
+  const runtimeValue = (globalThis as PagesRuntimeConfig).__FANFIC_REQUIRE_API_ORIGIN__;
+  return typeof runtimeValue === "boolean"
+    ? runtimeValue
+    : import.meta.env.VITE_REQUIRE_API_BASE_URL === "true";
+}
+
 function configuredWebApiOrigin(): string {
-  const candidate = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_WEB_API_ORIGIN)?.trim();
-  if (!candidate) return globalThis.location?.origin || "http://localhost";
+  const candidate = injectedWebApiOrigin().trim();
+  const requiresWorkerOrigin = requiresInjectedWebApiOrigin();
+  if (!candidate) {
+    if (requiresWorkerOrigin) throw new Error(PAGES_API_ORIGIN_ERROR);
+    return globalThis.location?.origin || "http://localhost";
+  }
   try {
     const parsed = new URL(candidate);
     if (parsed.protocol === "http:" || parsed.protocol === "https:") return parsed.origin;
   } catch {
-    // Invalid build-time configuration safely falls back to the same origin.
+    // Production Pages must never silently fall back to its static host.
   }
+  if (requiresWorkerOrigin) throw new Error(PAGES_API_ORIGIN_ERROR);
   return globalThis.location?.origin || "http://localhost";
 }
 

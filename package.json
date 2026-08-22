@@ -11,7 +11,7 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "test:search": "cd fastapi_app && python3 scripts/test_search.py",
-    "cf:pages:build": "vite build",
+    "cf:pages:build": "VITE_REQUIRE_API_BASE_URL=true vite build --mode production",
     "cf:worker:dev": "npx wrangler dev",
     "cf:worker:deploy": "npx wrangler deploy",
     "db:push": "drizzle-kit generate && drizzle-kit migrate"

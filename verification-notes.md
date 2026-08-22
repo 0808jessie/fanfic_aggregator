@@ -13,3 +13,8 @@
 - `pnpm build`：通過，Vite production build 與 server bundle 均完成。
 - 直接 FastAPI smoke test：回傳 `{ items: [], source: "none", warning: ... }`，且不含 `example.com`。
 - tRPC 端到端 smoke test：FastAPI envelope 可由 Node 代理完整穿透，且不含 `example.com`。
+
+## 2026-08-22 Pages API origin 修正後預覽檢查
+
+- Manus 預覽網址回應 HTTP 200，頁面標題為 `Fanfic Atlas — 跨平台同人探索`；受管理開發服務日誌同時確認 FastAPI `/api/health` 回應 200。
+- 瀏覽器擷取工具未能上傳該次畫面且未列出互動 DOM，因此不將空白擷取畫面視為應用程式錯誤；本輪以完整 PWA／FastAPI／Tauri 回歸及靜態 Pages 注入產物驗證作為主要依據。

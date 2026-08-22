@@ -29,8 +29,26 @@ describe("Web PWA API client", () => {
 
   it("uses VITE_API_BASE_URL when a Cloudflare Worker origin is configured", () => {
     vi.stubEnv("VITE_API_BASE_URL", "https://fanfic-proxy.example.workers.dev/");
+    vi.stubEnv("VITE_REQUIRE_API_BASE_URL", "true");
 
     expect(createWebPwaApiUrl("/api/search")).toBe("https://fanfic-proxy.example.workers.dev/api/search");
     expect(createWebPwaApiUrl("/api/reader")).toBe("https://fanfic-proxy.example.workers.dev/api/reader");
+  });
+
+  it("prefers the Worker origin injected into a Cloudflare Pages document", () => {
+    vi.stubGlobal("__FANFIC_WEB_API_ORIGIN__", "https://published-proxy.example.workers.dev");
+    vi.stubGlobal("__FANFIC_REQUIRE_API_ORIGIN__", true);
+
+    expect(createWebPwaApiUrl("/api/search")).toBe("https://published-proxy.example.workers.dev/api/search");
+  });
+
+  it("blocks a Cloudflare Pages build with no Worker origin before it can request relative /api", async () => {
+    vi.stubEnv("VITE_REQUIRE_API_BASE_URL", "true");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(() => createWebPwaApiUrl("/api/search")).toThrow("Cloudflare Pages 尚未設定 VITE_API_BASE_URL");
+    await expect(postWebPwaSearch({ keyword: "義忍" })).rejects.toThrow("Cloudflare Pages 尚未設定 VITE_API_BASE_URL");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

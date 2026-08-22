@@ -87,7 +87,7 @@ curl -i -X POST "https://你的-worker.workers.dev/api/search" \
 VITE_API_BASE_URL=https://你的-worker.workers.dev
 ```
 
-`VITE_API_BASE_URL` 是前端建置期變數。請在 Pages 專案中開啟 **Settings → Environment variables → Add variable**，名稱輸入 `VITE_API_BASE_URL`，值貼上剛才取得的 Worker URL，並選擇 Production（若需預覽網址也呼叫 Worker，請一併加入 Preview）。儲存後，到 **Deployments** 按 **Retry deployment** 或推送新的 commit 重新建置；只有重新建置後，PWA 才會把 API 請求導向 Worker。未設定時，PWA 會安全地退回同源 `/api`。`client/public/_redirects` 會將瀏覽器的前端路由改寫至 `/index.html`，而 `_routes.json` 保留 `/api/*` 不被 Pages 的靜態／函式路由攔截。Cloudflare Pages 支援將 `_redirects` 放在 framework 的 `public/` 靜態目錄，並在建置後套用規則。[2]
+`VITE_API_BASE_URL` 是前端建置期變數。請在 Pages 專案中開啟 **Settings → Environment variables → Add variable**，名稱輸入 `VITE_API_BASE_URL`，值貼上剛才取得的 Worker URL，並選擇 Production（若需預覽網址也呼叫 Worker，請一併加入 Preview）。儲存後，到 **Deployments** 按 **Retry deployment** 或推送新的 commit 重新建置；只有重新建置後，PWA 才會把 API 請求導向 Worker。Pages 專用 `pnpm cf:pages:build` 現會使用 `VITE_REQUIRE_API_BASE_URL=true vite build --mode production`：若忘記設定或填入無效網址，PWA 會顯示明確設定錯誤，**絕不會**把搜尋 request 退回 Pages 同源的相對 `/api`。`client/public/_redirects` 會將瀏覽器的前端路由改寫至 `/index.html`，而 `_routes.json` 保留 `/api/*` 不被 Pages 的靜態／函式路由攔截。Cloudflare Pages 支援將 `_redirects` 放在 framework 的 `public/` 靜態目錄，並在建置後套用規則。[2]
 
 ## 4. 安裝為 PWA
 

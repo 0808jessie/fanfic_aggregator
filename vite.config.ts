@@ -150,51 +150,72 @@ function vitePluginManusDebugCollector(): Plugin {
   };
 }
 
+function vitePluginPagesApiOrigin(workerOrigin: string, requiresWorkerOrigin: boolean): Plugin {
+  return {
+    name: "fanfic-pages-api-origin",
+    transformIndexHtml(html) {
+      if (!requiresWorkerOrigin) return undefined;
+      return {
+        html,
+        tags: [
+          {
+            tag: "script",
+            children: `window.__FANFIC_WEB_API_ORIGIN__=${JSON.stringify(workerOrigin)};window.__FANFIC_REQUIRE_API_ORIGIN__=true;`,
+            injectTo: "head-prepend",
+          },
+        ],
+      };
+    },
+  };
+}
+
 const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector()];
+const pagesWorkerOrigin = process.env.VITE_API_BASE_URL?.trim() || "";
+const pagesRequireWorkerOrigin = process.env.VITE_REQUIRE_API_BASE_URL === "true";
 
 export default defineConfig({
-  plugins,
-  resolve: {
-    alias: {
-      "@": path.resolve(import.meta.dirname, "client", "src"),
-      "@shared": path.resolve(import.meta.dirname, "shared"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets"),
-    },
-  },
-  envDir: path.resolve(import.meta.dirname),
-  root: path.resolve(import.meta.dirname, "client"),
-  publicDir: path.resolve(import.meta.dirname, "client", "public"),
-  build: {
-    // Keep the static application at one predictable project-root location.
-    // Cloudflare Pages can now publish `dist` directly, while the root build
-    // later adds the Node bundle as `dist/index.js` without replacing assets.
-    outDir: path.resolve(import.meta.dirname, "dist"),
-    emptyOutDir: true,
-  },
-  server: {
-    host: true,
-    // The managed preview mounts Vite behind Express, whose same-origin proxy
-    // is registered before Vite middleware. This fallback keeps standalone
-    // Vite development aligned with the FastAPI HTTP port when explicitly set.
-    proxy: {
-      "/api": {
-        target: process.env.VITE_DEV_FASTAPI_PROXY_TARGET || "http://127.0.0.1:8000",
-        changeOrigin: true,
-        secure: false,
+    plugins: [...plugins, vitePluginPagesApiOrigin(pagesWorkerOrigin, pagesRequireWorkerOrigin)],
+    resolve: {
+      alias: {
+        "@": path.resolve(import.meta.dirname, "client", "src"),
+        "@shared": path.resolve(import.meta.dirname, "shared"),
+        "@assets": path.resolve(import.meta.dirname, "attached_assets"),
       },
     },
-    allowedHosts: [
-      ".manuspre.computer",
-      ".manus.computer",
-      ".manus-asia.computer",
-      ".manuscomputer.ai",
-      ".manusvm.computer",
-      "localhost",
-      "127.0.0.1",
-    ],
-    fs: {
-      strict: true,
-      deny: ["**/.*"],
+    envDir: path.resolve(import.meta.dirname),
+    root: path.resolve(import.meta.dirname, "client"),
+    publicDir: path.resolve(import.meta.dirname, "client", "public"),
+    build: {
+      // Keep the static application at one predictable project-root location.
+      // Cloudflare Pages can now publish `dist` directly, while the root build
+      // later adds the Node bundle as `dist/index.js` without replacing assets.
+      outDir: path.resolve(import.meta.dirname, "dist"),
+      emptyOutDir: true,
     },
-  },
+    server: {
+      host: true,
+      // The managed preview mounts Vite behind Express, whose same-origin proxy
+      // is registered before Vite middleware. This fallback keeps standalone
+      // Vite development aligned with the FastAPI HTTP port when explicitly set.
+      proxy: {
+        "/api": {
+          target: process.env.VITE_DEV_FASTAPI_PROXY_TARGET || "http://127.0.0.1:8000",
+          changeOrigin: true,
+          secure: false,
+        },
+      },
+      allowedHosts: [
+        ".manuspre.computer",
+        ".manus.computer",
+        ".manus-asia.computer",
+        ".manuscomputer.ai",
+        ".manusvm.computer",
+        "localhost",
+        "127.0.0.1",
+      ],
+      fs: {
+        strict: true,
+        deny: ["**/.*"],
+      },
+    },
 });
