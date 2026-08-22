@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 import hashlib
 import json
+import os
 from time import perf_counter
 from typing import Any, Callable
 
@@ -20,17 +21,21 @@ from scrapers.index import SCRAPERS, parallel_search_platforms
 
 configure_tls_certificates()
 
+
+def configured_cors_origins() -> list[str]:
+    """Read an optional comma-separated CORS allowlist for independent cloud hosting."""
+    raw_origins = os.getenv("CORS_ALLOW_ORIGINS", "*")
+    origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    return origins or ["*"]
+
+
 app = FastAPI(title="Fanfic Atlas Search API", version="1.2.11")
 app.add_middleware(
     CORSMiddleware,
-    # The packaged desktop WebView is served from tauri://localhost, while the
-    # bundled Python process intentionally listens only on loopback port 8000.
-    allow_origins=[
-        "tauri://localhost",
-        "http://tauri.localhost",
-        "https://tauri.localhost",
-        "http://localhost:3000",
-    ],
+    # Cloudflare Worker calls are server-to-server, while a direct browser
+    # fallback can come from Pages or the Tauri WebView. Deployers can narrow
+    # the default wildcard with CORS_ALLOW_ORIGINS when their domain is known.
+    allow_origins=configured_cors_origins(),
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type"],

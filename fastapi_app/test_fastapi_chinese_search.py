@@ -29,7 +29,7 @@ def test_fastapi_status():
     assert response.json()["status"] == "ok"
 
 
-def test_tauri_webview_can_preflight_loopback_api():
+def test_cloudflare_pages_or_tauri_can_preflight_public_api():
     response = client.options(
         "/search",
         headers={
@@ -39,7 +39,7 @@ def test_tauri_webview_can_preflight_loopback_api():
         },
     )
     assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == "tauri://localhost"
+    assert response.headers["access-control-allow-origin"] == "*"
 
 
 def test_fastapi_search_chinese_keywords_contract():
