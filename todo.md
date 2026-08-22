@@ -660,3 +660,4 @@
 - [ ] 確認 GitHub Actions CI 對最新 main 提交的執行狀態與提交 SHA 一致
 - [ ] 在不覆寫 GitHub main 既有歷史的前提下，安全整合遠端 `72af882` 與本機 checkpoint 歷史後再推送
 - [ ] 從 GitHub main 建立不含歷史 `venv`／Playwright 大型檔案的乾淨同步提交，保留遠端歷史並以正常快轉推送
+- [ ] 新增 GitHub Actions CI，對 main 與 pull request 執行 FastAPI pytest、Vitest、production build 與 cargo check，不建立 Release
