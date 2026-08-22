@@ -700,3 +700,7 @@
 - [x] 以提供的 Fanfic Atlas SVG 統一網站 Header、PWA manifest 與桌面發行圖示資產
 - [x] 實作分頁平滑回頂、來源重試冷卻與 AO3 有界退避，維持來源保護與安全降級
 - [x] 補足互動、品牌資產與 AO3 冷卻回歸，完成跨端驗證、GitHub main 推送與 CI 確認
+- [x] 稽核 Penana 公開搜尋、受阻狀態、結果統計／分頁資料流、線上 Logo 路徑與 v1.2.11 發行設定
+- [x] 以合規公開請求與官方搜尋導流完善 Penana 受阻降級，新增精緻結果卡並移除冗餘分頁說明
+- [x] 修復 Cloudflare Pages Logo 載入與文字 fallback，同步頂部／底部分頁、來源統計及版本資訊至 v1.2.12
+- [ ] 補足回歸、驗證網頁／PWA／桌面建置，推送 main、建立 v1.2.12 Release Tag並確認工作流程

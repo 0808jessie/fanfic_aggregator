@@ -287,6 +287,7 @@ def test_penana_cloudflare_403_returns_a_blocked_source_warning_without_browser_
 
     assert payload == {"items": [], "total_works": 0, "total_pages": 1}
     assert "觸發人機保護" in (scraper.last_warning or "")
+    assert "建議官網瀏覽" in (scraper.last_warning or "")
 
 
 def test_penana_verification_html_returns_a_blocked_source_warning_without_browser_navigation():

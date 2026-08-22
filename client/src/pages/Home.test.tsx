@@ -111,7 +111,7 @@ describe("Home pagination interactions", () => {
     expect(screen.queryByText("已連線")).toBeNull();
     expect(screen.getByLabelText("開啟偏好與快取設定")).toBeTruthy();
     expect(screen.queryByLabelText("立即套用最新 PWA 版本")).toBeNull();
-    expect(document.querySelector('img[src="/manus-storage/fanfic-atlas-logo_8e12a428.svg"]')).toBeTruthy();
+    expect(document.querySelector('img[src="/fanfic-atlas-logo.svg"]')).toBeTruthy();
   });
 
   it("announces a waiting PWA update in a prompt while keeping version actions inside settings", async () => {
@@ -363,9 +363,9 @@ describe("Home pagination interactions", () => {
       "https://archiveofourown.org/works/search?commit=Search&work_search%5Bquery%5D=%E7%BE%A9%E5%BF%8D",
     );
     expect(screen.queryByText("官方頁的登入或驗證狀態不會同步至本應用程式；這裡只會以獨立公開索引請求重試，不會讀取或保存 Cookie。")).toBeNull();
-    expect(screen.getByRole("link", { name: "在 Penana 官網搜尋" }).getAttribute("href")).toBe(
-      "https://www.penana.com/search?t=story&search=%E7%BE%A9%E5%BF%8D",
-    );
+    expect(screen.getAllByText("建議官網瀏覽").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Penana 官網搜尋導流")).toBeTruthy();
+    expect(screen.getAllByRole("link", { name: "在 Penana 官網搜尋" }).some((link) => link.getAttribute("href") === "https://www.penana.com/search?t=story&search=%E7%BE%A9%E5%BF%8D")).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "重試 AO3" }));
     expect(mockState.lastVariables).toMatchObject({
@@ -382,6 +382,47 @@ describe("Home pagination interactions", () => {
       method: "POST",
       data: { keyword: "義忍", mode: "keyword", platforms: ["penana"], page: 1, forceRefresh: true, customCpMappings: [] },
     });
+  });
+
+  it("synchronizes headline, source progress, and local page totals after a source retry appends verified works", async () => {
+    window.localStorage.setItem("fanfic-atlas-results-per-page", "24");
+    mockState.primaryPayload = {
+      items: [{ title: "既有 AO3 作品", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/existing", tags: "", summary: "", scraped_at: "2026-01-01T00:00:00Z" }],
+      totalWorks: 4,
+      totalPages: 1,
+      page: 1,
+      loadedThroughPage: 1,
+      nextPage: null,
+      hasMore: false,
+      platformStatuses: [
+        { platformId: "ao3", label: "AO3", status: "success", itemCount: 1, translatedQuery: "同步" },
+        { platformId: "waterwriter", label: "在水裡寫字", status: "error", itemCount: 0, warning: "暫時逾時", translatedQuery: "同步" },
+      ],
+    };
+    mockState.retryPayload = {
+      items: Array.from({ length: 30 }, (_, index) => ({ title: `重試作品 ${index + 1}`, author: "Author", platform: "在水裡寫字", url: `https://waterfall.slashtw.space/thread/${index + 1}`, tags: "", summary: "", scraped_at: "2026-01-01T00:00:00Z" })),
+      totalWorks: 4,
+      totalPages: 1,
+      page: 1,
+      loadedThroughPage: 1,
+      nextPage: null,
+      hasMore: false,
+      platformStatuses: [{ platformId: "waterwriter", label: "在水裡寫字", status: "success", itemCount: 4, translatedQuery: "同步" }],
+    };
+    render(<Home />);
+
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "同步" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+    await waitFor(() => expect(screen.getByText("既有 AO3 作品")).toBeTruthy());
+    fireEvent.click(screen.getByLabelText("平台連線狀態"));
+    fireEvent.click(screen.getByRole("button", { name: "重試 在水裡寫字" }));
+
+    await waitFor(() => expect(screen.getByText("找到 31 篇作品")).toBeTruthy());
+    expect(screen.getByText("已載入第 2 / 2 頁")).toBeTruthy();
+    expect(screen.getByText(/顯示 1–24 \/ 31 筆/)).toBeTruthy();
+    expect(screen.getByText(/已載入第 1 頁 30 篇／共 30 筆/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
+    expect(screen.getByText(/顯示 25–31 \/ 31 筆/)).toBeTruthy();
   });
 
   it("keeps the CxC card visible and retryable when the API omits its status", async () => {

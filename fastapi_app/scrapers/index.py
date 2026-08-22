@@ -249,7 +249,7 @@ def search_single_platform(
         cached_payload = _read_source_cache(cache_key)
         if cached_payload is not None:
             items, total_works, total_pages, warning = cached_payload
-            status_count = total_works if total_works > 0 else len(items)
+            status_count = max(len(items), total_works)
             status = make_platform_status(platform_key, keyword, status_count, warning, custom_cp_map, mode)
             status.fromCache = True
             duration_ms = round((perf_counter() - started_at) * 1000)
@@ -292,7 +292,7 @@ def search_single_platform(
             item.keyword = keyword
             annotate_work_language(item, platform_key)
         warning = getattr(adapter, "last_warning", None)
-        status_count = total_works if total_works > 0 else len(items)
+        status_count = max(len(items), total_works)
         _write_source_cache(cache_key, items, total_works, total_pages, warning)
         duration_ms = round((perf_counter() - started_at) * 1000)
         print(f"[{PLATFORM_LABELS.get(platform_key, platform_key)} Done in ms] {duration_ms}")

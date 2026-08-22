@@ -46,10 +46,10 @@ describe("content safety and reader cache preferences", () => {
   it("surfaces system version status and keeps manual update actions inside settings", () => {
     const onCheckForUpdates = vi.fn();
     const onApplyUpdate = vi.fn();
-    render(<ReadingPreferencesDialog open onOpenChange={vi.fn()} settings={{ ...DEFAULT_CONTENT_SAFETY_SETTINGS, ageConfirmation: "adult" }} cacheStats={{ entryCount: 0, byteSize: 0 }} onConfirmAge={vi.fn()} onClearCache={vi.fn()} appVersion="v1.2.11" updateAvailable updateCheckPending={false} onCheckForUpdates={onCheckForUpdates} onApplyUpdate={onApplyUpdate} />);
+    render(<ReadingPreferencesDialog open onOpenChange={vi.fn()} settings={{ ...DEFAULT_CONTENT_SAFETY_SETTINGS, ageConfirmation: "adult" }} cacheStats={{ entryCount: 0, byteSize: 0 }} onConfirmAge={vi.fn()} onClearCache={vi.fn()} appVersion="v1.2.12" updateAvailable updateCheckPending={false} onCheckForUpdates={onCheckForUpdates} onApplyUpdate={onApplyUpdate} />);
 
     expect(screen.getByText("系統版本與更新")).toBeTruthy();
-    expect(screen.getByText(/目前版本 v1.2.11/)).toBeTruthy();
+    expect(screen.getByText(/目前版本 v1.2.12/)).toBeTruthy();
     expect(screen.getByText("有可用更新")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "檢查更新" }));
     fireEvent.click(screen.getByRole("button", { name: "立即更新至最新版" }));

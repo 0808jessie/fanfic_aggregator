@@ -13,19 +13,19 @@
   "background_color": "#F7F7F8",
   "icons": [
     {
-      "src": "/manus-storage/192x192_b5eee613.png",
+      "src": "/fanfic-atlas-icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/manus-storage/512x512_32bfed45.png",
+      "src": "/fanfic-atlas-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/manus-storage/512x512_32bfed45.png",
+      "src": "/fanfic-atlas-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

@@ -122,7 +122,11 @@ export function getLoadMoreLabel(isPending: boolean, nextPage: number | null): s
 
 export function formatSourceLoadProgress(loadedWorks: number, totalWorks: number, page: number, totalPages: number): string {
   const safeLoaded = Math.max(0, Math.trunc(loadedWorks));
-  const safeTotal = Math.max(0, Math.trunc(totalWorks));
+  // A source can return more verified cards after a retry or client-side append
+  // than a stale/partial total announced by its index. Never show an impossible
+  // progress label such as "已載入 22 篇／共 4 筆".
+  const reportedTotal = Math.max(0, Math.trunc(totalWorks));
+  const safeTotal = reportedTotal > 0 ? Math.max(safeLoaded, reportedTotal) : 0;
   const safePage = Math.max(1, Math.trunc(page));
   const safePages = Math.max(1, Math.trunc(totalPages));
   if (safeTotal > 0) return `已載入第 ${safePage} 頁 ${safeLoaded} 篇／共 ${safeTotal.toLocaleString()} 筆`;
@@ -192,11 +196,12 @@ export function extractSearchPagination(payload: unknown): SearchPagination {
     const candidate = Number(value[key]);
     return Number.isFinite(candidate) && candidate >= 0 ? candidate : fallback;
   };
+  const totalWorks = asNumber("totalWorks", 0);
   const totalPages = asNumber("totalPages", 0);
   const loadedThroughPage = asNumber("loadedThroughPage", asNumber("page", 1));
   const nextPageValue = asNumber("nextPage", 0);
   return {
-    totalWorks: asNumber("totalWorks", 0),
+    totalWorks,
     totalPages,
     page: Math.max(1, asNumber("page", 1)),
     loadedThroughPage,

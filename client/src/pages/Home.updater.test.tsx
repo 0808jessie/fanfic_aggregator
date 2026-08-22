@@ -117,7 +117,7 @@ describe("Tauri updater interaction", () => {
     await waitFor(() => expect(updaterState.check).toHaveBeenCalledOnce());
 
     fireEvent.click(screen.getByRole("button", { name: /藏書閣 \/ 收藏夾/ }));
-    expect(screen.getByText("v1.2.11")).toBeTruthy();
+    expect(screen.getByText("v1.2.12")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "檢查更新" }));
 
     await waitFor(() => expect(updaterState.check).toHaveBeenCalledTimes(2));

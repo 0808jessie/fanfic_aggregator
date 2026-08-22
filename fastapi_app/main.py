@@ -29,7 +29,7 @@ def configured_cors_origins() -> list[str]:
     return origins or ["*"]
 
 
-app = FastAPI(title="Fanfic Atlas Search API", version="1.2.11")
+app = FastAPI(title="Fanfic Atlas Search API", version="1.2.12")
 app.add_middleware(
     CORSMiddleware,
     # Cloudflare Worker calls are server-to-server, while a direct browser
@@ -222,22 +222,22 @@ def get_cached_results(db: Session, keyword: str, platforms: list[str], ignore_t
 
 @app.get("/fastapi-status")
 def fastapi_status() -> dict[str, str]:
-    return {"status": "ok", "service": "fastapi-search", "version": "1.2.11"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.2.12"}
 
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "fastapi-search", "version": "1.2.11"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.2.12"}
 
 
 @app.api_route("/api/health", methods=["GET", "HEAD"])
 def api_health_check():
-    return {"status": "ok", "service": "fastapi-search", "version": "1.2.11"}
+    return {"status": "ok", "service": "fastapi-search", "version": "1.2.12"}
 
 
 @app.get("/")
 def read_root() -> dict[str, str]:
-    return {"status": "ok", "service":"fastapi-search", "version": "1.2.11"}
+    return {"status": "ok", "service":"fastapi-search", "version": "1.2.12"}
 
 
 @app.post("/reader", response_model=ReaderDocument)

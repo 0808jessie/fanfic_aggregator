@@ -14,7 +14,7 @@ describe("PWA static assets", () => {
     expect(manifest.icons.some(icon => icon.sizes === "512x512")).toBe(true);
     expect(manifest.icons.some(icon => icon.purpose === "maskable")).toBe(true);
     expect(manifest.icons.every(icon => icon.type === "image/png" && icon.src.endsWith(".png"))).toBe(true);
-    expect(manifest.icons.every(icon => icon.src.startsWith("/manus-storage/"))).toBe(true);
+    expect(manifest.icons.every(icon => icon.src.startsWith("/fanfic-atlas-icon-"))).toBe(true);
   });
 
   it("keeps search and reader responses out of the offline app-shell cache", () => {
@@ -23,13 +23,14 @@ describe("PWA static assets", () => {
     expect(worker).toContain('url.pathname === "/search"');
     expect(worker).toContain('url.pathname === "/reader"');
     expect(worker).toContain('"/manifest.webmanifest"');
-    expect(worker).toContain('const CACHE_NAME = "fanfic-atlas-shell-v7"');
+    expect(worker).toContain('const CACHE_NAME = "fanfic-atlas-shell-v8"');
     expect(worker.match(/^const CACHE_NAME\s*=/gm)).toHaveLength(1);
     expect(worker).toContain('event.data?.type === "SKIP_WAITING"');
     expect(worker).toContain("self.skipWaiting()");
     expect(() => new Function(worker)).not.toThrow();
-    expect(worker).toContain('"/manus-storage/192x192_b5eee613.png"');
-    expect(worker).toContain('"/manus-storage/512x512_32bfed45.png"');
+    expect(worker).toContain('"/fanfic-atlas-logo.svg"');
+    expect(worker).toContain('"/fanfic-atlas-icon-192.png"');
+    expect(worker).toContain('"/fanfic-atlas-icon-512.png"');
   });
 
   it("ships Cloudflare Pages API exclusions and a Worker deployment contract", () => {

@@ -1,6 +1,6 @@
 [package]
 name = "fanfic_atlas"
-version = "1.2.11"
+version = "1.2.12"
 description = "Cross-platform fanfiction aggregator desktop app"
 authors = ["Jessie <0808jessie@github.com>"]
 edition = "2021"

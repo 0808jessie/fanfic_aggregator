@@ -25,7 +25,7 @@ class PenanaScraper(BaseScraper):
     search_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
         "Referer": "https://www.penana.com/",
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1",
@@ -77,10 +77,10 @@ class PenanaScraper(BaseScraper):
             if response.status_code in (403, 520, 521, 522, 525):
                 retry_after = response.headers.get("Retry-After") if getattr(response, "headers", None) else None
                 retry_hint = f"；建議 {retry_after} 秒後單獨重試" if retry_after and retry_after.isdigit() else ""
-                self.last_warning = f"[Penana] 觸發人機保護（HTTP {response.status_code}）{retry_hint}"
+                self.last_warning = f"[Penana] 公開索引受阻／觸發人機保護（HTTP {response.status_code}）；建議官網瀏覽{retry_hint}"
                 return None
             if response.status_code in (429, 503):
-                self.last_warning = f"[Penana] Public Finder 暫時不可用（HTTP {response.status_code}）"
+                self.last_warning = f"[Penana] Public Finder 暫時不可用（HTTP {response.status_code}）；建議官網瀏覽"
                 return None
             response.raise_for_status()
             if self._is_blocked_challenge_html(response.text):

@@ -137,10 +137,10 @@ const PLATFORMS = [
   { id: "kadokado", label: "KadoKado 角角者", detail: "KADOKADO API · 手動啟用", tone: "amber" },
 ] as const;
 
-const FALLBACK_DESKTOP_VERSION = "1.2.11";
+const FALLBACK_DESKTOP_VERSION = "1.2.12";
 const UPDATER_MANIFEST_URL = "https://github.com/0808jessie/fanfic_aggregator/releases/latest/download/latest.json";
 const READER_SESSION_PROGRESS_PREFIX = "fanfic-atlas-reader-progress:";
-const BRAND_LOGO_URL = "/manus-storage/fanfic-atlas-logo_8e12a428.svg";
+const BRAND_LOGO_URL = "/fanfic-atlas-logo.svg";
 const PLATFORM_RETRY_COOLDOWN_MS = 4_000;
 
 function readSessionReaderProgress(url: string): { percent: number; chapter: string } {
@@ -194,6 +194,7 @@ function isNotSelectedPlatformStatus(status: PlatformStatus) {
 function platformStatusLabel(status: PlatformStatus) {
   if (status.status === "success") return "已連線";
   if (status.status === "cooldown") return "冷卻限制中";
+  if (status.platformId === "penana" && (status.status === "blocked" || status.status === "error")) return "建議官網瀏覽";
   if (status.status === "blocked") return status.platformId === "ao3" ? "AO3 公開索引受阻" : "公開索引受阻";
   if (status.status === "error") return "連線逾時";
   return isNotSelectedPlatformStatus(status) ? "尚未選取" : "無公開結果";
@@ -202,6 +203,7 @@ function platformStatusLabel(status: PlatformStatus) {
 function platformStatusTone(status: PlatformStatus) {
   if (status.status === "success") return "border-[#9bded1] bg-[#e9f8f4] text-[#176d61]";
   if (status.status === "cooldown") return "border-[#efd59a] bg-[#fff7df] text-[#8d6b20]";
+  if (status.platformId === "penana" && (status.status === "blocked" || status.status === "error")) return "border-[#efd59a] bg-[#fffaf0] text-[#8d6b20]";
   if (status.status === "blocked" || status.status === "error") return "border-[#efb4c4] bg-[#fff0f4] text-[#9b4358]";
   return "border-[#d5d8da] bg-[#f5f6f4] text-[#65737a]";
 }
@@ -338,6 +340,7 @@ export default function Home() {
   const [pwaUpdateCheckPending, setPwaUpdateCheckPending] = useState(false);
   const [pwaUpdatePromptOpen, setPwaUpdatePromptOpen] = useState(false);
   const [backgroundPagePending, setBackgroundPagePending] = useState(false);
+  const [brandLogoFailed, setBrandLogoFailed] = useState(false);
   const [retryingPlatformId, setRetryingPlatformId] = useState<PlatformId | null>(null);
   const [retryCooldowns, setRetryCooldowns] = useState<Partial<Record<PlatformId, number>>>({});
   const searchStartedAt = useRef<number | null>(null);
@@ -373,7 +376,7 @@ export default function Home() {
         const incomingPagination = extractSearchPagination(payload);
         setResults((current) => appendUniqueResults(current, incoming));
         setPagination((current) => ({
-          totalWorks: incomingPagination.totalWorks || current.totalWorks,
+          totalWorks: Math.max(current.totalWorks, incomingPagination.totalWorks),
           totalPages: Math.max(current.totalPages, incomingPagination.totalPages),
           page: 1,
           loadedThroughPage: Math.max(current.loadedThroughPage, incomingPagination.loadedThroughPage),
@@ -399,6 +402,13 @@ export default function Home() {
           current.filter((result) => platformMeta(result.platform).id !== retryingPlatform),
           incoming,
         ));
+        const incomingPagination = extractSearchPagination(payload);
+        setPagination((current) => ({
+          ...current,
+          totalWorks: Math.max(current.totalWorks, incomingPagination.totalWorks),
+          totalPages: Math.max(current.totalPages, incomingPagination.totalPages),
+          loadedThroughPage: Math.max(current.loadedThroughPage, incomingPagination.loadedThroughPage),
+        }));
       } else {
         setResults(incoming);
         setPagination(extractSearchPagination(payload));
@@ -585,6 +595,23 @@ export default function Home() {
     [results],
   );
   const localResultPageCount = Math.max(1, Math.ceil(displayedResults.length / resultsPerPage));
+  const currentResultTotal = Math.max(pagination.totalWorks, results.length);
+  const currentKnownPageCount = Math.max(
+    pagination.totalPages,
+    localResultPageCount,
+    Math.ceil(currentResultTotal / resultsPerPage),
+  );
+  const currentLoadedThroughPage = Math.max(pagination.loadedThroughPage, localResultPageCount);
+  const penanaFallbackStatus = useMemo(
+    () => platformStatuses.find((status) => status.platformId === "penana" && isPlatformRetryable(status)) || null,
+    [platformStatuses],
+  );
+  const penanaOfficialSearchUrl = useMemo(
+    () => activeQuery || keyword.trim()
+      ? `https://www.penana.com/search?t=story&search=${encodeURIComponent(activeQuery || keyword.trim())}`
+      : "https://www.penana.com/search?t=story",
+    [activeQuery, keyword],
+  );
   const visibleResults = useMemo(
     () => displayedResults.slice((localResultPage - 1) * resultsPerPage, localResultPage * resultsPerPage),
     [displayedResults, localResultPage, resultsPerPage],
@@ -1242,8 +1269,8 @@ export default function Home() {
       <header className="relative z-10 border-b border-[color:var(--atlas-line)] bg-[color:var(--atlas-bg)]/85 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1160px] items-center justify-between px-5 py-4 sm:px-8">
           <div className="flex items-center gap-3">
-            <div className="brand-mark flex h-10 w-10 items-center justify-center overflow-hidden">
-              <img src={BRAND_LOGO_URL} alt="" className="h-full w-full object-cover" />
+            <div className="brand-mark flex h-10 w-10 items-center justify-center overflow-hidden" aria-label="Fanfic Atlas">
+              {brandLogoFailed ? <span className="text-sm font-black text-[color:var(--atlas-indigo)]">FA</span> : <img src={BRAND_LOGO_URL} alt="Fanfic Atlas" onError={() => setBrandLogoFailed(true)} className="h-full w-full object-cover" />}
             </div>
             <div>
               <div className="text-base font-extrabold tracking-[-0.04em]">Fanfic Atlas</div>
@@ -1324,7 +1351,7 @@ export default function Home() {
         </section>}
 
         {activeView !== "cp-library" && <>
-        <section ref={searchResultsRef} className="mt-10 flex flex-col gap-3 border-b border-[color:var(--atlas-line)] pb-5 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="text-3xl font-extrabold sm:text-4xl">{activeView === "bookmarks" ? `藏書閣 · ${bookmarks.length.toLocaleString()} 本` : isSearchPending ? "正在尋找作品" : hasSearched ? pagination.totalWorks > 0 ? `找到 ${pagination.totalWorks.toLocaleString()} 篇作品` : "暫時沒有可驗證的作品" : "開始探索"}</h2>{activeView === "search" && searchMode === "author" && <div className="mt-2 flex items-center gap-2 text-sm text-amber-700"><UserRound className="h-3.5 w-3.5" /> 搜尋作者：{activeQuery || keyword}</div>}{activeView === "search" && hasSearched && pagination.totalWorks > 0 && <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[color:var(--atlas-muted)]"><span>已載入第 {pagination.loadedThroughPage} / {pagination.totalPages} 頁</span><span>顯示 {displayedResults.length} / {results.length} 筆</span>{hideBookmarkedResults && <span className="text-[color:var(--atlas-indigo)]">藏書閣隱藏：{hiddenBookmarkedResultCount} 篇</span>}{excludedKeywords.length > 0 && <span className="text-[color:var(--atlas-danger)]">避雷中：{excludedKeywords.length} 詞</span>}{completedElapsedMs !== null && <span className="text-[color:var(--atlas-success)]">{(completedElapsedMs / 1000).toFixed(1)} 秒完成</span>}</div>}</div><div className="flex flex-wrap items-center gap-2"><div className="text-xs text-[color:var(--atlas-muted)]">{activeView === "bookmarks" ? desktopRuntime ? "只保留在這台裝置" : "保留在這個瀏覽器" : `${selectedPlatforms.length} 個來源已啟用`}</div>{activeView === "search" && hasSearched && filteredResultCount > 0 && <Button type="button" variant="outline" aria-label="顯示已避雷作品" aria-pressed={showFilteredResults} onClick={() => setShowFilteredResults((current) => { const next = !current; if (!next) setRevealedFilteredUrls(new Set()); return next; })} className={`h-9 rounded-full border px-3 text-xs font-semibold ${showFilteredResults ? "border-[color:var(--atlas-amber)] bg-[color:var(--atlas-amber-soft)] text-[color:var(--atlas-amber)]" : "border-[color:var(--atlas-danger-line)] bg-white text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)]"}`}>{showFilteredResults ? <EyeOff className="mr-1.5 h-3.5 w-3.5" /> : <Eye className="mr-1.5 h-3.5 w-3.5" />}{showFilteredResults ? "隱藏已避雷作品" : "顯示已避雷作品"}<span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-current px-1.5 py-0.5 text-[10px] font-bold text-white">{filteredResultCount}</span></Button>}</div></section>
+        <section ref={searchResultsRef} className="mt-10 flex flex-col gap-3 border-b border-[color:var(--atlas-line)] pb-5 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="text-3xl font-extrabold sm:text-4xl">{activeView === "bookmarks" ? `藏書閣 · ${bookmarks.length.toLocaleString()} 本` : isSearchPending ? "正在尋找作品" : hasSearched ? currentResultTotal > 0 ? `找到 ${currentResultTotal.toLocaleString()} 篇作品` : "暫時沒有可驗證的作品" : "開始探索"}</h2>{activeView === "search" && searchMode === "author" && <div className="mt-2 flex items-center gap-2 text-sm text-amber-700"><UserRound className="h-3.5 w-3.5" /> 搜尋作者：{activeQuery || keyword}</div>}{activeView === "search" && hasSearched && currentResultTotal > 0 && <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[color:var(--atlas-muted)]"><span>已載入第 {currentLoadedThroughPage} / {currentKnownPageCount} 頁</span><span>顯示 {displayedResults.length} / {results.length} 筆</span>{hideBookmarkedResults && <span className="text-[color:var(--atlas-indigo)]">藏書閣隱藏：{hiddenBookmarkedResultCount} 篇</span>}{excludedKeywords.length > 0 && <span className="text-[color:var(--atlas-danger)]">避雷中：{excludedKeywords.length} 詞</span>}{completedElapsedMs !== null && <span className="text-[color:var(--atlas-success)]">{(completedElapsedMs / 1000).toFixed(1)} 秒完成</span>}</div>}</div><div className="flex flex-wrap items-center gap-2"><div className="text-xs text-[color:var(--atlas-muted)]">{activeView === "bookmarks" ? desktopRuntime ? "只保留在這台裝置" : "保留在這個瀏覽器" : `${selectedPlatforms.length} 個來源已啟用`}</div>{activeView === "search" && hasSearched && filteredResultCount > 0 && <Button type="button" variant="outline" aria-label="顯示已避雷作品" aria-pressed={showFilteredResults} onClick={() => setShowFilteredResults((current) => { const next = !current; if (!next) setRevealedFilteredUrls(new Set()); return next; })} className={`h-9 rounded-full border px-3 text-xs font-semibold ${showFilteredResults ? "border-[color:var(--atlas-amber)] bg-[color:var(--atlas-amber-soft)] text-[color:var(--atlas-amber)]" : "border-[color:var(--atlas-danger-line)] bg-white text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)]"}`}>{showFilteredResults ? <EyeOff className="mr-1.5 h-3.5 w-3.5" /> : <Eye className="mr-1.5 h-3.5 w-3.5" />}{showFilteredResults ? "隱藏已避雷作品" : "顯示已避雷作品"}<span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-current px-1.5 py-0.5 text-[10px] font-bold text-white">{filteredResultCount}</span></Button>}</div></section>
 
         {activeView === "search" && hasSearched && platformStatuses.length > 0 && (
           <section aria-label="來源健康摘要" className="mt-3">
@@ -1537,7 +1564,6 @@ export default function Home() {
                   </select>
                 </label>
               </div>
-              {pagination.totalPages > 1 && <div className="rounded-xl border border-[color:var(--atlas-indigo)]/15 bg-[color:var(--atlas-indigo-soft)]/40 px-4 py-3 text-sm text-[color:var(--atlas-muted)]"><strong className="text-[color:var(--atlas-ink)]">流暢分頁：</strong>頁碼只在目前已整理的結果中即時切換；需要更多作品時，系統會在背景追加，不會清空畫面或重置閱讀位置。{backgroundPagePending && <span className="ml-2 inline-flex items-center gap-1 font-semibold text-[color:var(--atlas-indigo)]"><Loader2 className="h-3.5 w-3.5 animate-spin" />正在靜默追加更多結果</span>}</div>}
               <div id="search-results" className={resultViewMode === "cards" ? "grid auto-rows-fr grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3" : "space-y-3"}>
                 {visibleResults.map((result, index) => {
                   const meta = platformMeta(result.platform);
@@ -1595,6 +1621,7 @@ export default function Home() {
                     </Card>
                   );
                 })}
+                {penanaFallbackStatus && (!activePlatformFilter || activePlatformFilter === "penana") && <Card className={`overflow-hidden border-[#efd59a] bg-[#fffaf0] ${resultViewMode === "cards" ? "flex h-full flex-col" : ""}`} aria-label="Penana 官網搜尋導流"><CardContent className={`flex flex-col justify-between gap-5 p-5 sm:p-6 ${resultViewMode === "cards" ? "h-full" : "sm:flex-row sm:items-center"}`}><div className="min-w-0"><div className="mb-3 inline-flex items-center gap-2 rounded-full bg-[#fff0cc] px-2.5 py-1 text-xs font-bold text-[#8d6b20]"><span className="h-1.5 w-1.5 rounded-full bg-current" />建議官網瀏覽</div><h3 className="text-lg font-extrabold tracking-[-0.025em] text-[color:var(--atlas-ink)]">在 Penana 尋找更多《{activeQuery || keyword}》相關作品</h3><p className="mt-2 text-sm leading-6 text-[color:var(--atlas-muted)]">Penana 的公開索引目前要求在官網完成驗證；其他來源結果已保留，不會中斷本次搜尋。</p></div><a href={penanaOfficialSearchUrl} target="_blank" rel="noreferrer" onClick={(event) => void openExternalUrl(event, penanaOfficialSearchUrl, "已開啟 Penana 官網搜尋。") } className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#8d6b20] px-4 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(141,107,32,0.18)] transition-colors hover:bg-[#725718]">前往 Penana 官網搜尋<ArrowUpRight className="h-4 w-4" /></a></CardContent></Card>}
               </div>
               {localResultPageCount > 1 && <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto rounded-2xl border border-[color:var(--atlas-line)] bg-white/65 p-2 shadow-[0_8px_20px_rgba(36,33,52,0.035)]" aria-label="搜尋結果分頁"><div className="hidden min-w-0 flex-1 whitespace-nowrap px-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300 lg:block">顯示 {Math.min((localResultPage - 1) * resultsPerPage + 1, displayedResults.length)}–{Math.min(localResultPage * resultsPerPage, displayedResults.length)} / {displayedResults.length} 筆 <span className="text-xs text-slate-500 dark:text-slate-400">（第 {unifiedCurrentPage}/{unifiedPageCount} 頁）</span></div><div className="flex shrink-0 items-center gap-1"><Button type="button" variant="outline" size="icon" aria-label="上一頁" disabled={localResultPage === 1} onClick={goToPreviousUnifiedPage} className="h-9 w-9 rounded-lg border-[color:var(--atlas-line)] bg-white/85"><ChevronLeft className="h-4 w-4" /></Button><span className="inline-flex h-9 items-center rounded-lg bg-[color:var(--atlas-elevated)] px-2 text-sm font-semibold text-slate-700 sm:hidden">{unifiedCurrentPage}/{unifiedPageCount}</span><div className="hidden items-center gap-1 sm:flex">{resultPageWindow(unifiedCurrentPage, unifiedPageCount).map((page, index, pages) => <React.Fragment key={page}>{index > 0 && page - pages[index - 1] > 1 && <span className="px-1 text-xs text-slate-500">…</span>}<Button type="button" variant={page === unifiedCurrentPage ? "default" : "outline"} size="icon" aria-current={page === unifiedCurrentPage ? "page" : undefined} onClick={() => goToUnifiedPage(page)} className={`h-9 w-9 rounded-lg ${page === unifiedCurrentPage ? "bg-[color:var(--atlas-indigo)] text-white hover:bg-[#4338ca]" : "border-[color:var(--atlas-line)] bg-white/85"}`}>{page}</Button></React.Fragment>)}</div><Button type="button" variant="outline" size="icon" aria-label="下一頁" disabled={localResultPage === localResultPageCount} onClick={goToNextUnifiedPage} className="h-9 w-9 rounded-lg border-[color:var(--atlas-line)] bg-white/85"><ChevronRight className="h-4 w-4" /></Button></div><form onSubmit={(event) => { event.preventDefault(); jumpToUnifiedPage(); }} className="flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-slate-700 dark:text-slate-200"><span className="hidden sm:inline">前往</span><Input aria-label="前往指定頁數" type="number" inputMode="numeric" min={1} max={unifiedPageCount} value={jumpPageInput} onChange={(event) => setJumpPageInput(event.target.value)} className="h-9 w-12 rounded-lg border-[color:var(--atlas-line)] bg-white/85 px-1 text-center text-sm" /><span className="hidden sm:inline">頁</span><Button type="submit" variant="outline" className="h-9 rounded-lg border-[color:var(--atlas-line)] bg-white/85 px-2 text-sm font-semibold"><span className="hidden sm:inline">前往</span><span className="sm:hidden">Go</span></Button></form></div>}
             </div>
