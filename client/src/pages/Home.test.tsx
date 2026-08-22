@@ -105,6 +105,13 @@ beforeEach(() => {
 });
 
 describe("Home pagination interactions", () => {
+  it("keeps the Header focused on brand, install, and settings controls", () => {
+    render(<Home />);
+    expect(screen.queryByText("私人藏書")).toBeNull();
+    expect(screen.queryByText("已連線")).toBeNull();
+    expect(screen.getByLabelText("開啟偏好與快取設定")).toBeTruthy();
+  });
+
   it("asks for age confirmation on first launch and forces the safe rating mode for minors", async () => {
     window.localStorage.clear();
     mockState.primaryPayload = {

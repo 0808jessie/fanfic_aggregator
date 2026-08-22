@@ -23,8 +23,10 @@ describe("PWA static assets", () => {
     expect(worker).toContain('url.pathname === "/search"');
     expect(worker).toContain('url.pathname === "/reader"');
     expect(worker).toContain('"/manifest.webmanifest"');
-    expect(worker).toContain('const CACHE_NAME = "fanfic-atlas-shell-v5"');
+    expect(worker).toContain('const CACHE_NAME = "fanfic-atlas-shell-v6"');
     expect(worker.match(/^const CACHE_NAME\s*=/gm)).toHaveLength(1);
+    expect(worker).toContain('event.data?.type === "SKIP_WAITING"');
+    expect(worker).toContain("self.skipWaiting()");
     expect(() => new Function(worker)).not.toThrow();
     expect(worker).toContain('"/manus-storage/fanfic-atlas-pwa-192_607d6e55.png"');
     expect(worker).toContain('"/manus-storage/fanfic-atlas-pwa-maskable-512_9f1f7cb4.png"');

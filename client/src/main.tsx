@@ -7,13 +7,14 @@ import superjson from "superjson";
 import App from "./App";
 import { startLogin } from "./const";
 import { isTauriDesktopRuntime } from "./lib/desktopApi";
+import { registerPwaUpdateListener } from "./lib/pwaUpdate";
 import "./index.css";
 
 const queryClient = new QueryClient();
 
 if ("serviceWorker" in navigator && !isTauriDesktopRuntime()) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(error => {
+    void registerPwaUpdateListener().catch(error => {
       console.warn("[PWA] Service Worker registration skipped:", error);
     });
   }, { once: true });

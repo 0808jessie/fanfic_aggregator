@@ -689,3 +689,6 @@
 - [x] 實作 6.5 秒來源級等待與 15 秒 Worker 預算，改善 Penana 正常公開請求與官方搜尋直達降級
 - [x] 修正 AO3「已載入第一頁／共筆數」標示與載入更多契約，確保全部篩選不誤濾第一頁作品
 - [x] 補足效能、Penana 降級與 AO3 分頁回歸，完成建置與 GitHub CI 後推送 main
+- [x] 稽核 Header 中央導覽、連線狀態與 PWA Service Worker 註冊／等待更新流程
+- [x] 移除 Header 冗餘文字與連線提示，於設定右側加入 PWA 發現新版本的一鍵立即套用按鈕
+- [ ] 補足 Service Worker 更新與響應式 Header 回歸，完成手機預覽、建置與 GitHub CI 後推送 main

@@ -39,6 +39,7 @@ import {
   waitForSidecarReady,
 } from "@/lib/desktopApi";
 import { postWebPwaReader, postWebPwaSearch, usesWebPwaApi } from "@/lib/webPwaApi";
+import { applyPwaUpdate, PWA_UPDATE_READY_EVENT, type PwaUpdateRegistration } from "@/lib/pwaUpdate";
 import {
   LatestSearchRequestGate,
   createSearchCacheKey,
@@ -329,6 +330,8 @@ export default function Home() {
   const [updateCheckPending, setUpdateCheckPending] = useState(false);
   const [updateInstallPending, setUpdateInstallPending] = useState(false);
   const [updateDownloadPercent, setUpdateDownloadPercent] = useState(0);
+  const [pwaUpdateRegistration, setPwaUpdateRegistration] = useState<PwaUpdateRegistration | null>(null);
+  const [pwaUpdateApplying, setPwaUpdateApplying] = useState(false);
   const [retryingPlatformId, setRetryingPlatformId] = useState<PlatformId | null>(null);
   const searchStartedAt = useRef<number | null>(null);
   const retryingPlatformRef = useRef<PlatformId | null>(null);
@@ -776,6 +779,26 @@ export default function Home() {
     return () => { mounted = false; };
   }, [desktopRuntime]);
 
+  useEffect(() => {
+    if (desktopRuntime) return;
+    const onPwaUpdateReady = (event: Event) => {
+      const registration = (event as CustomEvent<PwaUpdateRegistration>).detail;
+      if (registration?.waiting) setPwaUpdateRegistration(registration);
+    };
+    window.addEventListener(PWA_UPDATE_READY_EVENT, onPwaUpdateReady);
+    return () => window.removeEventListener(PWA_UPDATE_READY_EVENT, onPwaUpdateReady);
+  }, [desktopRuntime]);
+
+  const applyAvailablePwaUpdate = () => {
+    if (!pwaUpdateRegistration || pwaUpdateApplying) return;
+    setPwaUpdateApplying(true);
+    if (!applyPwaUpdate(pwaUpdateRegistration)) {
+      setPwaUpdateApplying(false);
+      setPwaUpdateRegistration(null);
+      toast.error("更新已不再可用", { description: "請重新載入頁面後再檢查。" });
+    }
+  };
+
   const togglePlatform = (platform: PlatformId) => {
     setSelectedPlatforms((current) => {
       if (current.includes(platform)) {
@@ -1148,13 +1171,10 @@ export default function Home() {
               <div className="mt-0.5 text-xs text-[color:var(--atlas-muted)]">跨平台同人閱讀</div>
             </div>
           </div>
-          <div className="hidden items-center gap-5 text-xs text-[color:var(--atlas-muted)] md:flex">
-            <span>搜尋</span><span>{PLATFORMS.length} 個來源</span><span>私人藏書</span>
-          </div>
           <div className="flex items-center gap-2 text-xs font-medium text-[color:var(--atlas-muted)]">
             <PwaInstallButton />
             <Button type="button" variant="ghost" aria-label="開啟偏好與快取設定" onClick={() => { refreshReaderCacheStats(); setPreferencesOpen(true); }} className="h-9 rounded-xl border-0 bg-[color:var(--atlas-elevated)] px-3 text-xs font-semibold text-[color:var(--atlas-ink)] hover:bg-[color:var(--atlas-indigo-soft)]"><Settings2 className="mr-1.5 h-3.5 w-3.5" />設定</Button>
-            <span className="h-2 w-2 rounded-full bg-[#0f766e]" />已連線
+            {pwaUpdateRegistration && <Button type="button" onClick={applyAvailablePwaUpdate} disabled={pwaUpdateApplying} aria-label="立即套用最新 PWA 版本" className="h-9 rounded-xl bg-[color:var(--atlas-indigo)] px-3 text-xs font-semibold text-white shadow-[0_8px_18px_rgba(79,70,229,0.24)] hover:bg-[#4338ca]"><RotateCw className={`mr-1.5 h-3.5 w-3.5 ${pwaUpdateApplying ? "animate-spin" : ""}`} />{pwaUpdateApplying ? "套用中" : "更新"}</Button>}
           </div>
         </div>
       </header>
