@@ -692,3 +692,7 @@
 - [x] 稽核 Header 中央導覽、連線狀態與 PWA Service Worker 註冊／等待更新流程
 - [x] 移除 Header 冗餘文字與連線提示，於設定右側加入 PWA 發現新版本的一鍵立即套用按鈕
 - [x] 補足 Service Worker 更新與響應式 Header 回歸，完成手機預覽、建置與 GitHub CI 後推送 main
+- [x] 稽核搜尋分頁、背景追加、全域 Loading 與 PWA Service Worker 更新狀態的既有流程
+- [x] 移除衝突的「載入下一頁」操作，改為客戶端標準分頁與靜默背景追加，翻頁不清空結果或重置捲動
+- [x] 新增 PWA 更新提示、設定內版本狀態／檢查更新／手動套用操作，移除 Header 更新文字
+- [ ] 補足分頁與更新流程回歸測試、驗證桌面／手機介面、推送 GitHub main 並確認 CI

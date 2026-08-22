@@ -324,6 +324,7 @@ export default function Home() {
   const [sidecarState, setSidecarState] = useState<"idle" | "starting" | "ready" | "error">("idle");
   const [desktopSearchPending, setDesktopSearchPending] = useState(false);
   const [webPwaSearchPending, setWebPwaSearchPending] = useState(false);
+  const [trpcSearchPending, setTrpcSearchPending] = useState(false);
   const [desktopVersion, setDesktopVersion] = useState(FALLBACK_DESKTOP_VERSION);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<DesktopUpdate | null>(null);
@@ -332,6 +333,9 @@ export default function Home() {
   const [updateDownloadPercent, setUpdateDownloadPercent] = useState(0);
   const [pwaUpdateRegistration, setPwaUpdateRegistration] = useState<PwaUpdateRegistration | null>(null);
   const [pwaUpdateApplying, setPwaUpdateApplying] = useState(false);
+  const [pwaUpdateCheckPending, setPwaUpdateCheckPending] = useState(false);
+  const [pwaUpdatePromptOpen, setPwaUpdatePromptOpen] = useState(false);
+  const [backgroundPagePending, setBackgroundPagePending] = useState(false);
   const [retryingPlatformId, setRetryingPlatformId] = useState<PlatformId | null>(null);
   const searchStartedAt = useRef<number | null>(null);
   const retryingPlatformRef = useRef<PlatformId | null>(null);
@@ -356,10 +360,26 @@ export default function Home() {
       if (request?.data && request.data.forceRefresh !== true) {
         writeSearchRequestCache(createSearchCacheKey(request.data), payload);
       }
+      const isBackgroundAppend = request?.data?.backgroundAppend === true;
       const isLimited = extractIsRateLimited(payload);
       const warningMsg = extractSearchWarning(payload);
       const incoming = normalizeResults(payload);
       const incomingStatuses = extractPlatformStatuses(payload);
+      if (isBackgroundAppend) {
+        const incomingPagination = extractSearchPagination(payload);
+        setResults((current) => appendUniqueResults(current, incoming));
+        setPagination((current) => ({
+          totalWorks: incomingPagination.totalWorks || current.totalWorks,
+          totalPages: Math.max(current.totalPages, incomingPagination.totalPages),
+          page: 1,
+          loadedThroughPage: Math.max(current.loadedThroughPage, incomingPagination.loadedThroughPage),
+          nextPage: incomingPagination.nextPage,
+          hasMore: incomingPagination.hasMore,
+        }));
+        window.setTimeout(() => setBackgroundPagePending(false), 0);
+        return;
+      }
+      setTrpcSearchPending(false);
       const retryingPlatform = retryingPlatformRef.current;
       setPlatformStatuses((current) => {
         if (!retryingPlatform) return completePlatformStatuses(incomingStatuses, selectedPlatforms, activeQuery || keyword.trim());
@@ -396,6 +416,12 @@ export default function Home() {
   const handleSearchError = (error: { message?: string }, request?: { data?: Record<string, unknown> }) => {
       const requestId = Number(request?.data?.clientRequestId);
       if (Number.isFinite(requestId) && requestId > 0 && !searchRequestGateRef.current.isCurrent(requestId)) return;
+      if (request?.data?.backgroundAppend === true) {
+        window.setTimeout(() => setBackgroundPagePending(false), 0);
+        showInfoToast("更多結果暫時無法載入；目前結果會保留。");
+        return;
+      }
+      setTrpcSearchPending(false);
       const retryingPlatform = retryingPlatformRef.current;
       setHasSearched(true);
       if (retryingPlatform) {
@@ -427,7 +453,7 @@ export default function Home() {
 
   const desktopRuntime = isTauriDesktopRuntime();
   const webPwaApi = usesWebPwaApi();
-  const isSearchPending = searchMutation.isPending || desktopSearchPending || webPwaSearchPending;
+  const isSearchPending = trpcSearchPending || desktopSearchPending || webPwaSearchPending;
 
   const refreshReaderCacheStats = useCallback(() => setReaderCacheStats(getReaderCacheStats()), []);
   const clearAllReaderCache = useCallback(() => {
@@ -460,11 +486,14 @@ export default function Home() {
   }, [desktopRuntime]);
 
   const requestSearch = (request: { path: string; method: "POST"; data: Record<string, unknown> }, requestId: number, cacheKey: string | null) => {
+    const isBackgroundAppend = request.data.backgroundAppend === true;
     if (!desktopRuntime && webPwaApi) {
-      activeWebPwaSearchAbortRef.current?.abort();
+      if (!isBackgroundAppend) activeWebPwaSearchAbortRef.current?.abort();
       const controller = new AbortController();
-      activeWebPwaSearchAbortRef.current = controller;
-      setWebPwaSearchPending(true);
+      if (!isBackgroundAppend) {
+        activeWebPwaSearchAbortRef.current = controller;
+        setWebPwaSearchPending(true);
+      }
       void (async () => {
         try {
           const payload = await postWebPwaSearch(request.data, controller.signal);
@@ -475,7 +504,7 @@ export default function Home() {
           if (!searchRequestGateRef.current.isCurrent(requestId) || (error instanceof DOMException && error.name === "AbortError")) return;
           handleSearchError(error instanceof Error ? error : new Error("網頁搜尋服務暫時無法連線"), request);
         } finally {
-          if (searchRequestGateRef.current.isCurrent(requestId)) {
+          if (!isBackgroundAppend && searchRequestGateRef.current.isCurrent(requestId)) {
             setWebPwaSearchPending(false);
             activeWebPwaSearchAbortRef.current = null;
           }
@@ -484,30 +513,33 @@ export default function Home() {
       return;
     }
     if (!desktopRuntime) {
+      if (!isBackgroundAppend) setTrpcSearchPending(true);
       searchMutation.mutate(request as any);
       return;
     }
 
-    activeDesktopSearchAbortRef.current?.abort();
+    if (!isBackgroundAppend) activeDesktopSearchAbortRef.current?.abort();
     const controller = new AbortController();
-    activeDesktopSearchAbortRef.current = controller;
-    setDesktopSearchPending(true);
-    setSidecarState("starting");
+    if (!isBackgroundAppend) {
+      activeDesktopSearchAbortRef.current = controller;
+      setDesktopSearchPending(true);
+      setSidecarState("starting");
+    }
     void (async () => {
       try {
         await waitForSidecarReady({ signal: controller.signal });
         if (!searchRequestGateRef.current.isCurrent(requestId)) return;
-        setSidecarState("ready");
+        if (!isBackgroundAppend) setSidecarState("ready");
         const payload = await postSidecarSearch(request.data, undefined, controller.signal);
         if (!searchRequestGateRef.current.isCurrent(requestId)) return;
         if (cacheKey) writeSearchRequestCache(cacheKey, payload);
         handleSearchSuccess(payload);
       } catch (error) {
         if (!searchRequestGateRef.current.isCurrent(requestId) || (error instanceof DOMException && error.name === "AbortError")) return;
-        setSidecarState("error");
+        if (!isBackgroundAppend) setSidecarState("error");
         handleSearchError(error instanceof Error ? error : new Error("搜尋服務暫時無法連線"));
       } finally {
-        if (searchRequestGateRef.current.isCurrent(requestId)) {
+        if (!isBackgroundAppend && searchRequestGateRef.current.isCurrent(requestId)) {
           setDesktopSearchPending(false);
           activeDesktopSearchAbortRef.current = null;
         }
@@ -553,9 +585,8 @@ export default function Home() {
     () => displayedResults.slice((localResultPage - 1) * resultsPerPage, localResultPage * resultsPerPage),
     [displayedResults, localResultPage, resultsPerPage],
   );
-  const usesSourcePagination = pagination.totalPages > 1;
-  const unifiedCurrentPage = usesSourcePagination ? pagination.page : localResultPage;
-  const unifiedPageCount = usesSourcePagination ? pagination.totalPages : localResultPageCount;
+  const unifiedCurrentPage = localResultPage;
+  const unifiedPageCount = localResultPageCount;
   const usesDefaultPlatformSelection = selectedPlatforms.length === DEFAULT_SELECTED_PLATFORM_IDS.length && DEFAULT_SELECTED_PLATFORM_IDS.every((platform) => selectedPlatforms.includes(platform));
   const activeFilterCount = [
     selectedLanguage !== "all",
@@ -666,7 +697,7 @@ export default function Home() {
 
   useEffect(() => {
     setLocalResultPage(1);
-  }, [activeQuery, activePlatformFilter, selectedLanguage, wordCountFilter, completionFilter, sortMode, ratingFilter, contentSafetySettings.blacklistDisplayMode, hideBookmarkedResults, bookmarks, resultsPerPage, pagination.page]);
+  }, [activeQuery, activePlatformFilter, selectedLanguage, wordCountFilter, completionFilter, sortMode, ratingFilter, contentSafetySettings.blacklistDisplayMode, hideBookmarkedResults, bookmarks, resultsPerPage]);
 
   useEffect(() => {
     window.localStorage.setItem("fanfic-atlas-result-view", resultViewMode);
@@ -783,7 +814,10 @@ export default function Home() {
     if (desktopRuntime) return;
     const onPwaUpdateReady = (event: Event) => {
       const registration = (event as CustomEvent<PwaUpdateRegistration>).detail;
-      if (registration?.waiting) setPwaUpdateRegistration(registration);
+      if (registration?.waiting) {
+        setPwaUpdateRegistration(registration);
+        setPwaUpdatePromptOpen(true);
+      }
     };
     window.addEventListener(PWA_UPDATE_READY_EVENT, onPwaUpdateReady);
     return () => window.removeEventListener(PWA_UPDATE_READY_EVENT, onPwaUpdateReady);
@@ -796,6 +830,37 @@ export default function Home() {
       setPwaUpdateApplying(false);
       setPwaUpdateRegistration(null);
       toast.error("更新已不再可用", { description: "請重新載入頁面後再檢查。" });
+    }
+  };
+
+  const checkForPwaUpdate = async () => {
+    if (desktopRuntime) {
+      await checkForAppUpdate("manual");
+      return;
+    }
+    if (!("serviceWorker" in navigator)) {
+      toast.error("此瀏覽器不支援背景更新", { description: "請改用支援 Service Worker 的瀏覽器後再試。" });
+      return;
+    }
+    setPwaUpdateCheckPending(true);
+    try {
+      const registration = pwaUpdateRegistration || await navigator.serviceWorker.getRegistration();
+      if (!registration) {
+        showInfoToast("更新服務尚未就緒，請重新載入頁面後再試。");
+        return;
+      }
+      await registration.update();
+      if (registration.waiting) {
+        setPwaUpdateRegistration(registration);
+        setPwaUpdatePromptOpen(true);
+        return;
+      }
+      toast.success("目前已是最新版本", { description: `Fanfic Atlas v${desktopVersion}` });
+    } catch (error) {
+      console.error("[PWA] Update check failed:", error);
+      toast.error("暫時無法檢查更新", { description: "請確認網路連線後再試。" });
+    } finally {
+      setPwaUpdateCheckPending(false);
     }
   };
 
@@ -830,6 +895,7 @@ export default function Home() {
     const requestId = searchRequestGateRef.current.begin();
     personalDataRevisionRef.current += 1;
     retryingPlatformRef.current = retryPlatform;
+    if (!retryPlatform) setBackgroundPagePending(false);
     setActiveQuery(trimmedKeyword);
     const nextHistory = recordSearch(searchHistory, trimmedKeyword);
     setSearchHistory(nextHistory);
@@ -878,46 +944,31 @@ export default function Home() {
     runSearch(false);
   };
 
-  const goToSourcePage = (page: number) => {
-    if (!activeQuery || page < 1 || page > pagination.totalPages || page === pagination.page || isSearchPending) return;
+  const appendSourcePage = (page: number) => {
+    if (!activeQuery || page < 2 || !pagination.hasMore || backgroundPagePending) return;
     const requestId = searchRequestGateRef.current.begin();
-    searchStartedAt.current = performance.now();
-    setElapsedMs(0);
-    setCompletedElapsedMs(null);
-    setSearchWarning(null);
-    const requestData = { keyword: activeQuery, mode: searchMode, platforms: selectedPlatforms, page, forceRefresh: false, customCpMappings };
+    setBackgroundPagePending(true);
+    const requestData = { keyword: activeQuery, mode: searchMode, platforms: selectedPlatforms, page, forceRefresh: false, customCpMappings, backgroundAppend: true };
     const cacheKey = createSearchCacheKey(requestData);
     const cachedPayload = readSearchRequestCache<unknown>(cacheKey);
     if (cachedPayload) {
-      handleSearchSuccess(cachedPayload);
-      showInfoToast("已載入此頁的本機搜尋快取。");
+      handleSearchSuccess(cachedPayload, { data: { ...requestData, clientRequestId: requestId } });
       return;
     }
     requestSearch({ path: "/search", method: "POST", data: { ...requestData, clientRequestId: requestId } }, requestId, desktopRuntime ? cacheKey : null);
   };
 
   const goToUnifiedPage = (page: number) => {
-    if (usesSourcePagination) {
-      goToSourcePage(page);
-      return;
-    }
+    if (page < 1 || page > localResultPageCount || page === localResultPage) return;
     setLocalResultPage(page);
   };
 
   const goToPreviousUnifiedPage = () => {
-    if (localResultPage > 1) {
-      setLocalResultPage((page) => page - 1);
-      return;
-    }
-    if (usesSourcePagination) goToSourcePage(pagination.page - 1);
+    if (localResultPage > 1) setLocalResultPage((page) => page - 1);
   };
 
   const goToNextUnifiedPage = () => {
-    if (localResultPage < localResultPageCount) {
-      setLocalResultPage((page) => page + 1);
-      return;
-    }
-    if (usesSourcePagination) goToSourcePage(pagination.page + 1);
+    if (localResultPage < localResultPageCount) setLocalResultPage((page) => page + 1);
   };
 
   const jumpToUnifiedPage = () => {
@@ -930,6 +981,11 @@ export default function Home() {
     setJumpPageInput(String(targetPage));
     goToUnifiedPage(targetPage);
   };
+
+  useEffect(() => {
+    if (!hasSearched || !activeQuery || isSearchPending || backgroundPagePending || !pagination.hasMore || !pagination.nextPage) return;
+    if (localResultPage >= localResultPageCount) appendSourcePage(pagination.nextPage);
+  }, [hasSearched, activeQuery, isSearchPending, backgroundPagePending, pagination.hasMore, pagination.nextPage, localResultPage, localResultPageCount]);
 
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
@@ -1174,7 +1230,6 @@ export default function Home() {
           <div className="flex items-center gap-2 text-xs font-medium text-[color:var(--atlas-muted)]">
             <PwaInstallButton />
             <Button type="button" variant="ghost" aria-label="開啟偏好與快取設定" onClick={() => { refreshReaderCacheStats(); setPreferencesOpen(true); }} className="h-9 rounded-xl border-0 bg-[color:var(--atlas-elevated)] px-3 text-xs font-semibold text-[color:var(--atlas-ink)] hover:bg-[color:var(--atlas-indigo-soft)]"><Settings2 className="mr-1.5 h-3.5 w-3.5" />設定</Button>
-            {pwaUpdateRegistration && <Button type="button" onClick={applyAvailablePwaUpdate} disabled={pwaUpdateApplying} aria-label="立即套用最新 PWA 版本" className="h-9 rounded-xl bg-[color:var(--atlas-indigo)] px-3 text-xs font-semibold text-white shadow-[0_8px_18px_rgba(79,70,229,0.24)] hover:bg-[#4338ca]"><RotateCw className={`mr-1.5 h-3.5 w-3.5 ${pwaUpdateApplying ? "animate-spin" : ""}`} />{pwaUpdateApplying ? "套用中" : "更新"}</Button>}
           </div>
         </div>
       </header>
@@ -1271,7 +1326,7 @@ export default function Home() {
                     const isRetryingThisPlatform = isSearchPending && retryingPlatformId === status.platformId;
                     const currentQuery = activeQuery || keyword;
                     const loadedWorks = sourceLoadedResultCounts.get(status.platformId) || 0;
-                    const loadProgress = formatSourceLoadProgress(loadedWorks, status.itemCount, pagination.page, pagination.totalPages);
+                    const loadProgress = formatSourceLoadProgress(loadedWorks, status.itemCount, pagination.loadedThroughPage || pagination.page, pagination.totalPages);
                     const officialSearch = status.platformId === "ao3"
                       ? { href: `https://archiveofourown.org/works/search?commit=Search&work_search%5Bquery%5D=${encodeURIComponent(currentQuery)}`, label: "前往 AO3 搜尋本詞" }
                       : status.platformId === "penana"
@@ -1458,7 +1513,7 @@ export default function Home() {
                   </select>
                 </label>
               </div>
-              {pagination.totalPages > 1 && <div className="rounded-xl border border-[color:var(--atlas-indigo)]/15 bg-[color:var(--atlas-indigo-soft)]/40 px-4 py-3 text-sm text-[color:var(--atlas-muted)]"><strong className="text-[color:var(--atlas-ink)]">公開索引分頁：</strong>目前顯示第 {pagination.page} 頁已取得的 {results.length} 篇作品；各來源標示的「共筆數」是官方索引總量，並非一次全部下載。可使用下方頁碼或載入下一頁繼續查看。</div>}
+              {pagination.totalPages > 1 && <div className="rounded-xl border border-[color:var(--atlas-indigo)]/15 bg-[color:var(--atlas-indigo-soft)]/40 px-4 py-3 text-sm text-[color:var(--atlas-muted)]"><strong className="text-[color:var(--atlas-ink)]">流暢分頁：</strong>頁碼只在目前已整理的結果中即時切換；需要更多作品時，系統會在背景追加，不會清空畫面或重置閱讀位置。{backgroundPagePending && <span className="ml-2 inline-flex items-center gap-1 font-semibold text-[color:var(--atlas-indigo)]"><Loader2 className="h-3.5 w-3.5 animate-spin" />正在靜默追加更多結果</span>}</div>}
               <div id="search-results" className={resultViewMode === "cards" ? "grid auto-rows-fr grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3" : "space-y-3"}>
                 {visibleResults.map((result, index) => {
                   const meta = platformMeta(result.platform);
@@ -1517,8 +1572,7 @@ export default function Home() {
                   );
                 })}
               </div>
-              {pagination.hasMore && pagination.nextPage && <div className="flex justify-center"><Button type="button" disabled={isSearchPending} onClick={() => goToSourcePage(pagination.nextPage!)} className="rounded-full bg-[color:var(--atlas-indigo)] px-5 text-sm font-semibold text-white hover:bg-[#4338ca]"><ChevronRight className="mr-1.5 h-4 w-4" />載入下一頁（第 {pagination.nextPage} 頁）</Button></div>}
-              {(localResultPageCount > 1 || pagination.totalPages > 1) && <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto rounded-2xl border border-[color:var(--atlas-line)] bg-white/65 p-2 shadow-[0_8px_20px_rgba(36,33,52,0.035)]" aria-label="搜尋結果分頁"><div className="hidden min-w-0 flex-1 whitespace-nowrap px-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300 lg:block">顯示 {Math.min((localResultPage - 1) * resultsPerPage + 1, displayedResults.length)}–{Math.min(localResultPage * resultsPerPage, displayedResults.length)} / {displayedResults.length} 筆 <span className="text-xs text-slate-500 dark:text-slate-400">（第 {unifiedCurrentPage}/{unifiedPageCount} 頁{usesSourcePagination && localResultPageCount > 1 ? ` · 本頁區段 ${localResultPage}/${localResultPageCount}` : ""}）</span></div><div className="flex shrink-0 items-center gap-1"><Button type="button" variant="outline" size="icon" aria-label="上一頁" disabled={(localResultPage === 1 && (!usesSourcePagination || pagination.page === 1)) || isSearchPending} onClick={goToPreviousUnifiedPage} className="h-9 w-9 rounded-lg border-[color:var(--atlas-line)] bg-white/85"><ChevronLeft className="h-4 w-4" /></Button><span className="inline-flex h-9 items-center rounded-lg bg-[color:var(--atlas-elevated)] px-2 text-sm font-semibold text-slate-700 sm:hidden">{unifiedCurrentPage}/{unifiedPageCount}</span><div className="hidden items-center gap-1 sm:flex">{resultPageWindow(unifiedCurrentPage, unifiedPageCount).map((page, index, pages) => <React.Fragment key={page}>{index > 0 && page - pages[index - 1] > 1 && <span className="px-1 text-xs text-slate-500">…</span>}<Button type="button" variant={page === unifiedCurrentPage ? "default" : "outline"} size="icon" aria-current={page === unifiedCurrentPage ? "page" : undefined} disabled={isSearchPending} onClick={() => goToUnifiedPage(page)} className={`h-9 w-9 rounded-lg ${page === unifiedCurrentPage ? "bg-[color:var(--atlas-indigo)] text-white hover:bg-[#4338ca]" : "border-[color:var(--atlas-line)] bg-white/85"}`}>{page}</Button></React.Fragment>)}</div><Button type="button" variant="outline" size="icon" aria-label="下一頁" disabled={(localResultPage === localResultPageCount && (!usesSourcePagination || pagination.page === pagination.totalPages)) || isSearchPending} onClick={goToNextUnifiedPage} className="h-9 w-9 rounded-lg border-[color:var(--atlas-line)] bg-white/85"><ChevronRight className="h-4 w-4" /></Button></div><form onSubmit={(event) => { event.preventDefault(); jumpToUnifiedPage(); }} className="flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-slate-700 dark:text-slate-200"><span className="hidden sm:inline">前往</span><Input aria-label="前往指定頁數" type="number" inputMode="numeric" min={1} max={unifiedPageCount} value={jumpPageInput} onChange={(event) => setJumpPageInput(event.target.value)} className="h-9 w-12 rounded-lg border-[color:var(--atlas-line)] bg-white/85 px-1 text-center text-sm" /><span className="hidden sm:inline">頁</span><Button type="submit" variant="outline" disabled={isSearchPending} className="h-9 rounded-lg border-[color:var(--atlas-line)] bg-white/85 px-2 text-sm font-semibold"><span className="hidden sm:inline">前往</span><span className="sm:hidden">Go</span></Button></form></div>}
+              {localResultPageCount > 1 && <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto rounded-2xl border border-[color:var(--atlas-line)] bg-white/65 p-2 shadow-[0_8px_20px_rgba(36,33,52,0.035)]" aria-label="搜尋結果分頁"><div className="hidden min-w-0 flex-1 whitespace-nowrap px-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300 lg:block">顯示 {Math.min((localResultPage - 1) * resultsPerPage + 1, displayedResults.length)}–{Math.min(localResultPage * resultsPerPage, displayedResults.length)} / {displayedResults.length} 筆 <span className="text-xs text-slate-500 dark:text-slate-400">（第 {unifiedCurrentPage}/{unifiedPageCount} 頁）</span></div><div className="flex shrink-0 items-center gap-1"><Button type="button" variant="outline" size="icon" aria-label="上一頁" disabled={localResultPage === 1} onClick={goToPreviousUnifiedPage} className="h-9 w-9 rounded-lg border-[color:var(--atlas-line)] bg-white/85"><ChevronLeft className="h-4 w-4" /></Button><span className="inline-flex h-9 items-center rounded-lg bg-[color:var(--atlas-elevated)] px-2 text-sm font-semibold text-slate-700 sm:hidden">{unifiedCurrentPage}/{unifiedPageCount}</span><div className="hidden items-center gap-1 sm:flex">{resultPageWindow(unifiedCurrentPage, unifiedPageCount).map((page, index, pages) => <React.Fragment key={page}>{index > 0 && page - pages[index - 1] > 1 && <span className="px-1 text-xs text-slate-500">…</span>}<Button type="button" variant={page === unifiedCurrentPage ? "default" : "outline"} size="icon" aria-current={page === unifiedCurrentPage ? "page" : undefined} onClick={() => goToUnifiedPage(page)} className={`h-9 w-9 rounded-lg ${page === unifiedCurrentPage ? "bg-[color:var(--atlas-indigo)] text-white hover:bg-[#4338ca]" : "border-[color:var(--atlas-line)] bg-white/85"}`}>{page}</Button></React.Fragment>)}</div><Button type="button" variant="outline" size="icon" aria-label="下一頁" disabled={localResultPage === localResultPageCount} onClick={goToNextUnifiedPage} className="h-9 w-9 rounded-lg border-[color:var(--atlas-line)] bg-white/85"><ChevronRight className="h-4 w-4" /></Button></div><form onSubmit={(event) => { event.preventDefault(); jumpToUnifiedPage(); }} className="flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-slate-700 dark:text-slate-200"><span className="hidden sm:inline">前往</span><Input aria-label="前往指定頁數" type="number" inputMode="numeric" min={1} max={unifiedPageCount} value={jumpPageInput} onChange={(event) => setJumpPageInput(event.target.value)} className="h-9 w-12 rounded-lg border-[color:var(--atlas-line)] bg-white/85 px-1 text-center text-sm" /><span className="hidden sm:inline">頁</span><Button type="submit" variant="outline" className="h-9 rounded-lg border-[color:var(--atlas-line)] bg-white/85 px-2 text-sm font-semibold"><span className="hidden sm:inline">前往</span><span className="sm:hidden">Go</span></Button></form></div>}
             </div>
           )}
           </>}
@@ -1538,7 +1592,13 @@ export default function Home() {
           </AlertDialogContent>
         </AlertDialog>
         <AgeConfirmationDialog open={contentSafetySettings.ageConfirmation === "unknown"} onConfirm={confirmAge} />
-        <ReadingPreferencesDialog open={preferencesOpen} onOpenChange={(open) => { setPreferencesOpen(open); if (open) refreshReaderCacheStats(); }} settings={contentSafetySettings} cacheStats={readerCacheStats} onConfirmAge={confirmAge} onClearCache={clearAllReaderCache} />
+        <ReadingPreferencesDialog open={preferencesOpen} onOpenChange={(open) => { setPreferencesOpen(open); if (open) refreshReaderCacheStats(); }} settings={contentSafetySettings} cacheStats={readerCacheStats} onConfirmAge={confirmAge} onClearCache={clearAllReaderCache} appVersion={`v${desktopVersion}`} updateAvailable={desktopRuntime ? Boolean(availableUpdate) : Boolean(pwaUpdateRegistration)} updateCheckPending={desktopRuntime ? updateCheckPending : pwaUpdateCheckPending} updateApplying={desktopRuntime ? updateInstallPending : pwaUpdateApplying} onCheckForUpdates={() => void checkForPwaUpdate()} onApplyUpdate={desktopRuntime ? () => setUpdateDialogOpen(true) : applyAvailablePwaUpdate} />
+        <Dialog open={pwaUpdatePromptOpen} onOpenChange={setPwaUpdatePromptOpen}>
+          <DialogContent aria-label="發現新版本" className="w-[calc(100vw-2rem)] max-w-md rounded-3xl border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)] p-0 shadow-[0_26px_80px_rgba(24,29,55,0.24)]">
+            <DialogHeader className="border-b border-[color:var(--atlas-line)] px-6 pb-5 pt-6 sm:px-8"><div className="mb-3 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]"><Sparkles className="h-5 w-5" /></div><DialogTitle className="text-2xl font-extrabold tracking-[-0.035em]">發現新版本</DialogTitle><DialogDescription className="mt-2 text-sm leading-6 text-[color:var(--atlas-muted)]">發現系統有新版本更新，是否立即套用？</DialogDescription></DialogHeader>
+            <DialogFooter className="gap-2 border-t border-[color:var(--atlas-line)] px-6 py-5 sm:px-8"><Button type="button" variant="outline" onClick={() => { setPwaUpdatePromptOpen(false); showInfoToast("更新已延後；你隨時可以到「設定」中進行手動更新。"); }} className="rounded-xl border-[color:var(--atlas-line)] bg-white/70">稍後再說</Button><Button type="button" onClick={applyAvailablePwaUpdate} disabled={pwaUpdateApplying} className="min-w-32 rounded-xl bg-[color:var(--atlas-indigo)] text-white shadow-[0_10px_22px_rgba(79,70,229,0.24)] hover:bg-[#4338ca]"><RotateCw className={`mr-2 h-4 w-4 ${pwaUpdateApplying ? "animate-spin" : ""}`} />{pwaUpdateApplying ? "正在套用" : "立即更新"}</Button></DialogFooter>
+          </DialogContent>
+        </Dialog>
         <Dialog open={updateDialogOpen} onOpenChange={(open) => { if (!updateInstallPending) setUpdateDialogOpen(open); }}>
           <DialogContent showCloseButton={!updateInstallPending} overlayClassName="bg-[color:var(--atlas-ink)]/32 backdrop-blur-md" className="max-w-lg rounded-3xl border-[color:var(--atlas-line)] bg-[color:var(--atlas-surface)] p-0 shadow-[0_28px_80px_rgba(34,31,57,0.26)]">
             <DialogHeader className="border-b border-[color:var(--atlas-line)] px-6 pb-5 pt-6 sm:px-8">

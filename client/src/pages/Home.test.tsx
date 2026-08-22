@@ -58,8 +58,8 @@ vi.mock("@/lib/trpc", async () => {
                       totalWorks: 60,
                       totalPages: 3,
                       page: 1,
-                      loadedThroughPage: 2,
-                      nextPage: 3,
+                      loadedThroughPage: 1,
+                      nextPage: 2,
                       hasMore: true,
                       warning: mockState.responseWarning,
                       platformStatuses: mockState.responsePlatformStatuses,
@@ -110,6 +110,20 @@ describe("Home pagination interactions", () => {
     expect(screen.queryByText("私人藏書")).toBeNull();
     expect(screen.queryByText("已連線")).toBeNull();
     expect(screen.getByLabelText("開啟偏好與快取設定")).toBeTruthy();
+    expect(screen.queryByLabelText("立即套用最新 PWA 版本")).toBeNull();
+  });
+
+  it("announces a waiting PWA update in a prompt while keeping version actions inside settings", async () => {
+    render(<Home />);
+    window.dispatchEvent(new CustomEvent("fanfic-atlas:pwa-update-ready", { detail: { waiting: { postMessage: vi.fn() }, update: vi.fn() } }));
+
+    expect(await screen.findByRole("dialog", { name: "發現新版本" })).toBeTruthy();
+    expect(screen.getByText("發現系統有新版本更新，是否立即套用？")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "稍後再說" }));
+    fireEvent.click(screen.getByLabelText("開啟偏好與快取設定"));
+    expect(screen.getByText("系統版本與更新")).toBeTruthy();
+    expect(screen.getByText("有可用更新")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "立即更新至最新版" })).toBeTruthy();
   });
 
   it("asks for age confirmation on first launch and forces the safe rating mode for minors", async () => {
@@ -180,6 +194,10 @@ describe("Home pagination interactions", () => {
   });
 
   it("reuses an identical successful search from the fifteen-minute browser cache without another mutation", async () => {
+    mockState.primaryPayload = {
+      items: [{ title: "PAGE ONE", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/cache-1", tags: "", summary: "", scraped_at: "2026-01-01T00:00:00Z" }],
+      totalWorks: 1, totalPages: 1, page: 1, loadedThroughPage: 1, nextPage: null, hasMore: false,
+    };
     render(<Home />);
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "快取測試" } });
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
@@ -203,7 +221,7 @@ describe("Home pagination interactions", () => {
     expect(screen.getByRole("button", { name: "RUN SEARCH" })).toBeTruthy();
   });
 
-  it("shows totalWorks and switches source pages without appending prior page cards", async () => {
+  it("silently appends source pages while retaining the current result surface", async () => {
     render(<Home />);
 
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "月光" } });
@@ -214,14 +232,10 @@ describe("Home pagination interactions", () => {
     const relationshipTag = screen.getByText("♡ 富岡義勇/胡蝶忍");
     expect(relationshipTag.className).toContain("bg-[#ffe8f0]");
     expect(screen.getByText("◇ 富岡義勇")).toBeTruthy();
-    expect(screen.getByText(/第 1\/3 頁/)).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
-
-    await waitFor(() => expect(screen.getByText("PAGE TWO")).toBeTruthy());
-    expect(screen.queryByText("PAGE ONE")).toBeNull();
-    expect(screen.getByText(/第 2\/3 頁/)).toBeTruthy();
-    expect(mockState.lastVariables).toMatchObject({ data: { page: 2 } });
+    expect(screen.queryByText(/載入下一頁/)).toBeNull();
+    expect(screen.getByText("PAGE ONE")).toBeTruthy();
+    await waitFor(() => expect(mockState.lastVariables).toMatchObject({ data: { page: 2 } }));
+    expect(screen.getByText("PAGE ONE")).toBeTruthy();
   });
 
   it("wraps extremely long relationship, character, and general tags without overflowing the result card", async () => {
@@ -452,7 +466,7 @@ describe("Home pagination interactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "重試 在水裡寫字" }));
     await waitFor(() => expect(screen.getByText("WATERWRITER UPDATE")).toBeTruthy());
     expect(screen.getByText("PAGE ONE")).toBeTruthy();
-    expect(screen.getByText("已連線 · 已載入第 1 頁 1 篇／共 25 筆")).toBeTruthy();
+    expect(screen.getByText(/已連線 · 已載入第 \d 頁 1 篇／共 25 筆/)).toBeTruthy();
   });
 });
 

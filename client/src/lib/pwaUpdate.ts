@@ -1,6 +1,6 @@
 export const PWA_UPDATE_READY_EVENT = "fanfic-atlas:pwa-update-ready";
 
-export type PwaUpdateRegistration = Pick<ServiceWorkerRegistration, "waiting">;
+export type PwaUpdateRegistration = Pick<ServiceWorkerRegistration, "waiting" | "update">;
 
 function announceUpdate(registration: PwaUpdateRegistration) {
   window.dispatchEvent(new CustomEvent<PwaUpdateRegistration>(PWA_UPDATE_READY_EVENT, { detail: registration }));
