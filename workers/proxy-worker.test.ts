@@ -10,15 +10,34 @@ describe("Cloudflare PWA API proxy", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it("answers CORS preflight without contacting the upstream", async () => {
+  it("answers every CORS preflight with wildcard headers before contacting the upstream", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const response = await worker.fetch(new Request("https://proxy.example/api/search", { method: "OPTIONS" }), env, context());
+    const response = await worker.fetch(new Request("https://proxy.example/api/search", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://fanfic-atlas.pages.dev",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type, x-fanfic-client",
+      },
+    }), env, context());
 
     expect(response.status).toBe(204);
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
     expect(response.headers.get("Access-Control-Allow-Methods")).toContain("POST");
+    expect(response.headers.get("Access-Control-Allow-Headers")).toBe("*");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("handles an OPTIONS preflight even before an unsupported path is rejected", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await worker.fetch(new Request("https://proxy.example/api/unknown", { method: "OPTIONS" }), env, context());
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

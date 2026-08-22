@@ -23,7 +23,9 @@ describe("PWA static assets", () => {
     expect(worker).toContain('url.pathname === "/search"');
     expect(worker).toContain('url.pathname === "/reader"');
     expect(worker).toContain('"/manifest.webmanifest"');
-    expect(worker).toContain('const CACHE_NAME = "fanfic-atlas-shell-v4"');
+    expect(worker).toContain('const CACHE_NAME = "fanfic-atlas-shell-v5"');
+    expect(worker.match(/^const CACHE_NAME\s*=/gm)).toHaveLength(1);
+    expect(() => new Function(worker)).not.toThrow();
     expect(worker).toContain('"/manus-storage/fanfic-atlas-pwa-192_607d6e55.png"');
     expect(worker).toContain('"/manus-storage/fanfic-atlas-pwa-maskable-512_9f1f7cb4.png"');
   });
@@ -39,6 +41,7 @@ describe("PWA static assets", () => {
     expect(wrangler).toContain("compatibility_date");
     expect(wrangler).toContain("API_ORIGIN");
     expect(worker).toContain('"Access-Control-Allow-Origin": "*"');
+    expect(worker).toContain('"Access-Control-Allow-Headers": "*"');
     expect(worker).toContain("const SEARCH_CACHE_SECONDS = 600");
     expect(worker).toContain('url.pathname === "/api/search"');
     expect(worker).toContain('headers.set("Cache-Control", "no-store")');

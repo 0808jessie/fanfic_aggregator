@@ -1,5 +1,4 @@
-const CACHE_NAME = "fanfic-atlas-shell-v1";
-const CACHE_NAME = "fanfic-atlas-shell-v4";
+const CACHE_NAME = "fanfic-atlas-shell-v5";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",

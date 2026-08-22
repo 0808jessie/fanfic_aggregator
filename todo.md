@@ -679,3 +679,6 @@
 - [x] 稽核 PWA API origin fallback、實際搜尋呼叫鏈與 Vite production mode 的 VITE_API_BASE_URL 注入行為
 - [x] 移除 Cloudflare Pages production 的相對 `/api` fallback，改為缺少 Worker origin 時顯示明確設定錯誤
 - [x] 補足環境注入回歸測試、驗證 Pages production build 與 GitHub CI，將修正推送至 main
+- [x] 稽核 Cloudflare Worker OPTIONS 預檢、CORS 回應標頭與 PWA Service Worker 的 CACHE_NAME 宣告
+- [x] 修正 Worker 的完整 CORS 預檢契約及 Service Worker 重複常數，保留搜尋快取與 API 排除規則
+- [ ] 補足 CORS／Service Worker 語法回歸測試、完成建置與 GitHub CI，將修正推送至 main

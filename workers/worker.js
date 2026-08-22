@@ -12,9 +12,19 @@ function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "*",
     "Access-Control-Max-Age": "86400",
   };
+}
+
+function preflightResponse() {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      ...corsHeaders(),
+      "Vary": "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+    },
+  });
 }
 
 function jsonResponse(body, status = 200, headers = {}) {
@@ -118,7 +128,8 @@ async function proxyRequest(request, env, ctx) {
 
 export default {
   fetch(request, env, ctx) {
-    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders() });
+    // Handle every browser CORS preflight before route validation or upstream I/O.
+    if (request.method === "OPTIONS") return preflightResponse();
     return proxyRequest(request, env, ctx);
   },
 };
