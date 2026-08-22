@@ -655,9 +655,9 @@
 - [x] 配置 Cloudflare Pages SPA 回退、`VITE_API_BASE_URL` 前端適配與靜態託管建置設定
 - [x] 撰寫 DEPLOYMENT.md，說明 Pages、Worker、受保護 FastAPI origin、iOS／Android 安裝與必要環境變數
 - [x] 執行完整測試與建置、建立 `feat(pwa): complete PWA deployment configuration with Cloudflare worker proxy, manifest, and offline support` 本機 Git Commit；不建立 GitHub Release
-- [ ] 核對本機 main、工作樹與 GitHub origin/main 的差異，完成推送前回歸檢查
-- [ ] 將目前閱讀器、UI、PWA 與 Cloudflare 配置推送至 GitHub main，不建立 Release 或 Tag
-- [ ] 確認 GitHub Actions CI 對最新 main 提交的執行狀態與提交 SHA 一致
-- [ ] 在不覆寫 GitHub main 既有歷史的前提下，安全整合遠端 `72af882` 與本機 checkpoint 歷史後再推送
-- [ ] 從 GitHub main 建立不含歷史 `venv`／Playwright 大型檔案的乾淨同步提交，保留遠端歷史並以正常快轉推送
-- [ ] 新增 GitHub Actions CI，對 main 與 pull request 執行 FastAPI pytest、Vitest、production build 與 cargo check，不建立 Release
+- [x] 核對本機 main、工作樹與 GitHub origin/main 的差異，完成推送前回歸檢查
+- [x] 將目前閱讀器、UI、PWA 與 Cloudflare 配置推送至 GitHub main，不建立 Release 或 Tag
+- [x] 確認 GitHub Actions CI 對最新 main 提交的執行狀態與提交 SHA 一致
+- [x] 在不覆寫 GitHub main 既有歷史的前提下，安全整合遠端 `72af882` 與本機 checkpoint 歷史後再推送
+- [x] 從 GitHub main 建立不含歷史 `venv`／Playwright 大型檔案的乾淨同步提交，保留遠端歷史並以正常快轉推送
+- [x] 新增 GitHub Actions CI，對 main 與 pull request 執行 FastAPI pytest、Vitest、production build 與 cargo check，不建立 Release
