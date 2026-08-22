@@ -1,4 +1,4 @@
-import worker from "./proxy-worker.js";
+import worker from "./worker.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 function context() {
@@ -40,6 +40,51 @@ describe("Cloudflare PWA API proxy", () => {
     expect(response.headers.get("Cache-Control")).toContain("max-age=600");
     expect(fetchMock).toHaveBeenCalledWith("https://reader-api.example.test/api/search", expect.objectContaining({ method: "POST" }));
     expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
+  });
+
+  it("serves a cached equivalent search without calling the FastAPI origin", async () => {
+    const cache = {
+      match: vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [{ title: "快取作品" }] }), { status: 200 })),
+      put: vi.fn(),
+    };
+    vi.stubGlobal("caches", { default: cache });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await worker.fetch(
+      new Request("https://proxy.example/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platforms: ["ao3"], keyword: "義忍" }),
+      }),
+      env,
+      context(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(response.headers.get("Cache-Control")).toContain("max-age=600");
+    expect(cache.match).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps reader responses out of the edge cache while preserving CORS", async () => {
+    const cache = { match: vi.fn(), put: vi.fn() };
+    vi.stubGlobal("caches", { default: cache });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ content: "公開正文" }), { status: 200 })));
+    const ctx = context();
+
+    const response = await worker.fetch(
+      new Request("https://proxy.example/api/reader", { method: "POST", body: JSON.stringify({ url: "https://example.test/story" }) }),
+      env,
+      ctx,
+    );
+
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(cache.match).not.toHaveBeenCalled();
+    expect(cache.put).not.toHaveBeenCalled();
+    expect(ctx.waitUntil).not.toHaveBeenCalled();
   });
 
   it("rejects unsupported paths and methods before they reach the FastAPI origin", async () => {

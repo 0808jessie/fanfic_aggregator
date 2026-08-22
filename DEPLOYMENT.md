@@ -22,16 +22,32 @@ GET  /api/health
 
 請將這個 origin 視為後端服務，而不是小說平台網址。Worker 不應持有或模擬使用者 Cookie，也不應嘗試繞過第三方來源的登入、驗證碼或付費保護。若後端需要額外存取控制，請先在 origin 層加入驗證與 rate limit，再設定 Worker 轉發。
 
-## 2. 部署 Cloudflare Worker
+## 2. 3 分鐘手動發布 Cloudflare Worker
 
-Worker 設定位於專案根目錄的 `wrangler.toml`，主程式為 `workers/proxy-worker.js`。請將 `API_ORIGIN` 改成你的 FastAPI HTTPS origin；本機開發可複製 `workers/.dev.vars.example` 為 `workers/.dev.vars`，該實際檔案已被 Git 忽略。
+可直接貼入 Dashboard 的完整單檔腳本位於 `workers/worker.js`；它與 Wrangler 的 `main` 設定一致。此檔只允許 `/api/search` 與 `/api/reader` 的 POST／OPTIONS 請求，所有回應都附帶 `Access-Control-Allow-Origin: *`。搜尋請求依其 `keyword`、平台與篩選等 JSON payload 產生穩定快取鍵，成功回應在 Cloudflare Edge Cache 保留 10 分鐘；Reader 一律 `no-store`。
+
+```mermaid
+flowchart LR
+  A[公開 HTTPS FastAPI origin] -->|API_ORIGIN| B[Cloudflare Worker]
+  B -->|VITE_API_BASE_URL| C[Cloudflare Pages PWA]
+  B -->|10 分鐘搜尋快取| D[Cloudflare Edge Cache]
+```
+
+請依序完成下列操作：
+
+1. 在 Cloudflare Dashboard 開啟 **Workers & Pages → Create application → Create Worker**。填入名稱，例如 `fanfic-atlas-proxy`，然後按 **Deploy** 建立初始 Worker。
+2. 開啟新 Worker 的 **Edit code**，以 `workers/worker.js` 的**完整內容**取代編輯器內容，按 **Save and deploy**。
+3. 開啟 Worker 的 **Settings → Variables and Secrets → Add**，新增文字變數 `API_ORIGIN`，值填入你的**公開 HTTPS FastAPI origin**，例如 `https://api.example.com`；儲存後再次按 **Deploy**。不可填入 `localhost`、私有 IP、小說平台網址或需要登入的來源。
+4. 回到 Worker 的 Overview 頁面，按 **Visit** 或複製顯示的 `https://fanfic-atlas-proxy.<你的帳號>.workers.dev`。這就是要提供給 Pages 的 Worker URL。
+
+本機開發可複製 `workers/.dev.vars.example` 為 `workers/.dev.vars`，該實際檔案已被 Git 忽略。
 
 ```toml
 [vars]
 API_ORIGIN = "https://api.example.com"
 ```
 
-接著登入並發布 Worker：
+若偏好命令列發布，可使用下列方式登入並發布與 Dashboard 相同的 `workers/worker.js`：
 
 ```bash
 npx wrangler login
@@ -71,7 +87,7 @@ curl -i -X POST "https://你的-worker.workers.dev/api/search" \
 VITE_API_BASE_URL=https://你的-worker.workers.dev
 ```
 
-`VITE_API_BASE_URL` 是前端建置期變數。更新該值後，請重新部署 Pages；未設定時，PWA 會安全地退回同源 `/api`。`client/public/_redirects` 會將瀏覽器的前端路由改寫至 `/index.html`，而 `_routes.json` 保留 `/api/*` 不被 Pages 的靜態／函式路由攔截。Cloudflare Pages 支援將 `_redirects` 放在 framework 的 `public/` 靜態目錄，並在建置後套用規則。[2]
+`VITE_API_BASE_URL` 是前端建置期變數。請在 Pages 專案中開啟 **Settings → Environment variables → Add variable**，名稱輸入 `VITE_API_BASE_URL`，值貼上剛才取得的 Worker URL，並選擇 Production（若需預覽網址也呼叫 Worker，請一併加入 Preview）。儲存後，到 **Deployments** 按 **Retry deployment** 或推送新的 commit 重新建置；只有重新建置後，PWA 才會把 API 請求導向 Worker。未設定時，PWA 會安全地退回同源 `/api`。`client/public/_redirects` 會將瀏覽器的前端路由改寫至 `/index.html`，而 `_routes.json` 保留 `/api/*` 不被 Pages 的靜態／函式路由攔截。Cloudflare Pages 支援將 `_redirects` 放在 framework 的 `public/` 靜態目錄，並在建置後套用規則。[2]
 
 ## 4. 安裝為 PWA
 

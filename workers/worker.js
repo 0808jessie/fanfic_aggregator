@@ -1,3 +1,9 @@
+/**
+ * Fanfic Atlas Cloudflare API proxy.
+ *
+ * Dashboard 部署方式：將本檔完整內容貼到 Cloudflare Worker 編輯器，
+ * 並在 Worker 的 Settings > Variables 設定 HTTPS API_ORIGIN。
+ */
 const ALLOWED_PATHS = new Set(["/api/search", "/api/reader"]);
 const SEARCH_CACHE_SECONDS = 600;
 const UPSTREAM_TIMEOUT_MS = 8_000;
@@ -14,7 +20,12 @@ function corsHeaders() {
 function jsonResponse(body, status = 200, headers = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders(), ...headers },
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      ...corsHeaders(),
+      ...headers,
+    },
   });
 }
 
@@ -27,8 +38,30 @@ function safeOrigin(value) {
   }
 }
 
+function stableValue(value) {
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, child]) => [key, stableValue(child)]),
+    );
+  }
+  return value;
+}
+
+function canonicalSearchBody(bodyText) {
+  try {
+    return JSON.stringify(stableValue(JSON.parse(bodyText)));
+  } catch {
+    // Let FastAPI validate malformed JSON. It must still use a deterministic key.
+    return bodyText;
+  }
+}
+
 async function cacheKeyFor(request, bodyText) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(bodyText));
+  const canonicalBody = canonicalSearchBody(bodyText);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalBody));
   const key = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
   return new Request(`${new URL(request.url).origin}/__fanfic-cache__/search/${key}`, { method: "GET" });
 }
@@ -37,8 +70,11 @@ function responseWithCors(upstream, cacheable = false) {
   const headers = new Headers(upstream.headers);
   for (const [key, value] of Object.entries(corsHeaders())) headers.set(key, value);
   headers.set("Vary", "Origin");
-  if (cacheable) headers.set("Cache-Control", `public, max-age=${SEARCH_CACHE_SECONDS}, stale-while-revalidate=60`);
-  else headers.set("Cache-Control", "no-store");
+  if (cacheable) {
+    headers.set("Cache-Control", `public, max-age=${SEARCH_CACHE_SECONDS}, stale-while-revalidate=60`);
+  } else {
+    headers.set("Cache-Control", "no-store");
+  }
   return new Response(upstream.body, { status: upstream.status, statusText: upstream.statusText, headers });
 }
 

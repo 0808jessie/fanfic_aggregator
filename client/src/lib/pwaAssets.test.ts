@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import fs from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const publicDirectory = path.resolve(process.cwd(), "client/public");
@@ -32,11 +31,16 @@ describe("PWA static assets", () => {
   it("ships Cloudflare Pages API exclusions and a Worker deployment contract", () => {
     const routes = JSON.parse(fs.readFileSync(path.join(publicDirectory, "_routes.json"), "utf8")) as { include: string[]; exclude: string[] };
     const wrangler = fs.readFileSync(path.join(projectDirectory, "wrangler.toml"), "utf8");
+    const worker = fs.readFileSync(path.join(projectDirectory, "workers", "worker.js"), "utf8");
 
     expect(routes.include).toContain("/*");
     expect(routes.exclude).toContain("/api/*");
-    expect(wrangler).toContain('main = "workers/proxy-worker.js"');
+    expect(wrangler).toContain('main = "workers/worker.js"');
     expect(wrangler).toContain("compatibility_date");
     expect(wrangler).toContain("API_ORIGIN");
+    expect(worker).toContain('"Access-Control-Allow-Origin": "*"');
+    expect(worker).toContain("const SEARCH_CACHE_SECONDS = 600");
+    expect(worker).toContain('url.pathname === "/api/search"');
+    expect(worker).toContain('headers.set("Cache-Control", "no-store")');
   });
 });

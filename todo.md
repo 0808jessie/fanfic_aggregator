@@ -665,3 +665,7 @@
 - [x] 固定 Pages 前端建置輸出目錄並修正 SPA `_redirects` 回退規則，避免子路徑與根路徑 404
 - [x] 補足 Pages 輸出契約回歸測試與部署文件，列出 Dashboard 的 Framework preset、Build command、Build output directory
 - [x] 執行本機完整建置、Manus 預覽驗證與 GitHub CI，將 Pages 修正安全快轉推送至 main
+- [x] 稽核 Cloudflare Worker 的搜尋快取鍵、十分鐘 Edge Cache、Reader no-store 與 CORS 回應契約
+- [x] 產出可直接貼入 Cloudflare Dashboard 的單檔 Worker 腳本，保留僅代理公開 FastAPI origin 的安全邊界
+- [x] 擴寫三分鐘 Dashboard 手動發布指南，涵蓋 Worker 建立、API_ORIGIN、Worker URL 與 Pages VITE_API_BASE_URL
+- [ ] 補足 Worker 回歸測試、完成本機建置與 GitHub CI，將部署準備推送至 main
