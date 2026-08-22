@@ -21,6 +21,8 @@
 3. 回到 Cloudflare Worker，在 **Settings → Variables and Secrets** 將 `API_ORIGIN` 設為這個 Render HTTPS 網址的**網域根**，不加 `/api`。例如：`https://fanfic-atlas-fastapi.onrender.com`。重新部署 Worker。
 4. Cloudflare Pages 維持 `VITE_API_BASE_URL=https://你的-worker.workers.dev`，重新部署 Pages。手機 PWA 的搜尋即依序走 Pages → Worker → Render FastAPI。
 
+PWA、Worker 與 Render FastAPI 的方法契約固定為：`/api/search` 與 `/api/reader` 使用 JSON `POST`；瀏覽器的 CORS 預檢使用 `OPTIONS`，由 FastAPI CORS middleware 與 Worker 直接回應。Worker 將保留原始 JSON body，並以 `POST` 轉發到 Render。請勿以瀏覽器網址列直接開啟這兩個端點，因為那會發出 `GET` 並正確得到 HTTP 405。
+
 ```mermaid
 flowchart LR
   P[手機 PWA：Cloudflare Pages] --> W[Cloudflare Worker]

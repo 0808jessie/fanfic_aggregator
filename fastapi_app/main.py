@@ -282,6 +282,7 @@ def list_platforms() -> list[dict[str, str]]:
 
 
 @app.post("/search", response_model=SearchResponse)
+@app.post("/api/search", response_model=SearchResponse, include_in_schema=False)
 def search_fanfics(query: SearchQuery, db: Session = Depends(get_db)) -> SearchResponse:
     keyword = query.keyword.strip()
     mode = query.mode

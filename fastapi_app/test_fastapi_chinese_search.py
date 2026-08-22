@@ -30,16 +30,17 @@ def test_fastapi_status():
 
 
 def test_cloudflare_pages_or_tauri_can_preflight_public_api():
-    response = client.options(
-        "/search",
-        headers={
-            "Origin": "tauri://localhost",
-            "Access-Control-Request-Method": "POST",
-            "Access-Control-Request-Headers": "content-type",
-        },
-    )
-    assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == "*"
+    for path in ("/api/search", "/api/reader"):
+        response = client.options(
+            path,
+            headers={
+                "Origin": "https://fanfic-atlas.pages.dev",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+        assert response.status_code == 200
+        assert response.headers["access-control-allow-origin"] == "*"
 
 
 def test_fastapi_search_chinese_keywords_contract():
@@ -75,6 +76,25 @@ def test_fastapi_search_chinese_keywords_contract():
         assert first["author"] == "AO3 測試作者"
         assert first["url"].startswith("https://archiveofourown.org")
         assert first["rating"] == ("Explicit" if index == 1 else "General Audiences")
+
+
+def test_api_prefixed_search_accepts_the_same_post_contract_as_worker_target():
+    fixture = ScrapedFanfic(
+        id="ao3:api-contract",
+        title="Worker POST 契約作品",
+        author="測試作者",
+        platform="AO3",
+        url="https://archiveofourown.org/works/api-contract",
+        tags="義忍",
+        summary="驗證 Worker 轉發到 /api/search 時不會收到 405。",
+        keyword="義忍",
+    )
+    aggregate = {"items": [fixture], "any_success": True, "total_works": 1, "total_pages": 1, "warnings": []}
+    with patch("main.parallel_search_platforms", return_value=aggregate), patch("main.save_fanfic_to_db"):
+        response = client.post("/api/search", json={"keyword": "義忍", "platforms": ["ao3"], "page": 1, "forceRefresh": True})
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["title"] == "Worker POST 契約作品"
 
 
 def test_invalid_language_filter_degrades_to_all_languages():

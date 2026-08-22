@@ -673,3 +673,6 @@
 - [x] 新增 Render Blueprint，定義 free Python Web Service 的建置、啟動與健康檢查設定
 - [x] 撰寫極簡 Render 點擊部署與 Cloudflare API_ORIGIN／VITE_API_BASE_URL 串接說明
 - [x] 執行獨立後端依賴安裝、健康檢查、完整回歸與 GitHub CI，將 Render 部署準備推送至 main
+- [x] 稽核 PWA、Cloudflare Worker 與 FastAPI 的 search／reader 請求方法、路徑、Body 與 OPTIONS CORS 預檢契約
+- [x] 修正端到端 HTTP 方法處理，消除 Render FastAPI 的 405 並維持安全路徑白名單與快取規則
+- [ ] 補足方法轉發回歸測試、執行本機端到端驗證與 GitHub CI，將 405 修正推送至 main

@@ -71,17 +71,23 @@ describe("Cloudflare PWA API proxy", () => {
   it("keeps reader responses out of the edge cache while preserving CORS", async () => {
     const cache = { match: vi.fn(), put: vi.fn() };
     vi.stubGlobal("caches", { default: cache });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ content: "公開正文" }), { status: 200 })));
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ content: "公開正文" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
     const ctx = context();
+    const payload = JSON.stringify({ url: "https://example.test/story" });
 
     const response = await worker.fetch(
-      new Request("https://proxy.example/api/reader", { method: "POST", body: JSON.stringify({ url: "https://example.test/story" }) }),
+      new Request("https://proxy.example/api/reader", { method: "POST", body: payload }),
       env,
       ctx,
     );
 
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
     expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://reader-api.example.test/api/reader",
+      expect.objectContaining({ method: "POST", body: payload }),
+    );
     expect(cache.match).not.toHaveBeenCalled();
     expect(cache.put).not.toHaveBeenCalled();
     expect(ctx.waitUntil).not.toHaveBeenCalled();
