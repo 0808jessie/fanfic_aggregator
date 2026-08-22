@@ -1,3 +1,1 @@
-# Cloudflare Pages: deliver the React application for client-side routes.
-# API requests must target VITE_API_BASE_URL (the separate Worker origin).
-/* /index.html 200
+/*    /index.html   200

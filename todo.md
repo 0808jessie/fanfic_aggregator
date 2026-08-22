@@ -661,3 +661,7 @@
 - [x] 在不覆寫 GitHub main 既有歷史的前提下，安全整合遠端 `72af882` 與本機 checkpoint 歷史後再推送
 - [x] 從 GitHub main 建立不含歷史 `venv`／Playwright 大型檔案的乾淨同步提交，保留遠端歷史並以正常快轉推送
 - [x] 新增 GitHub Actions CI，對 main 與 pull request 執行 FastAPI pytest、Vitest、production build 與 cargo check，不建立 Release
+- [x] 盤點 Cloudflare Pages 404 與 Vite 靜態輸出路徑，確認建置產物包含根目錄 index.html、assets、Service Worker 與 Manifest
+- [x] 固定 Pages 前端建置輸出目錄並修正 SPA `_redirects` 回退規則，避免子路徑與根路徑 404
+- [x] 補足 Pages 輸出契約回歸測試與部署文件，列出 Dashboard 的 Framework preset、Build command、Build output directory
+- [ ] 執行本機完整建置、Manus 預覽驗證與 GitHub CI，將 Pages 修正安全快轉推送至 main

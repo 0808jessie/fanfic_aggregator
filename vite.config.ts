@@ -165,7 +165,10 @@ export default defineConfig({
   root: path.resolve(import.meta.dirname, "client"),
   publicDir: path.resolve(import.meta.dirname, "client", "public"),
   build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    // Keep the static application at one predictable project-root location.
+    // Cloudflare Pages can now publish `dist` directly, while the root build
+    // later adds the Node bundle as `dist/index.js` without replacing assets.
+    outDir: path.resolve(import.meta.dirname, "dist"),
     emptyOutDir: true,
   },
   server: {

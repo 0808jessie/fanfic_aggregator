@@ -56,11 +56,14 @@ curl -i -X POST "https://你的-worker.workers.dev/api/search" \
 | --- | --- |
 | Production branch | `main` |
 | Root directory | `/` |
-| Build command | `pnpm cf:pages:build`（或 `pnpm build`） |
-| Build output directory | `dist/public` |
+| Framework preset | `Vite` |
+| Build command | `pnpm cf:pages:build` |
+| Build output directory | `dist` |
 | Node.js | 22 或目前支援的 LTS |
 
-`dist/public` 是本專案 `vite.config.ts` 的實際輸出目錄；請勿填寫 `client/dist`，否則 Pages 找不到建置完成的檔案。
+`pnpm cf:pages:build` 只產生 Cloudflare Pages 所需的靜態 PWA，並將 `client/public` 的 `sw.js`、`manifest.webmanifest`、`_redirects` 與 `_routes.json` 複製至根目錄 `dist`。因此建置完成後，`dist/index.html`、`dist/assets/`、`dist/sw.js` 與 `dist/manifest.webmanifest` 必須存在。請勿填寫過時的 `dist/public` 或 `client/dist`，否則 Pages 會找不到 `index.html` 而回應 HTTP 404。
+
+在專案根目錄執行 `pnpm build` 亦會先產生相同的 `dist` 靜態檔，再加入 Manus/Node 正式服務所需的 `dist/index.js`；這個額外檔案不影響 Cloudflare Pages 發佈靜態 PWA。
 
 在 Pages 的 **Settings → Environment variables** 中加入：
 
