@@ -684,4 +684,4 @@
 - [x] 補足 CORS／Service Worker 語法回歸測試、完成建置與 GitHub CI，將修正推送至 main
 - [x] 稽核 FastAPI 多平台聚合的並行模型、來源級逾時與 Cloudflare Worker 上游等待預算
 - [x] 實作嚴格有界並行、單站逾時與 return_exceptions 降級，避免慢來源拖垮整批搜尋
-- [ ] 調整 Worker 上游逾時與搜尋快取契約，補足效能回歸測試、完成建置與 GitHub CI 後推送 main
+- [x] 調整 Worker 上游逾時與搜尋快取契約，補足效能回歸測試、完成建置與 GitHub CI 後推送 main
