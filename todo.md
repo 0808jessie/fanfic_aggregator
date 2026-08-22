@@ -691,4 +691,4 @@
 - [x] 補足效能、Penana 降級與 AO3 分頁回歸，完成建置與 GitHub CI 後推送 main
 - [x] 稽核 Header 中央導覽、連線狀態與 PWA Service Worker 註冊／等待更新流程
 - [x] 移除 Header 冗餘文字與連線提示，於設定右側加入 PWA 發現新版本的一鍵立即套用按鈕
-- [ ] 補足 Service Worker 更新與響應式 Header 回歸，完成手機預覽、建置與 GitHub CI 後推送 main
+- [x] 補足 Service Worker 更新與響應式 Header 回歸，完成手機預覽、建置與 GitHub CI 後推送 main
