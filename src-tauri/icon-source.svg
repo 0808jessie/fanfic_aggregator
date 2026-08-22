@@ -1,8 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <rect width="1024" height="1024" rx="224" fill="#111827"/>
-  <path d="M224 280c122-34 244-10 288 54v360c-44-64-166-88-288-54V280Z" fill="#F8F1E5"/>
-  <path d="M800 280c-122-34-244-10-288 54v360c44-64 166-88 288-54V280Z" fill="#DCEBFF"/>
-  <path d="M512 334v360" stroke="#2F80ED" stroke-width="34" stroke-linecap="round"/>
-  <circle cx="708" cy="330" r="58" fill="#FF6B4A"/>
-  <path d="m708 294 11 25 27 2-21 18 7 27-24-14-24 14 7-27-21-18 27-2 11-25Z" fill="#111827"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="title desc">
+  <title id="title">Fanfic Atlas — Atlas 書頁地圖圖標</title>
+  <desc id="desc">深墨色圓角方形中的展開書頁、中央藍色軸線與珊瑚色探索節點。</desc>
+  <rect width="100" height="100" rx="24" fill="#111826"/>
+  <path d="M15 29C29 24 43 26 50 35V80C42 72 28 70 15 75V29Z" fill="#F5F1E8"/>
+  <path d="M85 29C71 24 57 26 50 35V80C58 72 72 70 85 75V29Z" fill="#DCEBFF"/>
+  <path d="M19 39C31 36 40 38 46 42M19 48C30 45 39 47 46 51M81 39C69 36 60 38 54 42M81 48C70 45 61 47 54 51" fill="none" stroke="#2D70D6" stroke-width="1.8" stroke-linecap="round" opacity=".24"/>
+  <path d="M50 35V80" fill="none" stroke="#2D70D6" stroke-width="6.5" stroke-linecap="round"/>
+  <circle cx="70" cy="26" r="11" fill="#E76F51"/>
+  <path d="M70 19.5L72 24L77 24.6L73.2 27.8L74.3 32.7L70 30.2L65.7 32.7L66.8 27.8L63 24.6L68 24Z" fill="#111826"/>
+  <circle cx="50" cy="80" r="3" fill="#6FC7B6"/>
 </svg>

@@ -140,6 +140,8 @@ const PLATFORMS = [
 const FALLBACK_DESKTOP_VERSION = "1.2.11";
 const UPDATER_MANIFEST_URL = "https://github.com/0808jessie/fanfic_aggregator/releases/latest/download/latest.json";
 const READER_SESSION_PROGRESS_PREFIX = "fanfic-atlas-reader-progress:";
+const BRAND_LOGO_URL = "/manus-storage/fanfic-atlas-logo_8e12a428.svg";
+const PLATFORM_RETRY_COOLDOWN_MS = 4_000;
 
 function readSessionReaderProgress(url: string): { percent: number; chapter: string } {
   try {
@@ -337,9 +339,11 @@ export default function Home() {
   const [pwaUpdatePromptOpen, setPwaUpdatePromptOpen] = useState(false);
   const [backgroundPagePending, setBackgroundPagePending] = useState(false);
   const [retryingPlatformId, setRetryingPlatformId] = useState<PlatformId | null>(null);
+  const [retryCooldowns, setRetryCooldowns] = useState<Partial<Record<PlatformId, number>>>({});
   const searchStartedAt = useRef<number | null>(null);
   const retryingPlatformRef = useRef<PlatformId | null>(null);
   const historyMenuRef = useRef<HTMLDivElement | null>(null);
+  const searchResultsRef = useRef<HTMLElement | null>(null);
   const activeDesktopSearchAbortRef = useRef<AbortController | null>(null);
   const activeWebPwaSearchAbortRef = useRef<AbortController | null>(null);
   const searchRequestGateRef = useRef(new LatestSearchRequestGate());
@@ -935,6 +939,19 @@ export default function Home() {
   const retrySinglePlatform = (event: React.MouseEvent<HTMLButtonElement>, platform: PlatformId) => {
     event.preventDefault();
     event.stopPropagation();
+    const cooldownUntil = retryCooldowns[platform] || 0;
+    if (cooldownUntil > Date.now()) {
+      showInfoToast(`${platformMeta(platform).label} 請稍候 ${Math.ceil((cooldownUntil - Date.now()) / 1000)} 秒後再重試。`);
+      return;
+    }
+    setRetryCooldowns((current) => ({ ...current, [platform]: Date.now() + PLATFORM_RETRY_COOLDOWN_MS }));
+    window.setTimeout(() => {
+      setRetryCooldowns((current) => {
+        const next = { ...current };
+        delete next[platform];
+        return next;
+      });
+    }, PLATFORM_RETRY_COOLDOWN_MS);
     setRetryingPlatformId(platform);
     runSearch(true, activeQuery || keyword, [platform]);
   };
@@ -958,17 +975,23 @@ export default function Home() {
     requestSearch({ path: "/search", method: "POST", data: { ...requestData, clientRequestId: requestId } }, requestId, desktopRuntime ? cacheKey : null);
   };
 
+  const scrollToSearchResults = () => {
+    const offset = searchResultsRef.current?.getBoundingClientRect().top ?? 0;
+    window.scrollTo({ top: Math.max(0, window.scrollY + offset - 16), behavior: "smooth" });
+  };
+
   const goToUnifiedPage = (page: number) => {
     if (page < 1 || page > localResultPageCount || page === localResultPage) return;
     setLocalResultPage(page);
+    scrollToSearchResults();
   };
 
   const goToPreviousUnifiedPage = () => {
-    if (localResultPage > 1) setLocalResultPage((page) => page - 1);
+    if (localResultPage > 1) goToUnifiedPage(localResultPage - 1);
   };
 
   const goToNextUnifiedPage = () => {
-    if (localResultPage < localResultPageCount) setLocalResultPage((page) => page + 1);
+    if (localResultPage < localResultPageCount) goToUnifiedPage(localResultPage + 1);
   };
 
   const jumpToUnifiedPage = () => {
@@ -1219,8 +1242,8 @@ export default function Home() {
       <header className="relative z-10 border-b border-[color:var(--atlas-line)] bg-[color:var(--atlas-bg)]/85 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1160px] items-center justify-between px-5 py-4 sm:px-8">
           <div className="flex items-center gap-3">
-            <div className="brand-mark flex h-10 w-10 items-center justify-center">
-              <span className="text-lg font-extrabold">A</span>
+            <div className="brand-mark flex h-10 w-10 items-center justify-center overflow-hidden">
+              <img src={BRAND_LOGO_URL} alt="" className="h-full w-full object-cover" />
             </div>
             <div>
               <div className="text-base font-extrabold tracking-[-0.04em]">Fanfic Atlas</div>
@@ -1301,7 +1324,7 @@ export default function Home() {
         </section>}
 
         {activeView !== "cp-library" && <>
-        <section className="mt-10 flex flex-col gap-3 border-b border-[color:var(--atlas-line)] pb-5 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="text-3xl font-extrabold sm:text-4xl">{activeView === "bookmarks" ? `藏書閣 · ${bookmarks.length.toLocaleString()} 本` : isSearchPending ? "正在尋找作品" : hasSearched ? pagination.totalWorks > 0 ? `找到 ${pagination.totalWorks.toLocaleString()} 篇作品` : "暫時沒有可驗證的作品" : "開始探索"}</h2>{activeView === "search" && searchMode === "author" && <div className="mt-2 flex items-center gap-2 text-sm text-amber-700"><UserRound className="h-3.5 w-3.5" /> 搜尋作者：{activeQuery || keyword}</div>}{activeView === "search" && hasSearched && pagination.totalWorks > 0 && <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[color:var(--atlas-muted)]"><span>已載入第 {pagination.loadedThroughPage} / {pagination.totalPages} 頁</span><span>顯示 {displayedResults.length} / {results.length} 筆</span>{hideBookmarkedResults && <span className="text-[color:var(--atlas-indigo)]">藏書閣隱藏：{hiddenBookmarkedResultCount} 篇</span>}{excludedKeywords.length > 0 && <span className="text-[color:var(--atlas-danger)]">避雷中：{excludedKeywords.length} 詞</span>}{completedElapsedMs !== null && <span className="text-[color:var(--atlas-success)]">{(completedElapsedMs / 1000).toFixed(1)} 秒完成</span>}</div>}</div><div className="flex flex-wrap items-center gap-2"><div className="text-xs text-[color:var(--atlas-muted)]">{activeView === "bookmarks" ? desktopRuntime ? "只保留在這台裝置" : "保留在這個瀏覽器" : `${selectedPlatforms.length} 個來源已啟用`}</div>{activeView === "search" && hasSearched && filteredResultCount > 0 && <Button type="button" variant="outline" aria-label="顯示已避雷作品" aria-pressed={showFilteredResults} onClick={() => setShowFilteredResults((current) => { const next = !current; if (!next) setRevealedFilteredUrls(new Set()); return next; })} className={`h-9 rounded-full border px-3 text-xs font-semibold ${showFilteredResults ? "border-[color:var(--atlas-amber)] bg-[color:var(--atlas-amber-soft)] text-[color:var(--atlas-amber)]" : "border-[color:var(--atlas-danger-line)] bg-white text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)]"}`}>{showFilteredResults ? <EyeOff className="mr-1.5 h-3.5 w-3.5" /> : <Eye className="mr-1.5 h-3.5 w-3.5" />}{showFilteredResults ? "隱藏已避雷作品" : "顯示已避雷作品"}<span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-current px-1.5 py-0.5 text-[10px] font-bold text-white">{filteredResultCount}</span></Button>}</div></section>
+        <section ref={searchResultsRef} className="mt-10 flex flex-col gap-3 border-b border-[color:var(--atlas-line)] pb-5 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="text-3xl font-extrabold sm:text-4xl">{activeView === "bookmarks" ? `藏書閣 · ${bookmarks.length.toLocaleString()} 本` : isSearchPending ? "正在尋找作品" : hasSearched ? pagination.totalWorks > 0 ? `找到 ${pagination.totalWorks.toLocaleString()} 篇作品` : "暫時沒有可驗證的作品" : "開始探索"}</h2>{activeView === "search" && searchMode === "author" && <div className="mt-2 flex items-center gap-2 text-sm text-amber-700"><UserRound className="h-3.5 w-3.5" /> 搜尋作者：{activeQuery || keyword}</div>}{activeView === "search" && hasSearched && pagination.totalWorks > 0 && <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[color:var(--atlas-muted)]"><span>已載入第 {pagination.loadedThroughPage} / {pagination.totalPages} 頁</span><span>顯示 {displayedResults.length} / {results.length} 筆</span>{hideBookmarkedResults && <span className="text-[color:var(--atlas-indigo)]">藏書閣隱藏：{hiddenBookmarkedResultCount} 篇</span>}{excludedKeywords.length > 0 && <span className="text-[color:var(--atlas-danger)]">避雷中：{excludedKeywords.length} 詞</span>}{completedElapsedMs !== null && <span className="text-[color:var(--atlas-success)]">{(completedElapsedMs / 1000).toFixed(1)} 秒完成</span>}</div>}</div><div className="flex flex-wrap items-center gap-2"><div className="text-xs text-[color:var(--atlas-muted)]">{activeView === "bookmarks" ? desktopRuntime ? "只保留在這台裝置" : "保留在這個瀏覽器" : `${selectedPlatforms.length} 個來源已啟用`}</div>{activeView === "search" && hasSearched && filteredResultCount > 0 && <Button type="button" variant="outline" aria-label="顯示已避雷作品" aria-pressed={showFilteredResults} onClick={() => setShowFilteredResults((current) => { const next = !current; if (!next) setRevealedFilteredUrls(new Set()); return next; })} className={`h-9 rounded-full border px-3 text-xs font-semibold ${showFilteredResults ? "border-[color:var(--atlas-amber)] bg-[color:var(--atlas-amber-soft)] text-[color:var(--atlas-amber)]" : "border-[color:var(--atlas-danger-line)] bg-white text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)]"}`}>{showFilteredResults ? <EyeOff className="mr-1.5 h-3.5 w-3.5" /> : <Eye className="mr-1.5 h-3.5 w-3.5" />}{showFilteredResults ? "隱藏已避雷作品" : "顯示已避雷作品"}<span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-current px-1.5 py-0.5 text-[10px] font-bold text-white">{filteredResultCount}</span></Button>}</div></section>
 
         {activeView === "search" && hasSearched && platformStatuses.length > 0 && (
           <section aria-label="來源健康摘要" className="mt-3">
@@ -1324,6 +1347,7 @@ export default function Home() {
                     const isBlocked = status.status === "blocked";
                     const isSuccess = status.status === "success";
                     const isRetryingThisPlatform = isSearchPending && retryingPlatformId === status.platformId;
+                    const isRetryCoolingDown = (retryCooldowns[status.platformId as PlatformId] || 0) > Date.now();
                     const currentQuery = activeQuery || keyword;
                     const loadedWorks = sourceLoadedResultCounts.get(status.platformId) || 0;
                     const loadProgress = formatSourceLoadProgress(loadedWorks, status.itemCount, pagination.loadedThroughPage || pagination.page, pagination.totalPages);
@@ -1338,7 +1362,7 @@ export default function Home() {
                           <div className="truncate text-xs font-semibold">{status.label}</div>
                           <div className="mt-0.5 text-[11px] font-medium">{platformStatusLabel(status)}{isSuccess ? ` · ${loadProgress}` : ""}{activePlatformFilter === status.platformId && isSuccess ? " · 篩選中" : ""}</div>
                         </button>
-                        {isPlatformRetryable(status) && <Button type="button" variant="ghost" size="sm" disabled={isSearchPending && !isRetryingThisPlatform} aria-label={`重試 ${status.label}`} onClick={(event) => retrySinglePlatform(event, status.platformId as PlatformId)} className="h-7 shrink-0 rounded-lg border border-current px-2 text-[11px] font-semibold hover:bg-white/70"><RotateCw className={`mr-1 h-3 w-3 ${isRetryingThisPlatform ? "animate-spin" : ""}`} />{isRetryingThisPlatform ? "重試中" : "重試"}</Button>}
+                        {isPlatformRetryable(status) && <Button type="button" variant="ghost" size="sm" disabled={(isSearchPending && !isRetryingThisPlatform) || isRetryCoolingDown} aria-label={isRetryCoolingDown ? `${status.label} 重試冷卻中` : `重試 ${status.label}`} onClick={(event) => retrySinglePlatform(event, status.platformId as PlatformId)} className="h-7 shrink-0 rounded-lg border border-current px-2 text-[11px] font-semibold hover:bg-white/70"><RotateCw className={`mr-1 h-3 w-3 ${isRetryingThisPlatform ? "animate-spin" : ""}`} />{isRetryingThisPlatform ? "重試中" : isRetryCoolingDown ? "稍候" : "重試"}</Button>}
                       </div>
                       {isBlocked && officialSearch && currentQuery && <a href={officialSearch.href} target="_blank" rel="noreferrer" aria-label={officialSearch.label} onClick={(event) => void openExternalUrl(event, officialSearch.href, status.platformId === "ao3" ? "已開啟官方 AO3 搜尋。" : undefined)} className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold underline underline-offset-2 hover:no-underline">{officialSearch.label}<ArrowUpRight className="h-3 w-3" /></a>}
                       {status.warning && <p className="mt-1 text-[11px] leading-4 opacity-80">{status.warning}</p>}

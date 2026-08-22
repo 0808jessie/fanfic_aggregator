@@ -23,13 +23,13 @@ describe("PWA static assets", () => {
     expect(worker).toContain('url.pathname === "/search"');
     expect(worker).toContain('url.pathname === "/reader"');
     expect(worker).toContain('"/manifest.webmanifest"');
-    expect(worker).toContain('const CACHE_NAME = "fanfic-atlas-shell-v6"');
+    expect(worker).toContain('const CACHE_NAME = "fanfic-atlas-shell-v7"');
     expect(worker.match(/^const CACHE_NAME\s*=/gm)).toHaveLength(1);
     expect(worker).toContain('event.data?.type === "SKIP_WAITING"');
     expect(worker).toContain("self.skipWaiting()");
     expect(() => new Function(worker)).not.toThrow();
-    expect(worker).toContain('"/manus-storage/fanfic-atlas-pwa-192_607d6e55.png"');
-    expect(worker).toContain('"/manus-storage/fanfic-atlas-pwa-maskable-512_9f1f7cb4.png"');
+    expect(worker).toContain('"/manus-storage/192x192_b5eee613.png"');
+    expect(worker).toContain('"/manus-storage/512x512_32bfed45.png"');
   });
 
   it("ships Cloudflare Pages API exclusions and a Worker deployment contract", () => {

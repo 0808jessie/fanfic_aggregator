@@ -68,7 +68,7 @@ def test_ao3_retries_403_once_with_low_frequency_backoff():
 
     assert result is None
     assert fake_session.calls == 2
-    sleep.assert_called_once_with(1.8)
+    sleep.assert_called_once_with(3.0)
     assert scraper._static_terminal_warning == "AO3 靜態搜尋暫時不可用（HTTP 403）"
 
 
@@ -92,3 +92,14 @@ def test_ao3_verification_page_returns_a_source_warning_without_attempting_to_by
 
     assert result is None
     assert scraper._static_terminal_warning == "AO3 觸發安全驗證；請使用官方搜尋連結繼續。"
+
+
+def test_ao3_force_refresh_is_cooled_down_before_another_public_request():
+    scraper = AO3Scraper()
+    scraper._last_force_refresh_at = monotonic()
+
+    result = scraper.scrape("義忍", force_refresh=True)
+
+    assert result == {"items": [], "total_works": 0, "total_pages": 1}
+    assert scraper.last_warning is not None
+    assert "AO3 重試冷卻中" in scraper.last_warning

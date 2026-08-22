@@ -111,6 +111,7 @@ describe("Home pagination interactions", () => {
     expect(screen.queryByText("已連線")).toBeNull();
     expect(screen.getByLabelText("開啟偏好與快取設定")).toBeTruthy();
     expect(screen.queryByLabelText("立即套用最新 PWA 版本")).toBeNull();
+    expect(document.querySelector('img[src="/manus-storage/fanfic-atlas-logo_8e12a428.svg"]')).toBeTruthy();
   });
 
   it("announces a waiting PWA update in a prompt while keeping version actions inside settings", async () => {
@@ -294,6 +295,7 @@ describe("Home pagination interactions", () => {
     expect(screen.queryByText("#Slow burn")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "下一頁" }));
     expect(screen.getByText("LOCAL RESULT 13")).toBeTruthy();
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ behavior: "smooth" }));
     fireEvent.change(screen.getByLabelText("前往指定頁數"), { target: { value: "3" } });
     fireEvent.click(screen.getByRole("button", { name: /前往|Go/ }));
     expect(screen.getByText("LOCAL RESULT 25")).toBeTruthy();
@@ -371,6 +373,7 @@ describe("Home pagination interactions", () => {
       method: "POST",
       data: { keyword: "義忍", mode: "keyword", platforms: ["ao3"], page: 1, forceRefresh: true, customCpMappings: [] },
     });
+    expect((screen.getByRole("button", { name: "AO3 重試冷卻中" }) as HTMLButtonElement).disabled).toBe(true);
 
     await waitFor(() => expect((screen.getByRole("button", { name: "重試 Penana" }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "重試 Penana" }));

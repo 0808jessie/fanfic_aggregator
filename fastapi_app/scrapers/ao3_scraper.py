@@ -69,6 +69,8 @@ class AO3Scraper(BaseScraper):
     static_read_timeout_seconds = 8
     static_search_budget_seconds = 8
     max_boolean_query_length = 220
+    force_refresh_cooldown_seconds = 4.0
+    protected_retry_delay_seconds = 3.0
 
     def __init__(self):
         super().__init__()
@@ -79,6 +81,8 @@ class AO3Scraper(BaseScraper):
         self._static_deadline: float | None = None
         self._http_session: Any | None = None
         self._session_lock = threading.Lock()
+        self._force_refresh_lock = threading.Lock()
+        self._last_force_refresh_at = 0.0
 
     def _get_http_session(self):
         """Reuse one curl_cffi session so AO3 cookies and TLS connections persist."""
@@ -151,7 +155,7 @@ class AO3Scraper(BaseScraper):
                     response = self._get_http_session().get(url, timeout=request_timeout)
                 remaining_budget = (self._static_deadline - monotonic()) if self._static_deadline else 4.0
                 if response.status_code in (403, 429, 503, 525) and attempt == 0:
-                    retry_delay = 1.8 if response.status_code in (403, 429) else 0.6
+                    retry_delay = self.protected_retry_delay_seconds if response.status_code in (403, 429) else 0.6
                     if remaining_budget > retry_delay:
                         print(f"[AO3 Static] HTTP {response.status_code}; retrying once after {retry_delay:.1f}s")
                         time.sleep(retry_delay)
@@ -276,6 +280,14 @@ class AO3Scraper(BaseScraper):
         cache_key = f"{mode}:{language or 'all'}:{trimmed_kw}:page={page}"
         # 強制更新會跳過 Adapter cache；一般 CP 則由 API 的高可信度 TTL 管理。
         bypass_memory_cache = force_refresh
+        if force_refresh:
+            with self._force_refresh_lock:
+                elapsed = monotonic() - self._last_force_refresh_at
+                if self._last_force_refresh_at and elapsed < self.force_refresh_cooldown_seconds:
+                    remaining_seconds = max(1, int(self.force_refresh_cooldown_seconds - elapsed + 0.999))
+                    self.last_warning = f"AO3 重試冷卻中，請於 {remaining_seconds} 秒後再試。"
+                    return {"items": [], "total_works": 0, "total_pages": 1}
+                self._last_force_refresh_at = monotonic()
         if bypass_memory_cache:
             self._memory_cache.pop(cache_key, None)
         now = datetime.utcnow()

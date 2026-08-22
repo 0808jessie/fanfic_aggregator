@@ -1,10 +1,9 @@
-const CACHE_NAME = "fanfic-atlas-shell-v6";
+const CACHE_NAME = "fanfic-atlas-shell-v7";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
-  "/manus-storage/fanfic-atlas-pwa-192_607d6e55.png",
-  "/manus-storage/fanfic-atlas-pwa-512_96dc9142.png",
-  "/manus-storage/fanfic-atlas-pwa-maskable-512_9f1f7cb4.png",
+  "/manus-storage/192x192_b5eee613.png",
+  "/manus-storage/512x512_32bfed45.png",
 ];
 
 self.addEventListener("install", event => {
