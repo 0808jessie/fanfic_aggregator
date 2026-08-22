@@ -122,7 +122,7 @@ describe("ReaderView", () => {
 
     await waitFor(() => expect(screen.getByText("第一段公開正文。")).toBeTruthy());
 
-    expect(onProgress).toHaveBeenCalledWith({ percent: 1, chapter: "第一章", chapterUrl: work.url });
+    await waitFor(() => expect(onProgress).toHaveBeenCalledWith({ percent: 1, chapter: "第一章", chapterUrl: work.url }));
   });
 
   it("opens a chapter drawer and requests the selected chapter URL", async () => {
