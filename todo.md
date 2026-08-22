@@ -672,4 +672,4 @@
 - [x] 稽核 FastAPI 獨立啟動命令、requirements 與 Cloudflare Worker／Pages 的 CORS 契約
 - [x] 新增 Render Blueprint，定義 free Python Web Service 的建置、啟動與健康檢查設定
 - [x] 撰寫極簡 Render 點擊部署與 Cloudflare API_ORIGIN／VITE_API_BASE_URL 串接說明
-- [ ] 執行獨立後端依賴安裝、健康檢查、完整回歸與 GitHub CI，將 Render 部署準備推送至 main
+- [x] 執行獨立後端依賴安裝、健康檢查、完整回歸與 GitHub CI，將 Render 部署準備推送至 main
