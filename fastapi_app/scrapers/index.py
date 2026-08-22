@@ -62,15 +62,15 @@ PLATFORM_LABELS = {
 LOCAL_CP_PLATFORM_IDS = frozenset(("doujin", "waterwriter"))
 # Live search is HTTP-only. End each source task promptly so slow upstreams
 # return their own state instead of holding the full cross-platform response.
-ADAPTER_TIMEOUT_SECONDS = 4.5
+ADAPTER_TIMEOUT_SECONDS = 6.5
 PLATFORM_TIMEOUT_SECONDS: dict[str, float] = {
-    "ao3": 4.5,
-    "penana": 4.5,
-    "bahamut": 4.5,
-    "kadokado": 4.5,
-    "cxc": 4.5,
-    "doujin": 4.5,
-    "waterwriter": 4.5,
+    "ao3": 6.5,
+    "penana": 6.5,
+    "bahamut": 6.5,
+    "kadokado": 6.5,
+    "cxc": 6.5,
+    "doujin": 6.5,
+    "waterwriter": 6.5,
 }
 SOURCE_CACHE_TTL_SECONDS = 600.0
 _SOURCE_CACHE: dict[tuple[str, str, int], tuple[float, list[ScrapedFanfic], int, int, str | None]] = {}

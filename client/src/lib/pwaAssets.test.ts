@@ -42,7 +42,7 @@ describe("PWA static assets", () => {
     expect(wrangler).toContain("API_ORIGIN");
     expect(worker).toContain('"Access-Control-Allow-Origin": "*"');
     expect(worker).toContain('"Access-Control-Allow-Headers": "*"');
-    expect(worker).toContain("const UPSTREAM_TIMEOUT_MS = 12_000");
+    expect(worker).toContain("const UPSTREAM_TIMEOUT_MS = 15_000");
     expect(worker).toContain("const SEARCH_CACHE_SECONDS = 600");
     expect(worker).toContain('url.pathname === "/api/search"');
     expect(worker).toContain('headers.set("Cache-Control", "no-store")');

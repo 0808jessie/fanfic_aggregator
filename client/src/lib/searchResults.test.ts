@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendUniqueResults, countLanguageResults, extractIsRateLimited, extractPlatformStatuses, extractSearchPagination, extractSearchWarning, filterAndSortResults, getLoadMoreLabel, isDisplayableResult, isPlatformRetryable, isRestrictedResult, matchesExcludedKeyword, normalizeResults, parseWordCount } from "./searchResults";
+import { appendUniqueResults, countLanguageResults, extractIsRateLimited, extractPlatformStatuses, extractSearchPagination, extractSearchWarning, filterAndSortResults, formatSourceLoadProgress, getLoadMoreLabel, isDisplayableResult, isPlatformRetryable, isRestrictedResult, matchesExcludedKeyword, normalizeResults, parseWordCount } from "./searchResults";
 
 const verifiedAo3Result = {
   title: "Verified work",
@@ -90,6 +90,11 @@ describe("search result safety contract", () => {
     expect(getLoadMoreLabel(true, 3)).toBe("正在翻頁載入中...");
     expect(getLoadMoreLabel(false, 3)).toBe("LOAD MORE / PAGE 3");
     expect(getLoadMoreLabel(false, null)).toBe("NO MORE WORKS");
+  });
+
+  it("distinguishes an AO3 official total from the first page of loaded cards", () => {
+    expect(formatSourceLoadProgress(20, 29806, 1, 1491)).toBe("已載入第 1 頁 20 篇／共 29,806 筆");
+    expect(formatSourceLoadProgress(20, 0, 1, 1)).toBe("已載入 20 篇");
   });
 
   it("rejects Example Domain placeholder records", () => {

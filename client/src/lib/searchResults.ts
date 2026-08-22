@@ -120,6 +120,15 @@ export function getLoadMoreLabel(isPending: boolean, nextPage: number | null): s
   return nextPage ? `LOAD MORE / PAGE ${nextPage}` : "NO MORE WORKS";
 }
 
+export function formatSourceLoadProgress(loadedWorks: number, totalWorks: number, page: number, totalPages: number): string {
+  const safeLoaded = Math.max(0, Math.trunc(loadedWorks));
+  const safeTotal = Math.max(0, Math.trunc(totalWorks));
+  const safePage = Math.max(1, Math.trunc(page));
+  const safePages = Math.max(1, Math.trunc(totalPages));
+  if (safeTotal > 0) return `已載入第 ${safePage} 頁 ${safeLoaded} 篇／共 ${safeTotal.toLocaleString()} 筆`;
+  return safePages > 1 ? `已載入第 ${safePage} 頁 ${safeLoaded} 篇` : `已載入 ${safeLoaded} 篇`;
+}
+
 export function extractSearchWarning(payload: unknown): string | null {
   if (!payload || typeof payload !== "object" || !("warning" in payload)) return null;
   const warning = (payload as { warning?: unknown }).warning;

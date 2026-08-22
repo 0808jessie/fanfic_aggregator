@@ -50,7 +50,7 @@ def test_bahamut_url_and_pagination_contract_are_public_and_bounded():
     assert scraper.build_search_url("義忍", page=2) == "https://home.gamer.com.tw/search.php?page=2&keyword=%E7%BE%A9%E5%BF%8D&o=tag&v=3"
     assert scraper.extract_total_pages(BAHAMUT_RESULTS) == 2
     assert not scraper._is_verified_creation_url("https://example.com/creationDetail.php?sn=24680")
-    assert PLATFORM_TIMEOUT_SECONDS["bahamut"] == 4.5
+    assert PLATFORM_TIMEOUT_SECONDS["bahamut"] == 6.5
     assert "bahamut" in SCRAPERS
 
 

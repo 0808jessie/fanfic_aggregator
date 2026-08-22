@@ -56,15 +56,15 @@ def test_platform_status_translates_cp_query_and_detects_cooldown():
     assert adapter_index.translated_query_for_platform("ao3", "義忍") == '"Tomioka Giyuu/Kochou Shinobu" OR "義忍"'
     assert adapter_index.translated_query_for_platform("waterwriter", "義忍") == "義忍"
     assert adapter_index.translated_query_for_platform("doujin", "哨兵嚮導") == "哨兵嚮導"
-    assert adapter_index.ADAPTER_TIMEOUT_SECONDS == 4.5
+    assert adapter_index.ADAPTER_TIMEOUT_SECONDS == 6.5
     assert adapter_index.PLATFORM_TIMEOUT_SECONDS == {
-        "ao3": 4.5,
-        "penana": 4.5,
-        "bahamut": 4.5,
-        "kadokado": 4.5,
-        "cxc": 4.5,
-        "doujin": 4.5,
-        "waterwriter": 4.5,
+        "ao3": 6.5,
+        "penana": 6.5,
+        "bahamut": 6.5,
+        "kadokado": 6.5,
+        "cxc": 6.5,
+        "doujin": 6.5,
+        "waterwriter": 6.5,
     }
     assert adapter_index.classify_platform_status(0, "[在水裡寫字] Blocked by Rate Limit, skipping cleanly") == "cooldown"
     assert adapter_index.classify_platform_status(0, "[同人誌中心] Triggered verification page") == "blocked"

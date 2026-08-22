@@ -21,3 +21,7 @@ def test_penana_document_with_story_cards_is_not_blocked_even_if_it_has_a_challe
     '''
 
     assert PenanaScraper._is_blocked_challenge_html(html) is False
+
+
+def test_penana_official_search_url_is_used_for_safe_browser_handoff():
+    assert PenanaScraper().official_search_url("義忍 / test") == "https://www.penana.com/search?t=story&search=%E7%BE%A9%E5%BF%8D%20%2F%20test"

@@ -88,7 +88,7 @@ def test_kadokado_public_request_and_protection_degrade_safely(capsys):
     assert payload["total_pages"] == 1
     assert request.call_args.kwargs["params"] == {"current": 1, "limit": 20, "sentence": "義忍"}
     assert request.call_args.kwargs["timeout"] == 8.0
-    assert PLATFORM_TIMEOUT_SECONDS["kadokado"] == 4.5
+    assert PLATFORM_TIMEOUT_SECONDS["kadokado"] == 6.5
     assert "kadokado" in SCRAPERS
     assert "[KadoKado PublicSearch] stage=search endpoint=https://api.kadokado.com.tw/v3/search status=200" in capsys.readouterr().out
     assert payload["items"][0].wordCount == "25600"

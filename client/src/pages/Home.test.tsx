@@ -445,7 +445,7 @@ describe("Home pagination interactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "重試 在水裡寫字" }));
     await waitFor(() => expect(screen.getByText("WATERWRITER UPDATE")).toBeTruthy());
     expect(screen.getByText("PAGE ONE")).toBeTruthy();
-    expect(screen.getByText("已連線 · 25 筆")).toBeTruthy();
+    expect(screen.getByText("已連線 · 已載入第 1 頁 1 篇／共 25 筆")).toBeTruthy();
   });
 });
 

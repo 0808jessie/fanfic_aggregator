@@ -69,8 +69,7 @@ class PenanaScraper(BaseScraper):
         """Fetch the ordinary public Finder document with curl_cffi chrome124 impersonation and safety isolation."""
         try:
             response = curl_requests.get(
-                f"{self.base_url}/search",
-                params={"t": "story", "search": keyword},
+                self.official_search_url(keyword),
                 headers=self.search_headers,
                 impersonate="chrome120",
                 timeout=self.public_search_timeout_seconds,
@@ -92,6 +91,15 @@ class PenanaScraper(BaseScraper):
             self.last_warning = "[Penana] Public Finder HTTP request unavailable"
             print(f"[Penana] Public Finder fetch unavailable: {error}")
             return None
+
+    def official_search_url(self, keyword: str) -> str:
+        """Return Penana's normal public Finder URL for safe user handoff.
+
+        This is deliberately an ordinary public search URL, not a verification
+        workaround. When Penana asks for human verification, the caller stops
+        parsing and the UI can direct the reader to this page in their browser.
+        """
+        return f"{self.base_url}/search?t=story&search={quote(keyword, safe='')}"
 
     def parse_results(self, html: str, keyword: str) -> list[ScrapedFanfic]:
         soup = BeautifulSoup(html, "html.parser")

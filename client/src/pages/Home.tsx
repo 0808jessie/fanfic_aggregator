@@ -54,6 +54,7 @@ import {
   extractSearchPagination,
   extractSearchWarning,
   filterAndSortResults,
+  formatSourceLoadProgress,
   isPlatformRetryable,
   isRestrictedResult,
   normalizeResults,
@@ -535,6 +536,14 @@ export default function Home() {
   const displayedResults = useMemo(
     () => hideBookmarkedResults ? locallyFilteredResults.filter((result) => !bookmarkUrls.has(result.url.trim())) : locallyFilteredResults,
     [hideBookmarkedResults, locallyFilteredResults, bookmarkUrls],
+  );
+  const sourceLoadedResultCounts = useMemo(
+    () => results.reduce((counts, result) => {
+      const platformId = platformMeta(result.platform).id;
+      counts.set(platformId, (counts.get(platformId) || 0) + 1);
+      return counts;
+    }, new Map<string, number>()),
+    [results],
   );
   const localResultPageCount = Math.max(1, Math.ceil(displayedResults.length / resultsPerPage));
   const visibleResults = useMemo(
@@ -1241,6 +1250,8 @@ export default function Home() {
                     const isSuccess = status.status === "success";
                     const isRetryingThisPlatform = isSearchPending && retryingPlatformId === status.platformId;
                     const currentQuery = activeQuery || keyword;
+                    const loadedWorks = sourceLoadedResultCounts.get(status.platformId) || 0;
+                    const loadProgress = formatSourceLoadProgress(loadedWorks, status.itemCount, pagination.page, pagination.totalPages);
                     const officialSearch = status.platformId === "ao3"
                       ? { href: `https://archiveofourown.org/works/search?commit=Search&work_search%5Bquery%5D=${encodeURIComponent(currentQuery)}`, label: "前往 AO3 搜尋本詞" }
                       : status.platformId === "penana"
@@ -1250,7 +1261,7 @@ export default function Home() {
                       <div className="flex items-start gap-2">
                         <button type="button" aria-label={`篩選 ${status.label} 平台結果`} aria-pressed={activePlatformFilter === status.platformId} onClick={() => togglePlatformQuickFilter(status.platformId as PlatformId)} className="min-w-0 flex-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--atlas-indigo)]">
                           <div className="truncate text-xs font-semibold">{status.label}</div>
-                          <div className="mt-0.5 text-[11px] font-medium">{platformStatusLabel(status)}{isSuccess ? ` · ${status.itemCount} 筆` : ""}{activePlatformFilter === status.platformId && isSuccess ? " · 篩選中" : ""}</div>
+                          <div className="mt-0.5 text-[11px] font-medium">{platformStatusLabel(status)}{isSuccess ? ` · ${loadProgress}` : ""}{activePlatformFilter === status.platformId && isSuccess ? " · 篩選中" : ""}</div>
                         </button>
                         {isPlatformRetryable(status) && <Button type="button" variant="ghost" size="sm" disabled={isSearchPending && !isRetryingThisPlatform} aria-label={`重試 ${status.label}`} onClick={(event) => retrySinglePlatform(event, status.platformId as PlatformId)} className="h-7 shrink-0 rounded-lg border border-current px-2 text-[11px] font-semibold hover:bg-white/70"><RotateCw className={`mr-1 h-3 w-3 ${isRetryingThisPlatform ? "animate-spin" : ""}`} />{isRetryingThisPlatform ? "重試中" : "重試"}</Button>}
                       </div>
@@ -1427,6 +1438,7 @@ export default function Home() {
                   </select>
                 </label>
               </div>
+              {pagination.totalPages > 1 && <div className="rounded-xl border border-[color:var(--atlas-indigo)]/15 bg-[color:var(--atlas-indigo-soft)]/40 px-4 py-3 text-sm text-[color:var(--atlas-muted)]"><strong className="text-[color:var(--atlas-ink)]">公開索引分頁：</strong>目前顯示第 {pagination.page} 頁已取得的 {results.length} 篇作品；各來源標示的「共筆數」是官方索引總量，並非一次全部下載。可使用下方頁碼或載入下一頁繼續查看。</div>}
               <div id="search-results" className={resultViewMode === "cards" ? "grid auto-rows-fr grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3" : "space-y-3"}>
                 {visibleResults.map((result, index) => {
                   const meta = platformMeta(result.platform);
@@ -1485,6 +1497,7 @@ export default function Home() {
                   );
                 })}
               </div>
+              {pagination.hasMore && pagination.nextPage && <div className="flex justify-center"><Button type="button" disabled={isSearchPending} onClick={() => goToSourcePage(pagination.nextPage!)} className="rounded-full bg-[color:var(--atlas-indigo)] px-5 text-sm font-semibold text-white hover:bg-[#4338ca]"><ChevronRight className="mr-1.5 h-4 w-4" />載入下一頁（第 {pagination.nextPage} 頁）</Button></div>}
               {(localResultPageCount > 1 || pagination.totalPages > 1) && <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto rounded-2xl border border-[color:var(--atlas-line)] bg-white/65 p-2 shadow-[0_8px_20px_rgba(36,33,52,0.035)]" aria-label="搜尋結果分頁"><div className="hidden min-w-0 flex-1 whitespace-nowrap px-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300 lg:block">顯示 {Math.min((localResultPage - 1) * resultsPerPage + 1, displayedResults.length)}–{Math.min(localResultPage * resultsPerPage, displayedResults.length)} / {displayedResults.length} 筆 <span className="text-xs text-slate-500 dark:text-slate-400">（第 {unifiedCurrentPage}/{unifiedPageCount} 頁{usesSourcePagination && localResultPageCount > 1 ? ` · 本頁區段 ${localResultPage}/${localResultPageCount}` : ""}）</span></div><div className="flex shrink-0 items-center gap-1"><Button type="button" variant="outline" size="icon" aria-label="上一頁" disabled={(localResultPage === 1 && (!usesSourcePagination || pagination.page === 1)) || isSearchPending} onClick={goToPreviousUnifiedPage} className="h-9 w-9 rounded-lg border-[color:var(--atlas-line)] bg-white/85"><ChevronLeft className="h-4 w-4" /></Button><span className="inline-flex h-9 items-center rounded-lg bg-[color:var(--atlas-elevated)] px-2 text-sm font-semibold text-slate-700 sm:hidden">{unifiedCurrentPage}/{unifiedPageCount}</span><div className="hidden items-center gap-1 sm:flex">{resultPageWindow(unifiedCurrentPage, unifiedPageCount).map((page, index, pages) => <React.Fragment key={page}>{index > 0 && page - pages[index - 1] > 1 && <span className="px-1 text-xs text-slate-500">…</span>}<Button type="button" variant={page === unifiedCurrentPage ? "default" : "outline"} size="icon" aria-current={page === unifiedCurrentPage ? "page" : undefined} disabled={isSearchPending} onClick={() => goToUnifiedPage(page)} className={`h-9 w-9 rounded-lg ${page === unifiedCurrentPage ? "bg-[color:var(--atlas-indigo)] text-white hover:bg-[#4338ca]" : "border-[color:var(--atlas-line)] bg-white/85"}`}>{page}</Button></React.Fragment>)}</div><Button type="button" variant="outline" size="icon" aria-label="下一頁" disabled={(localResultPage === localResultPageCount && (!usesSourcePagination || pagination.page === pagination.totalPages)) || isSearchPending} onClick={goToNextUnifiedPage} className="h-9 w-9 rounded-lg border-[color:var(--atlas-line)] bg-white/85"><ChevronRight className="h-4 w-4" /></Button></div><form onSubmit={(event) => { event.preventDefault(); jumpToUnifiedPage(); }} className="flex shrink-0 items-center gap-1 whitespace-nowrap text-sm text-slate-700 dark:text-slate-200"><span className="hidden sm:inline">前往</span><Input aria-label="前往指定頁數" type="number" inputMode="numeric" min={1} max={unifiedPageCount} value={jumpPageInput} onChange={(event) => setJumpPageInput(event.target.value)} className="h-9 w-12 rounded-lg border-[color:var(--atlas-line)] bg-white/85 px-1 text-center text-sm" /><span className="hidden sm:inline">頁</span><Button type="submit" variant="outline" disabled={isSearchPending} className="h-9 rounded-lg border-[color:var(--atlas-line)] bg-white/85 px-2 text-sm font-semibold"><span className="hidden sm:inline">前往</span><span className="sm:hidden">Go</span></Button></form></div>}
             </div>
           )}
