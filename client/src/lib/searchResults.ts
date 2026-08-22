@@ -79,7 +79,6 @@ export function isDisplayableResult(value: unknown): value is SearchResult {
   if (platform.includes("penana")) return hasAllowedHost("penana.com");
   if (platform.includes("pixiv")) return hasAllowedHost("pixiv.net", "www.pixiv.net");
   if (platform.includes("巴哈姆特") || platform.includes("bahamut")) return hasAllowedHost("home.gamer.com.tw");
-  if (platform.includes("popo")) return hasAllowedHost("popo.tw", "www.popo.tw");
   if (platform.includes("kadokado") || platform.includes("角角者")) return hasAllowedHost("kadokado.com.tw", "www.kadokado.com.tw");
   return false;
 }

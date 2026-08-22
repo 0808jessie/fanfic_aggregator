@@ -7,7 +7,7 @@ import { FASTAPI_BASE_URL, FASTAPI_SOCKET_PATH, FASTAPI_USES_UNIX_SOCKET } from 
 // AO3 is isolated to eight seconds, while other public sources retain their
 // own bounded budgets. Leave a small aggregation margin so FastAPI can relay
 // partial source states instead of replacing them with a global error envelope.
-const FASTAPI_PROXY_TIMEOUT_MS = 25_000;
+const FASTAPI_PROXY_TIMEOUT_MS = 45_000;
 const PLATFORM_LABELS: Record<string, string> = {
   ao3: "AO3",
   cxc: "CxC 創利市集",
@@ -15,7 +15,6 @@ const PLATFORM_LABELS: Record<string, string> = {
   waterwriter: "在水裡寫字",
   penana: "Penana",
   bahamut: "巴哈姆特創作大廳",
-  popo: "POPO 原創市集",
   kadokado: "KadoKado 角角者",
 };
 

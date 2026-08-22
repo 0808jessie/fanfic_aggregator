@@ -618,3 +618,45 @@
 - [x] 校正偏好設定中分級與快取按鈕的圖示及文字水平對齊
 - [x] 補足內容保護、二次確認與設定按鈕的回歸測試，完成完整本機驗證；146 pytest、121 Vitest、production build、cargo check 與介面機械檢核通過，準備建立 GitHub Release
 - [x] 將嚴格內容保護與快取確認修復同步升版至 v1.2.11，建立 GitHub 提交、標籤與 Release，並驗證 Apple Silicon、Intel macOS 與 Windows 自動打包資產；GitHub Actions 32470639405 三平台建置成功，Release 已公開 latest.json 及簽名更新 manifest
+- [x] 建立 Fanfic Atlas PWA manifest、192／512／maskable 圖示與可安裝 standalone 網頁設定
+- [x] 註冊輕量 Service Worker，預先快取離線應用外殼與靜態資產，並避免快取任何受來源限制的搜尋或正文回應
+- [x] 建立 Tauri Sidecar 與 Web PWA 代理端點的環境分流，透過可設定的遠端 API base URL 支援 /api/search 與 /api/reader；Web 版正式環境改走同源 API，VITE_WEB_API_ORIGIN 可改接 Cloudflare Worker origin，Tauri 維持本機 Sidecar
+- [x] 加入 Android／Chrome 安裝提示、iOS 加入主畫面說明與偏好設定入口
+- [x] 補強手機與平板 Reader 的 safe-area、觸控滾動及章節滑動邊界行為
+- [x] 補足 PWA manifest、Service Worker、環境分流與安裝引導回歸測試，完成本機獨立模式與跨尺寸驗證；146 pytest、127 Vitest、production build、cargo check 通過；同源 /api/search 回傳 Pixiv 26 筆、/api/reader 回傳 7 章系列與正確第 3 章定位。本輪不推送 GitHub Release
+- [x] 將藏書閣 EPUB／TXT 匯出調整為下一階段開發，保留既有功能且本輪不擴充
+- [x] 修復搜尋卡片 Header 的來源／分級標籤與收藏／日期兩側彈性排版，移除內部 [live]、[pixiv] 等 Debug 標記
+- [x] 調整作品長標籤為可換行、防溢出顯示，確保完整多語關係標籤不撐破卡片
+- [x] 建立 CP 詞庫的雙向多語反向索引，中文、AO3 英文與日文任一命中均可觸發完整關聯一鍵聯搜
+- [x] AO3 Reader 改用公開 view_full_work 一次解析全作品章節及正文，支援本機快取後零延遲章節切換與失敗時清空正文
+- [x] 從平台清單、搜尋排程與篩選 UI 完整移除 POPO 原創市集
+- [x] 修復 KadoKado 書籍首頁自動導向首章、完整章節目錄與乾淨段落正文
+- [x] 修復在水裡寫字 thread/97145 的 br／段落自然換行與對話分段
+- [x] 修復 Penana story/157645 的單一最內層正文提取及前端防重複渲染
+- [x] 補足卡片、詞庫、AO3、KadoKado、水裡寫字、Penana與平台下線回歸測試，完成本機來源與跨尺寸驗證；本輪不推送 GitHub Release
+- [x] 修復在水裡寫字 thread/86226 的樓主後續自回覆多樓層擷取，將所有作者樓層建立為可切換章節目錄
+- [x] 修復 Penana story/198592 的最內層正文唯一性、IP 型防盜雜訊清理與切章覆寫行為，杜絕 Fin. 後重複內容
+- [x] 補足 thread/86226 與 story/198592 對應 fixture／來源測試，完成完整本機回歸；本輪不推送 GitHub Release
+- [x] 盤點並修復 Web/PWA 預覽的同源 `/api/search`、`/api/reader` 代理與 FastAPI 服務聯調，消除 0/8 來源全斷線
+- [x] 驗證並補強 Web 模式的短期搜尋快取、每來源有界逾時與個別平台錯誤隔離，避免重複上游請求拖垮搜尋
+- [x] 修復 PWA Manifest 192／512／maskable 圖示 URL 與 MIME 回應，消除安裝／Application 面板的圖示載入警告
+- [x] 補足 Web/PWA 代理、Manifest 資產與搜尋成功／降級回歸測試，完成本機預覽端到端驗證；本輪不推送 GitHub Release
+- [x] 診斷正式 Manus 網域 `fanficagg-4yu4ya2e.manus.space` 的 `/api/search`、`/api/health` 與 Node→FastAPI 代理狀態，定位 0/8 平台連線原因
+- [x] 修復正式預覽網域的 Web/PWA API 請求路徑、服務常駐監測或代理錯誤封裝，避免將可用來源誤呈現為全數離線
+- [x] 以「鬼滅」驗證正式網域搜尋、來源級降級與完整本機回歸；本輪不推送 GitHub Release
+- [x] 修復在水裡寫字 thread/21886 的公開樓層 API 分頁擷取，收集所有樓主自回覆並建立完整可切換樓層目錄
+- [x] 強化 AO3 works/84479586 等多章作品的 view_full_work 一次性章節正文解析、完整快取與零請求章節切換
+- [x] 補足指定水裡寫字分頁與 AO3 多章快取 fixture／Reader 回歸，完成公開來源與完整本機驗證；本輪不推送 GitHub Release
+- [x] 重現 AO3、在水裡寫字、Penana、巴哈姆特與 KadoKado 指定 URL 的同源 `/api/reader` 回應，區分 Dispatcher 回歸與來源保護降級
+- [x] 稽核並修復非 Pixiv Reader 的 URL 分發、Node→FastAPI 代理、共用 HTTP／TLS 與回傳 chapters／目錄資料契約
+- [x] 補足跨平台 Reader 成功、受保護來源安全降級與前端章節陣列相容回歸，完成完整本機驗證；本輪不推送 GitHub Release
+- [x] 建立 Cloudflare Worker `/api/search`、`/api/reader` 反向代理，具 CORS、10 分鐘搜尋快取、8 秒上游期限與來源級錯誤透明傳遞
+- [x] 建立 Wrangler 部署設定與 Worker 路徑／快取／逾時自動化測試，僅代理既有可公開 FastAPI 後端，不在邊緣執行爬蟲
+- [x] 配置 Cloudflare Pages SPA 回退、`VITE_API_BASE_URL` 前端適配與靜態託管建置設定
+- [x] 撰寫 DEPLOYMENT.md，說明 Pages、Worker、受保護 FastAPI origin、iOS／Android 安裝與必要環境變數
+- [x] 執行完整測試與建置、建立 `feat(pwa): complete PWA deployment configuration with Cloudflare worker proxy, manifest, and offline support` 本機 Git Commit；不建立 GitHub Release
+- [ ] 核對本機 main、工作樹與 GitHub origin/main 的差異，完成推送前回歸檢查
+- [ ] 將目前閱讀器、UI、PWA 與 Cloudflare 配置推送至 GitHub main，不建立 Release 或 Tag
+- [ ] 確認 GitHub Actions CI 對最新 main 提交的執行狀態與提交 SHA 一致
+- [ ] 在不覆寫 GitHub main 既有歷史的前提下，安全整合遠端 `72af882` 與本機 checkpoint 歷史後再推送
+- [ ] 從 GitHub main 建立不含歷史 `venv`／Playwright 大型檔案的乾淨同步提交，保留遠端歷史並以正常快轉推送

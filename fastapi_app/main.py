@@ -149,7 +149,6 @@ def is_real_platform_url(url: str, platform: str | None = None) -> bool:
             "penana": ("penana.com",),
             "pixiv": ("pixiv.net",),
             "巴哈姆特創作大廳": ("home.gamer.com.tw",),
-            "popo 原創市集": ("popo.tw",),
             "kadokado 角角者": ("www.kadokado.com.tw",),
         }
         hosts = allowed_hosts.get(platform.lower())
@@ -256,7 +255,10 @@ async def read_work_document(request: ReaderRequest) -> ReaderDocument:
         seriesTitle=document.series_title,
         currentChapterIndex=document.current_chapter_index,
         tableOfContents=[ReaderChapter(id=item.id, title=item.title, index=item.index, url=item.url) for item in document.table_of_contents],
-        chapters=[ReaderChapter(id=f"chapter-{document.current_chapter_index + 1}", title=document.chapter_title, index=document.current_chapter_index + 1, url=document.url, paragraphs=document.paragraphs)],
+        chapters=[
+            ReaderChapter(id=entry.id, title=entry.title, index=entry.index, url=entry.url, paragraphs=paragraphs)
+            for entry, paragraphs in document.all_chapters
+        ] or [ReaderChapter(id=f"chapter-{document.current_chapter_index + 1}", title=document.chapter_title, index=document.current_chapter_index + 1, url=document.url, paragraphs=document.paragraphs)],
     )
 
 
@@ -270,7 +272,6 @@ def list_platforms() -> list[dict[str, str]]:
         {"id": "penana", "label": "Penana", "status": "best-effort"},
         {"id": "pixiv", "label": "Pixiv", "status": "best-effort"},
         {"id": "bahamut", "label": "巴哈姆特創作大廳", "status": "best-effort"},
-        {"id": "popo", "label": "POPO 原創市集", "status": "best-effort"},
         {"id": "kadokado", "label": "KadoKado 角角者", "status": "best-effort"},
     ]
 

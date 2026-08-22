@@ -6,9 +6,18 @@ import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
 import { startLogin } from "./const";
+import { isTauriDesktopRuntime } from "./lib/desktopApi";
 import "./index.css";
 
 const queryClient = new QueryClient();
+
+if ("serviceWorker" in navigator && !isTauriDesktopRuntime()) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(error => {
+      console.warn("[PWA] Service Worker registration skipped:", error);
+    });
+  }, { once: true });
+}
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;

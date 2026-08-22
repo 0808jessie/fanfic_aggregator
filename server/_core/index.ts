@@ -14,6 +14,7 @@ import {
   FASTAPI_USES_UNIX_SOCKET,
   startManagedFastapi,
 } from "../fastapiService";
+import { registerFastapiWebProxy } from "../fastapiWebProxy";
 
 function proxyFastapiHealth(): Promise<{ status: number; payload: unknown }> {
   return new Promise((resolve, reject) => {
@@ -97,10 +98,11 @@ async function startServer() {
       response.status(503).json({
         status: "unavailable",
         service: "fastapi-search",
-        detail: "FastAPI loopback service is not reachable.",
+        detail: `FastAPI loopback service is not reachable (${FASTAPI_USES_UNIX_SOCKET ? "unix-socket" : "tcp-loopback"}).`,
       });
     }
   });
+  registerFastapiWebProxy(app);
   // tRPC API
   app.use(
     "/api/trpc",

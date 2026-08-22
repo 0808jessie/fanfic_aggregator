@@ -38,6 +38,7 @@ import {
   postSidecarSearch,
   waitForSidecarReady,
 } from "@/lib/desktopApi";
+import { postWebPwaReader, postWebPwaSearch, usesWebPwaApi } from "@/lib/webPwaApi";
 import {
   LatestSearchRequestGate,
   createSearchCacheKey,
@@ -81,6 +82,7 @@ import { ReaderView, type ReaderDocument } from "@/components/ReaderView";
 import { BlacklistGroupManager } from "@/components/ExcludeKeywordEditor";
 import { AgeConfirmationDialog, ReadingPreferencesDialog, RestrictedSummary } from "@/components/ContentSafety";
 import { BookmarkEditorDialog, CpMappingLibraryPage } from "@/components/PersonalLibrary";
+import { PwaInstallButton } from "@/components/PwaInstallButton";
 import {
   loadBookmarks,
   activeBlacklistKeywords,
@@ -130,7 +132,6 @@ const PLATFORMS = [
   { id: "cxc", label: "CxC 創利市集", detail: "CXC.TODAY", tone: "violet" },
   { id: "pixiv", label: "Pixiv", detail: "PIXIV.NET", tone: "rose" },
   { id: "bahamut", label: "巴哈姆特創作大廳", detail: "HOME.GAMER.COM.TW", tone: "cyan" },
-  { id: "popo", label: "POPO 原創市集", detail: "POPO.TW · 預設關閉", tone: "teal" },
   { id: "kadokado", label: "KadoKado 角角者", detail: "KADOKADO API · 手動啟用", tone: "amber" },
 ] as const;
 
@@ -320,6 +321,7 @@ export default function Home() {
   const [completedElapsedMs, setCompletedElapsedMs] = useState<number | null>(null);
   const [sidecarState, setSidecarState] = useState<"idle" | "starting" | "ready" | "error">("idle");
   const [desktopSearchPending, setDesktopSearchPending] = useState(false);
+  const [webPwaSearchPending, setWebPwaSearchPending] = useState(false);
   const [desktopVersion, setDesktopVersion] = useState(FALLBACK_DESKTOP_VERSION);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<DesktopUpdate | null>(null);
@@ -331,6 +333,7 @@ export default function Home() {
   const retryingPlatformRef = useRef<PlatformId | null>(null);
   const historyMenuRef = useRef<HTMLDivElement | null>(null);
   const activeDesktopSearchAbortRef = useRef<AbortController | null>(null);
+  const activeWebPwaSearchAbortRef = useRef<AbortController | null>(null);
   const searchRequestGateRef = useRef(new LatestSearchRequestGate());
   const updaterCheckInFlightRef = useRef(false);
   const personalDataRevisionRef = useRef(0);
@@ -419,7 +422,8 @@ export default function Home() {
   const readerMutation = trpc.fastapi.proxy.useMutation();
 
   const desktopRuntime = isTauriDesktopRuntime();
-  const isSearchPending = searchMutation.isPending || desktopSearchPending;
+  const webPwaApi = usesWebPwaApi();
+  const isSearchPending = searchMutation.isPending || desktopSearchPending || webPwaSearchPending;
 
   const refreshReaderCacheStats = useCallback(() => setReaderCacheStats(getReaderCacheStats()), []);
   const clearAllReaderCache = useCallback(() => {
@@ -433,8 +437,9 @@ export default function Home() {
       await waitForSidecarReady();
       return postSidecarReader<ReaderDocument>(url, { chapterUrl });
     }
+    if (webPwaApi) return postWebPwaReader<ReaderDocument>(url, { chapterUrl });
     return readerMutation.mutateAsync({ path: "/reader", method: "POST", data: { url, ...(chapterUrl ? { chapterUrl } : {}) } }) as Promise<ReaderDocument>;
-  }, [desktopRuntime, readerMutation]);
+  }, [desktopRuntime, webPwaApi, readerMutation]);
 
   const openReaderSource = useCallback(async (url: string) => {
     if (!desktopRuntime) {
@@ -451,6 +456,29 @@ export default function Home() {
   }, [desktopRuntime]);
 
   const requestSearch = (request: { path: string; method: "POST"; data: Record<string, unknown> }, requestId: number, cacheKey: string | null) => {
+    if (!desktopRuntime && webPwaApi) {
+      activeWebPwaSearchAbortRef.current?.abort();
+      const controller = new AbortController();
+      activeWebPwaSearchAbortRef.current = controller;
+      setWebPwaSearchPending(true);
+      void (async () => {
+        try {
+          const payload = await postWebPwaSearch(request.data, controller.signal);
+          if (!searchRequestGateRef.current.isCurrent(requestId)) return;
+          if (cacheKey) writeSearchRequestCache(cacheKey, payload);
+          handleSearchSuccess(payload, request);
+        } catch (error) {
+          if (!searchRequestGateRef.current.isCurrent(requestId) || (error instanceof DOMException && error.name === "AbortError")) return;
+          handleSearchError(error instanceof Error ? error : new Error("網頁搜尋服務暫時無法連線"), request);
+        } finally {
+          if (searchRequestGateRef.current.isCurrent(requestId)) {
+            setWebPwaSearchPending(false);
+            activeWebPwaSearchAbortRef.current = null;
+          }
+        }
+      })();
+      return;
+    }
     if (!desktopRuntime) {
       searchMutation.mutate(request as any);
       return;
@@ -567,7 +595,16 @@ export default function Home() {
     if (searchMode !== "keyword") return null;
     const normalizedKeyword = keyword.trim().toLocaleLowerCase();
     if (!normalizedKeyword) return null;
-    return cpMappings.find((mapping) => mapping.alias.toLocaleLowerCase() === normalizedKeyword) || null;
+    return cpMappings.find((mapping) => {
+      const candidateTerms = [mapping.alias, mapping.ao3Query, mapping.localQuery, mapping.japaneseQuery]
+        .flatMap((value) => value.split(/[\s,，、/／]+/))
+        .map((value) => value.trim().toLocaleLowerCase())
+        .filter((value) => value.length >= 2);
+      const completeValues = [mapping.alias, mapping.ao3Query, mapping.localQuery, mapping.japaneseQuery]
+        .map((value) => value.trim().toLocaleLowerCase())
+        .filter(Boolean);
+      return completeValues.includes(normalizedKeyword) || candidateTerms.some((term) => normalizedKeyword === term || (term.length >= 3 && normalizedKeyword.includes(term)));
+    }) || null;
   }, [cpMappings, keyword, searchMode]);
 
   useEffect(() => {
@@ -1106,6 +1143,7 @@ export default function Home() {
             <span>搜尋</span><span>{PLATFORMS.length} 個來源</span><span>私人藏書</span>
           </div>
           <div className="flex items-center gap-2 text-xs font-medium text-[color:var(--atlas-muted)]">
+            <PwaInstallButton />
             <Button type="button" variant="ghost" aria-label="開啟偏好與快取設定" onClick={() => { refreshReaderCacheStats(); setPreferencesOpen(true); }} className="h-9 rounded-xl border-0 bg-[color:var(--atlas-elevated)] px-3 text-xs font-semibold text-[color:var(--atlas-ink)] hover:bg-[color:var(--atlas-indigo-soft)]"><Settings2 className="mr-1.5 h-3.5 w-3.5" />設定</Button>
             <span className="h-2 w-2 rounded-full bg-[#0f766e]" />已連線
           </div>
@@ -1179,7 +1217,7 @@ export default function Home() {
         </section>}
 
         {activeView !== "cp-library" && <>
-        <section className="mt-10 flex flex-col gap-3 border-b border-[color:var(--atlas-line)] pb-5 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="text-3xl font-extrabold sm:text-4xl">{activeView === "bookmarks" ? `藏書閣 · ${bookmarks.length.toLocaleString()} 本` : searchMutation.isPending ? "正在尋找作品" : hasSearched ? pagination.totalWorks > 0 ? `找到 ${pagination.totalWorks.toLocaleString()} 篇作品` : "暫時沒有可驗證的作品" : "開始探索"}</h2>{activeView === "search" && searchMode === "author" && <div className="mt-2 flex items-center gap-2 text-sm text-amber-700"><UserRound className="h-3.5 w-3.5" /> 搜尋作者：{activeQuery || keyword}</div>}{activeView === "search" && hasSearched && pagination.totalWorks > 0 && <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[color:var(--atlas-muted)]"><span>已載入第 {pagination.loadedThroughPage} / {pagination.totalPages} 頁</span><span>顯示 {displayedResults.length} / {results.length} 筆</span>{hideBookmarkedResults && <span className="text-[color:var(--atlas-indigo)]">藏書閣隱藏：{hiddenBookmarkedResultCount} 篇</span>}{excludedKeywords.length > 0 && <span className="text-[color:var(--atlas-danger)]">避雷中：{excludedKeywords.length} 詞</span>}{completedElapsedMs !== null && <span className="text-[color:var(--atlas-success)]">{(completedElapsedMs / 1000).toFixed(1)} 秒完成</span>}</div>}</div><div className="flex flex-wrap items-center gap-2"><div className="text-xs text-[color:var(--atlas-muted)]">{activeView === "bookmarks" ? desktopRuntime ? "只保留在這台裝置" : "保留在這個瀏覽器" : `${selectedPlatforms.length} 個來源已啟用`}</div>{activeView === "search" && hasSearched && filteredResultCount > 0 && <Button type="button" variant="outline" aria-label="顯示已避雷作品" aria-pressed={showFilteredResults} onClick={() => setShowFilteredResults((current) => { const next = !current; if (!next) setRevealedFilteredUrls(new Set()); return next; })} className={`h-9 rounded-full border px-3 text-xs font-semibold ${showFilteredResults ? "border-[color:var(--atlas-amber)] bg-[color:var(--atlas-amber-soft)] text-[color:var(--atlas-amber)]" : "border-[color:var(--atlas-danger-line)] bg-white text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)]"}`}>{showFilteredResults ? <EyeOff className="mr-1.5 h-3.5 w-3.5" /> : <Eye className="mr-1.5 h-3.5 w-3.5" />}{showFilteredResults ? "隱藏已避雷作品" : "顯示已避雷作品"}<span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-current px-1.5 py-0.5 text-[10px] font-bold text-white">{filteredResultCount}</span></Button>}</div></section>
+        <section className="mt-10 flex flex-col gap-3 border-b border-[color:var(--atlas-line)] pb-5 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="text-3xl font-extrabold sm:text-4xl">{activeView === "bookmarks" ? `藏書閣 · ${bookmarks.length.toLocaleString()} 本` : isSearchPending ? "正在尋找作品" : hasSearched ? pagination.totalWorks > 0 ? `找到 ${pagination.totalWorks.toLocaleString()} 篇作品` : "暫時沒有可驗證的作品" : "開始探索"}</h2>{activeView === "search" && searchMode === "author" && <div className="mt-2 flex items-center gap-2 text-sm text-amber-700"><UserRound className="h-3.5 w-3.5" /> 搜尋作者：{activeQuery || keyword}</div>}{activeView === "search" && hasSearched && pagination.totalWorks > 0 && <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[color:var(--atlas-muted)]"><span>已載入第 {pagination.loadedThroughPage} / {pagination.totalPages} 頁</span><span>顯示 {displayedResults.length} / {results.length} 筆</span>{hideBookmarkedResults && <span className="text-[color:var(--atlas-indigo)]">藏書閣隱藏：{hiddenBookmarkedResultCount} 篇</span>}{excludedKeywords.length > 0 && <span className="text-[color:var(--atlas-danger)]">避雷中：{excludedKeywords.length} 詞</span>}{completedElapsedMs !== null && <span className="text-[color:var(--atlas-success)]">{(completedElapsedMs / 1000).toFixed(1)} 秒完成</span>}</div>}</div><div className="flex flex-wrap items-center gap-2"><div className="text-xs text-[color:var(--atlas-muted)]">{activeView === "bookmarks" ? desktopRuntime ? "只保留在這台裝置" : "保留在這個瀏覽器" : `${selectedPlatforms.length} 個來源已啟用`}</div>{activeView === "search" && hasSearched && filteredResultCount > 0 && <Button type="button" variant="outline" aria-label="顯示已避雷作品" aria-pressed={showFilteredResults} onClick={() => setShowFilteredResults((current) => { const next = !current; if (!next) setRevealedFilteredUrls(new Set()); return next; })} className={`h-9 rounded-full border px-3 text-xs font-semibold ${showFilteredResults ? "border-[color:var(--atlas-amber)] bg-[color:var(--atlas-amber-soft)] text-[color:var(--atlas-amber)]" : "border-[color:var(--atlas-danger-line)] bg-white text-[color:var(--atlas-danger)] hover:bg-[color:var(--atlas-danger-soft)]"}`}>{showFilteredResults ? <EyeOff className="mr-1.5 h-3.5 w-3.5" /> : <Eye className="mr-1.5 h-3.5 w-3.5" />}{showFilteredResults ? "隱藏已避雷作品" : "顯示已避雷作品"}<span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-current px-1.5 py-0.5 text-[10px] font-bold text-white">{filteredResultCount}</span></Button>}</div></section>
 
         {activeView === "search" && hasSearched && platformStatuses.length > 0 && (
           <section aria-label="來源健康摘要" className="mt-3">
@@ -1344,8 +1382,8 @@ export default function Home() {
               onCheckForUpdates={desktopRuntime ? () => void checkForAppUpdate("manual") : undefined}
             />
           ) : <>
-          {!hasSearched && !searchMutation.isPending && <div className="atlas-panel p-8 sm:p-10"><div className="max-w-2xl"><div className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]"><Sparkles className="h-5 w-5" /></div><h3 className="text-2xl font-extrabold">從一組關鍵字開始</h3><p className="mt-3 text-sm leading-7 text-[color:var(--atlas-muted)]">輸入角色、配對或作品名，從公開來源找到作品，並把想留下的故事收進你的書架。</p></div></div>}
-          {hasSearched && results.length === 0 && !searchMutation.isPending && (
+          {!hasSearched && !isSearchPending && <div className="atlas-panel p-8 sm:p-10"><div className="max-w-2xl"><div className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]"><Sparkles className="h-5 w-5" /></div><h3 className="text-2xl font-extrabold">從一組關鍵字開始</h3><p className="mt-3 text-sm leading-7 text-[color:var(--atlas-muted)]">輸入角色、配對或作品名，從公開來源找到作品，並把想留下的故事收進你的書架。</p></div></div>}
+          {hasSearched && results.length === 0 && !isSearchPending && (
             <div className="relative overflow-hidden border border-dashed border-[#10151b]/25 bg-white/45 px-6 py-16 text-center">
               <div className="absolute right-0 top-0 h-16 w-16 border-b border-l border-[#e27d9d]/20" />
               <div className="mx-auto max-w-md">
@@ -1369,9 +1407,9 @@ export default function Home() {
               </div>
             </div>
           )}
-          {searchMutation.isPending && !isRetryingSinglePlatform && <div className="grid gap-4 md:grid-cols-2">{[1, 2, 3, 4].map((item) => <div key={item} className="h-64 animate-pulse border border-[#10151b]/10 bg-white/55" />)}</div>}
-          {(!searchMutation.isPending || isRetryingSinglePlatform) && results.length > 0 && displayedResults.length === 0 && <div className="border border-dashed border-[#10151b]/25 bg-white/45 px-6 py-12 text-center"><div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#e27d9d]">NO FILTER MATCH</div><p className="mt-3 text-sm text-[#66757d]">目前沒有作品符合這組前端篩選條件；可調整分級、字數、完結狀態或排序方式。</p></div>}
-          {(!searchMutation.isPending || isRetryingSinglePlatform) && results.length > 0 && (
+          {isSearchPending && !isRetryingSinglePlatform && <div className="grid gap-4 md:grid-cols-2">{[1, 2, 3, 4].map((item) => <div key={item} className="h-64 animate-pulse border border-[#10151b]/10 bg-white/55" />)}</div>}
+          {(!isSearchPending || isRetryingSinglePlatform) && results.length > 0 && displayedResults.length === 0 && <div className="border border-dashed border-[#10151b]/25 bg-white/45 px-6 py-12 text-center"><div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#e27d9d]">NO FILTER MATCH</div><p className="mt-3 text-sm text-[#66757d]">目前沒有作品符合這組前端篩選條件；可調整分級、字數、完結狀態或排序方式。</p></div>}
+          {(!isSearchPending || isRetryingSinglePlatform) && results.length > 0 && (
             <div className="space-y-6">
               {searchWarning && (
                 <div className="border border-[#e27d9d]/40 bg-[#fff5f7] p-4 font-mono text-xs text-[#8b3e59]">
@@ -1413,19 +1451,14 @@ export default function Home() {
                     <Card key={`${result.url}-${index}`} className={`reader-story-card group relative ${resultViewMode === "cards" ? "flex h-full flex-col gap-0 overflow-hidden py-0" : "overflow-hidden"} ${isRestricted ? "border-[#efb4c4]" : ""}`}>
                       <CardContent className={`p-0 transition-[filter,opacity] duration-200 ${resultViewMode === "cards" ? "flex h-full flex-col" : ""} ${isMaskedByBlacklist ? "pointer-events-none select-none blur-[5px] opacity-45" : ""}`}>
                         {resultViewMode === "cards" && <BlueprintCover src={result.coverUrl} title={result.title} />}
-                        <div className={`flex items-center justify-between border-b border-[#111826]/10 ${resultViewMode === "list" ? "px-4 py-2.5" : "px-5 py-3"}`}>
-                          <div className="flex items-center gap-2">
+                        <div className={`flex min-w-0 items-start border-b border-[#111826]/10 ${resultViewMode === "list" ? "px-4 py-2.5" : "px-5 py-3"}`}>
+                          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                             <Badge className={`rounded-full border-0 px-2.5 py-1 text-xs font-medium ${platformToneClass(meta.tone)} `}>
                               {meta.label}
                             </Badge>
                             {isRestricted && <Badge className="rounded-full border-0 bg-[color:var(--atlas-danger-soft)] px-2.5 py-1 text-xs font-semibold text-[color:var(--atlas-danger)]">18+ / R18</Badge>}
-                            {result.source && (
-                              <span className="font-mono text-[9px] uppercase tracking-wider text-[#75838b]">
-                                [{result.source}]
-                              </span>
-                            )}
                           </div>
-                          <div className="flex items-center gap-2"><button type="button" onClick={() => bookmark ? requestBookmarkRemoval(result.url) : (setBookmarkTarget(result), setBookmarkDialogOpen(true))} aria-label={bookmark ? `取消收藏 ${result.title}` : `收藏 ${result.title}`} className={`inline-flex h-8 items-center gap-1 rounded-full border px-2.5 text-xs font-semibold shadow-sm transition-colors ${bookmark ? "border-[color:var(--atlas-indigo)]/20 bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]" : "border-slate-300 bg-white/90 text-slate-700 hover:border-indigo-400 hover:text-indigo-600"}`}>{bookmark ? <BookmarkCheck className="h-3.5 w-3.5" /> : <Bookmark className="h-3.5 w-3.5" />}{bookmark ? "已收藏" : "收藏"}</button><span className="text-xs text-[color:var(--atlas-muted)]">{formatDate(result.scraped_at)}</span></div>
+                          <div className="ml-auto flex shrink-0 items-center gap-2"><button type="button" onClick={() => bookmark ? requestBookmarkRemoval(result.url) : (setBookmarkTarget(result), setBookmarkDialogOpen(true))} aria-label={bookmark ? `取消收藏 ${result.title}` : `收藏 ${result.title}`} className={`inline-flex h-8 items-center gap-1 rounded-full border px-2.5 text-xs font-semibold shadow-sm transition-colors ${bookmark ? "border-[color:var(--atlas-indigo)]/20 bg-[color:var(--atlas-indigo-soft)] text-[color:var(--atlas-indigo)]" : "border-slate-300 bg-white/90 text-slate-700 hover:border-indigo-400 hover:text-indigo-600"}`}>{bookmark ? <BookmarkCheck className="h-3.5 w-3.5" /> : <Bookmark className="h-3.5 w-3.5" />}{bookmark ? "已收藏" : "收藏"}</button><span className="whitespace-nowrap text-xs text-[color:var(--atlas-muted)]">{formatDate(result.scraped_at)}</span></div>
                         </div>
                         <div className={resultViewMode === "list" ? "grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1.5fr)_minmax(10rem,0.7fr)_auto] md:items-center" : "flex flex-1 flex-col p-5 sm:p-6"}>
                           <div className={resultViewMode === "list" ? "min-w-0" : "flex min-h-0 flex-1 flex-col"}>
@@ -1435,10 +1468,10 @@ export default function Home() {
                           </div>
                           {isNavigableAuthor(result.author) ? <button type="button" onClick={() => navigateToAuthor(result.author)} className="group/author inline-flex items-center gap-1.5 text-sm font-medium text-[color:var(--atlas-muted)] transition-colors hover:text-[color:var(--atlas-indigo)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--atlas-indigo)]" aria-label={`搜尋作者 ${result.author}`}><UserRound className="h-3.5 w-3.5" /><span className="border-b border-transparent group-hover/author:border-current">{result.author}</span></button> : <div className="text-sm font-medium text-[color:var(--atlas-muted)]">{result.author || "未知創作者"}</div>}
                           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[color:var(--atlas-muted)]"><span>{result.wordCount ? `${result.wordCount} 字` : "字數以原站為準"}</span>{result.isComplete !== null && result.isComplete !== undefined && <span className={result.isComplete ? "text-[color:var(--atlas-success)]" : "text-[color:var(--atlas-amber)]"}>{result.isComplete ? "已完結" : "連載中"}</span>}{typeof result.relevanceScore === "number" && <span>相關度 {result.relevanceScore}</span>}</div>
-                          <div className={`${resultViewMode === "list" ? "mt-3" : "mt-6"} ${tagsExpanded ? "flex flex-wrap" : "flex h-7 flex-nowrap overflow-hidden"} gap-1.5`} aria-label={`${result.title} 的標籤`}>
-                            {relationshipTags.map((tag) => <span key={`relationship-${tag}`} title={tag} className="inline-flex min-w-0 max-w-[180px] items-center justify-center truncate border border-[#e8a7bf] bg-[#ffe8f0] px-2.5 py-1 text-xs font-semibold leading-none text-[#8b3e59]">♡ {tag}</span>)}
-                            {characterTags.map((tag) => <span key={`character-${tag}`} title={tag} className="inline-flex min-w-0 max-w-[180px] items-center justify-center truncate border border-[#c9bcf2] bg-[#f0ecff] px-2.5 py-1 text-xs font-semibold leading-none text-[#5c4e87]">◇ {tag}</span>)}
-                            {tags.map((tag) => <span key={`tag-${tag}`} title={tag} className="inline-flex min-w-0 max-w-[180px] items-center justify-center truncate border border-slate-200 bg-slate-100/90 px-2.5 py-1 text-xs font-semibold leading-none text-slate-700">#{tag}</span>)}
+                          <div className={`${resultViewMode === "list" ? "mt-3" : "mt-6"} flex flex-wrap gap-1.5`} aria-label={`${result.title} 的標籤`}>
+                            {relationshipTags.map((tag) => <span key={`relationship-${tag}`} title={tag} className="inline-flex min-w-0 max-w-full items-center break-words whitespace-normal border border-[#e8a7bf] bg-[#ffe8f0] px-2.5 py-1 text-left text-xs font-semibold leading-relaxed text-[#8b3e59]">♡ {tag}</span>)}
+                            {characterTags.map((tag) => <span key={`character-${tag}`} title={tag} className="inline-flex min-w-0 max-w-full items-center break-words whitespace-normal border border-[#c9bcf2] bg-[#f0ecff] px-2.5 py-1 text-left text-xs font-semibold leading-relaxed text-[#5c4e87]">◇ {tag}</span>)}
+                            {tags.map((tag) => <span key={`tag-${tag}`} title={tag} className="inline-flex min-w-0 max-w-full items-center break-words whitespace-normal border border-slate-200 bg-slate-100/90 px-2.5 py-1 text-left text-xs font-semibold leading-relaxed text-slate-700">#{tag}</span>)}
                             {hiddenTagCount > 0 && <button type="button" onClick={() => setExpandedTagUrls((current) => { const next = new Set(current); next.add(result.url); return next; })} title="展開完整標籤" className="inline-flex shrink-0 items-center justify-center border border-dashed border-slate-300 bg-white px-2.5 py-1 text-xs font-bold leading-none text-slate-700 hover:border-[color:var(--atlas-indigo)] hover:text-[color:var(--atlas-indigo)]">+{hiddenTagCount} 標籤</button>}
                             {tagsExpanded && hiddenTagCount === 0 && (allRelationshipTags.length + allCharacterTags.length + allCategoryTags.length) > 0 && <button type="button" onClick={() => setExpandedTagUrls((current) => { const next = new Set(current); next.delete(result.url); return next; })} className="inline-flex items-center justify-center border border-dashed border-slate-300 bg-white px-2.5 py-1 text-xs font-bold leading-none text-slate-700 hover:border-[color:var(--atlas-indigo)] hover:text-[color:var(--atlas-indigo)]">收合標籤</button>}
                           </div>

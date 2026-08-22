@@ -97,6 +97,25 @@ describe("ReaderView", () => {
     expect(progressLine?.lastElementChild?.className).toContain("whitespace-nowrap");
   });
 
+  it("uses mobile overscroll protection and advances a chapter with a horizontal touch swipe", async () => {
+    const nextUrl = "https://example.com/work/42/chapter/2";
+    const tableOfContents = [
+      { id: "chapter-1", index: 1, title: "第一章", url: work.url, paragraphs: [] },
+      { id: "chapter-2", index: 2, title: "第二章", url: nextUrl, paragraphs: [] },
+    ];
+    const nextDocument = { ...document, url: nextUrl, title: "第二章", currentChapterIndex: 1, tableOfContents, chapters: [{ id: "chapter-2", title: "第二章", url: nextUrl, paragraphs: ["第二章正文。"] }] };
+    const loadDocument = vi.fn((_sourceUrl: string, chapterUrl?: string) => Promise.resolve(chapterUrl === nextUrl ? nextDocument : { ...document, tableOfContents }));
+    render(<ReaderView work={work} loadDocument={loadDocument} onClose={vi.fn()} />);
+
+    const viewport = await screen.findByLabelText("閱讀內容");
+    expect(viewport.className).toContain("overscroll-contain");
+    expect(viewport.className).toContain("touch-pan-y");
+    fireEvent.touchStart(viewport, { touches: [{ clientX: 240, clientY: 240 }] });
+    fireEvent.touchEnd(viewport, { changedTouches: [{ clientX: 120, clientY: 240 }] });
+
+    expect(await screen.findByText("第二章正文。")).toBeTruthy();
+  });
+
   it("marks a newly opened first chapter as reading before the reader is scrolled", async () => {
     const onProgress = vi.fn();
     render(<ReaderView work={work} loadDocument={vi.fn().mockResolvedValue(document)} onClose={vi.fn()} onProgress={onProgress} />);
@@ -215,5 +234,31 @@ describe("ReaderView", () => {
     await waitFor(() => expect(screen.getByText("第一段公開正文。")).toBeTruthy());
     expect(secondLoad).not.toHaveBeenCalled();
     expect(screen.getByRole("status").textContent).toContain("本機快取");
+  });
+
+  it("switches any preloaded AO3 full-work chapter without another source request", async () => {
+    const chapters = Array.from({ length: 44 }, (_, index) => ({
+      id: `chapter-${index + 1}`,
+      index: index + 1,
+      title: `第 ${index + 1} 章`,
+      url: `https://archiveofourown.org/chapters/${index + 1}`,
+      paragraphs: [`第 ${index + 1} 章正文。`],
+    }));
+    const loadDocument = vi.fn().mockResolvedValue({
+      ...document,
+      source: "AO3",
+      url: chapters[0].url,
+      title: "44 章 AO3 作品",
+      tableOfContents: chapters,
+      chapters,
+    });
+
+    render(<ReaderView work={work} loadDocument={loadDocument} onClose={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("第 1 章正文。")).toBeTruthy());
+    fireEvent.click(screen.getByLabelText("開啟章節目錄"));
+    fireEvent.click(screen.getByRole("button", { name: /第 44 章/ }));
+
+    expect(await screen.findByText("第 44 章正文。")).toBeTruthy();
+    expect(loadDocument).toHaveBeenCalledTimes(1);
   });
 });

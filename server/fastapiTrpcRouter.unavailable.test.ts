@@ -19,12 +19,11 @@ describe("tRPC FastAPI unavailable-source contract", () => {
     const result = await caller.fastapi.proxy({
       path: "/search",
       method: "POST",
-      data: { keyword: "義忍", platforms: ["bahamut", "popo", "kadokado"], page: 1 },
+      data: { keyword: "義忍", platforms: ["bahamut", "kadokado"], page: 1 },
     });
 
     expect(result.platformStatuses).toEqual([
       expect.objectContaining({ platformId: "bahamut", label: "巴哈姆特創作大廳", status: "error" }),
-      expect.objectContaining({ platformId: "popo", label: "POPO 原創市集", status: "error" }),
       expect.objectContaining({ platformId: "kadokado", label: "KadoKado 角角者", status: "error" }),
     ]);
   });

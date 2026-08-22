@@ -38,7 +38,7 @@ describe("fastapi.proxy", () => {
         url: "http://localhost/search",
         socketPath: expect.stringContaining(".manus-fastapi.sock"),
         data: { keyword: "星光", platforms: ["ao3"] },
-        timeout: 25_000,
+        timeout: 45_000,
         headers: { "Content-Type": "application/json" },
       }),
     );

@@ -46,6 +46,6 @@ describe("tRPC fastapi.proxy Actual Request Forwarding for '義忍'", () => {
         expect(result.items.length).toBeGreaterThan(0);
         expect(result.items[0].title).toBe("【義忍】無題");
         expect(axios.request).toHaveBeenCalledTimes(1);
-        expect(axios.request).toHaveBeenCalledWith(expect.objectContaining({ timeout: 25_000 }));
+        expect(axios.request).toHaveBeenCalledWith(expect.objectContaining({ timeout: 45_000 }));
     });
 });

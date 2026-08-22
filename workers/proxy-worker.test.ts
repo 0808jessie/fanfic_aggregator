@@ -1,0 +1,54 @@
+import worker from "./proxy-worker.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+function context() {
+  return { waitUntil: vi.fn() };
+}
+
+describe("Cloudflare PWA API proxy", () => {
+  const env = { API_ORIGIN: "https://reader-api.example.test" };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("answers CORS preflight without contacting the upstream", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await worker.fetch(new Request("https://proxy.example/api/search", { method: "OPTIONS" }), env, context());
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(response.headers.get("Access-Control-Allow-Methods")).toContain("POST");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("proxies a search POST, adds CORS and schedules a ten-minute cache write", async () => {
+    const cache = { match: vi.fn().mockResolvedValue(undefined), put: vi.fn().mockResolvedValue(undefined) };
+    vi.stubGlobal("caches", { default: cache });
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [{ title: "公開作品" }] }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const ctx = context();
+
+    const response = await worker.fetch(
+      new Request("https://proxy.example/api/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keyword: "義忍", platforms: ["ao3"] }) }),
+      env,
+      ctx,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(response.headers.get("Cache-Control")).toContain("max-age=600");
+    expect(fetchMock).toHaveBeenCalledWith("https://reader-api.example.test/api/search", expect.objectContaining({ method: "POST" }));
+    expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects unsupported paths and methods before they reach the FastAPI origin", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await worker.fetch(new Request("https://proxy.example/api/unknown", { method: "POST" }), env, context());
+
+    expect(response.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

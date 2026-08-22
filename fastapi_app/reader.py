@@ -6,6 +6,7 @@ cookies, or verification material, and it only requests known public work hosts.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from dataclasses import dataclass, field
@@ -17,6 +18,9 @@ from curl_cffi import requests
 
 
 READER_TIMEOUT_SECONDS = 10
+WATERWRITER_THREAD_TIMEOUT_SECONDS = 35
+PENANA_READER_TIMEOUT_SECONDS = 25
+KADOKADO_READER_TIMEOUT_SECONDS = 20
 READER_HOSTS: dict[str, str] = {
     "archiveofourown.org": "AO3",
     "penana.com": "Penana",
@@ -26,7 +30,6 @@ READER_HOSTS: dict[str, str] = {
     "cxc.today": "CxC 創利市集",
     "pixiv.net": "Pixiv",
     "gamer.com.tw": "巴哈姆特創作大廳",
-    "popo.tw": "POPO 原創市集",
     "kadokado.com.tw": "KadoKado 角角者",
 }
 READER_HEADERS = {
@@ -66,7 +69,11 @@ PENANA_WATERMARK_PATTERN = re.compile(
     re.IGNORECASE,
 )
 PENANA_COPYRIGHT_PATTERN = re.compile(r"copyright\s+protection\s*\d*", re.IGNORECASE)
+PENANA_IP_WATERMARK_PATTERN = re.compile(r"\bns\d{1,3}(?:\.\d{1,3}){3}[A-Za-z0-9._-]*", re.IGNORECASE)
+WATERWRITER_THREAD_PATH_PATTERN = re.compile(r"/thread/(?P<thread_id>\d+)")
 CXC_WORK_PATH_PATTERN = re.compile(r"/@(?P<store>[^/]+)/work/(?P<work_id>\d+)(?:/reader/(?P<section_id>\d+))?/?$")
+KADOKADO_BOOK_PATH_PATTERN = re.compile(r"/book/(?P<title_id>\d+)")
+KADOKADO_CHAPTER_PATH_PATTERN = re.compile(r"/chapter/(?P<chapter_id>\d+)")
 
 
 class ReaderRequestError(ValueError):
@@ -89,6 +96,7 @@ class ExtractedReaderDocument:
     table_of_contents: list["ReaderChapterEntry"] = field(default_factory=list)
     current_chapter_index: int = 0
     series_title: str | None = None
+    all_chapters: list[tuple["ReaderChapterEntry", list[str]]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -125,14 +133,16 @@ def _normalize_bahamut_url(url: str) -> str:
     return url
 
 
-def _normalize_ao3_url(url: str) -> str:
-    """Request AO3's documented public adult-view variant without handling user cookies."""
+def _normalize_ao3_url(url: str, full_work: bool = False) -> str:
+    """Request AO3's documented public adult/full-work view without user cookies."""
     parsed = urlparse(url)
     host = (parsed.hostname or "").lower().removeprefix("www.")
     if host != "archiveofourown.org" or not re.match(r"^/(?:works|chapters)/\d+", parsed.path):
         return url
     query = parse_qs(parsed.query, keep_blank_values=True)
     query.setdefault("view_adult", ["true"])
+    if full_work:
+        query.setdefault("view_full_work", ["true"])
     return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, urlencode(query, doseq=True), parsed.fragment))
 
 
@@ -144,10 +154,15 @@ def _is_protection_page(html: str) -> bool:
     return any(marker in sample for marker in markers)
 
 
-async def _public_get(url: str, headers: dict[str, str] | None = None, cookies: dict[str, str] | None = None):
+async def _public_get(
+    url: str,
+    headers: dict[str, str] | None = None,
+    cookies: dict[str, str] | None = None,
+    timeout: int = READER_TIMEOUT_SECONDS,
+):
     """Perform one bounded, credential-free browser-profiled public request."""
     async with requests.AsyncSession(impersonate="chrome120", headers=headers or READER_HEADERS) as session:
-        return await session.get(url, timeout=READER_TIMEOUT_SECONDS, cookies=cookies)
+        return await session.get(url, timeout=timeout, cookies=cookies)
 
 
 async def _bahamut_public_get(url: str):
@@ -192,7 +207,12 @@ async def fetch_public_work_html(url: str) -> str:
     source_for_reader_url(url)
     target_url = _normalize_bahamut_url(_normalize_ao3_url(url))
     try:
-        response = await (_bahamut_public_get(target_url) if source_for_reader_url(target_url) == "巴哈姆特創作大廳" else _public_get(target_url))
+        source = source_for_reader_url(target_url)
+        response = await (
+            _bahamut_public_get(target_url)
+            if source == "巴哈姆特創作大廳"
+            else _public_get(target_url, timeout=PENANA_READER_TIMEOUT_SECONDS if source == "Penana" else READER_TIMEOUT_SECONDS)
+        )
     except Exception as error:  # curl_cffi exposes transport-specific error classes.
         raise ReaderUnavailableError("原始網站暫時無法提供可閱讀的公開內文，請稍後再試。") from error
     if response.status_code in {401, 403, 429} or response.status_code >= 500:
@@ -280,12 +300,62 @@ def _clean_penana_reader_root(root: Tag) -> None:
         if node.has_attr("hidden") or node.get("aria-hidden") == "true" or "display:none" in style or "visibility:hidden" in style:
             node.decompose()
     for text_node in list(root.find_all(string=True)):
-        cleaned = PENANA_WATERMARK_PATTERN.sub("", str(text_node))
+        raw_text = str(text_node)
+        if PENANA_IP_WATERMARK_PATTERN.search(raw_text):
+            # The public page can append an IP-shaped watermark immediately
+            # before replaying the whole issue. Mark its nearest prose block so
+            # the paragraph reader can stop before the repeated tail.
+            parent = text_node.parent
+            while parent is not None and parent is not root and parent.name not in {"p", "div", "blockquote", "li"}:
+                parent = parent.parent
+            if parent is not None and parent is not root:
+                parent["data-reader-noise-boundary"] = "true"
+        cleaned = PENANA_IP_WATERMARK_PATTERN.sub("", raw_text)
+        cleaned = PENANA_WATERMARK_PATTERN.sub("", cleaned)
         cleaned = PENANA_COPYRIGHT_PATTERN.sub("", cleaned)
         if not cleaned.strip():
             text_node.extract()
         elif cleaned != str(text_node):
             text_node.replace_with(cleaned)
+
+
+def _penana_innermost_reader_root(soup: BeautifulSoup) -> Tag | None:
+    """Return one innermost Penana prose container instead of stacking wrappers."""
+    selectors = ".issue-content, .content_holder, .story-content"
+    candidates = soup.select(selectors)
+    leaves = [candidate for candidate in candidates if not candidate.select_one(selectors)]
+    return max(leaves or candidates, key=lambda candidate: len(candidate.get_text(" ", strip=True)), default=None)
+
+
+def _penana_paragraphs_from(root: Tag) -> list[str]:
+    """Extract one clean public Penana prose sequence without replaying a body tail."""
+    for node in root.select("br"):
+        node.replace_with("\n")
+    paragraphs: list[str] = []
+    seen: set[str] = set()
+    for node in root.select("p, div, blockquote, li"):
+        if node.has_attr("data-reader-noise-boundary") or node.select_one("[data-reader-noise-boundary='true']"):
+            break
+        if node.name == "div" and node.select_one("p, div, blockquote, li"):
+            continue
+        text = re.sub(r"[^\S\r\n]+", " ", node.get_text("\n", strip=True))
+        text = re.sub(r"\s*\n\s*", "\n", text).strip()
+        if len(text) < 2 or text in seen:
+            continue
+        seen.add(text)
+        paragraphs.append(text)
+    if paragraphs:
+        return paragraphs
+    fallback_text = root.get_text("\n", strip=True)
+    if PENANA_IP_WATERMARK_PATTERN.search(fallback_text):
+        fallback_text = PENANA_IP_WATERMARK_PATTERN.split(fallback_text, maxsplit=1)[0]
+    for line in fallback_text.splitlines():
+        text = _clean_text(line)
+        if len(text) < 2 or text in seen:
+            continue
+        seen.add(text)
+        paragraphs.append(text)
+    return paragraphs
 
 
 def _paragraphs_from(root: Tag) -> list[str]:
@@ -567,6 +637,115 @@ def _waterwriter_document(url: str, html: str) -> ExtractedReaderDocument:
     return ExtractedReaderDocument(url, title, author, "在水裡寫字", cover_url, toc[current_index].title, chapters[current_index][1], toc, current_index, title if len(toc) > 1 else None)
 
 
+async def _waterwriter_public_json(path: str) -> object:
+    """Read the public thread payload used by the source's own reader route."""
+    try:
+        async with requests.AsyncSession(
+            impersonate="chrome120",
+            headers={**READER_HEADERS, "Accept": "application/json, text/plain, */*"},
+        ) as session:
+            response = await session.get(
+                f"https://waterfall.slashtw.space/{path.lstrip('/')}",
+                timeout=WATERWRITER_THREAD_TIMEOUT_SECONDS,
+            )
+    except Exception as error:
+        raise ReaderUnavailableError("在水裡寫字公開樓層資料暫時無法讀取，請稍後再試。") from error
+    if response.status_code in {401, 403, 429} or response.status_code >= 500:
+        raise ReaderUnavailableError("在水裡寫字要求驗證或暫時拒絕公開讀取；本應用程式不會繞過該保護。")
+    if response.status_code >= 400:
+        raise ReaderUnavailableError(f"在水裡寫字回傳 HTTP {response.status_code}，目前無法讀取此篇作品。")
+    try:
+        return response.json()
+    except (ValueError, json.JSONDecodeError) as error:
+        raise ReaderUnavailableError("在水裡寫字未回傳可辨識的公開樓層資料；請改由原始網站閱讀。") from error
+
+
+async def _waterwriter_api_document(url: str) -> ExtractedReaderDocument:
+    """Build chapter navigation from every public original-poster post in a thread."""
+    match = WATERWRITER_THREAD_PATH_PATTERN.search(urlparse(url).path)
+    if match is None:
+        raise ReaderUnavailableError("在水裡寫字網址缺少可辨識的主題 ID；請改由原始網站閱讀。")
+    thread_id = match.group("thread_id")
+    payload = await _waterwriter_public_json(f"w/thread/{thread_id}")
+    record = payload if isinstance(payload, dict) else {}
+    posts = record.get("posts") if isinstance(record.get("posts"), list) else []
+    thread = record.get("thread") if isinstance(record.get("thread"), dict) else {}
+    total_posts = int(thread.get("count") or 0) if str(thread.get("count") or "").isdigit() else 0
+    # Short threads currently arrive in one response (including thread/21886's
+    # 30 floors). For a paged public payload, request only the advertised
+    # remainder and dedupe IDs so an endpoint that ignores `page` cannot replay
+    # a floor into the Reader chapter list.
+    if total_posts > len(posts) and posts:
+        page_size = len(posts)
+        known_post_ids = {str(post.get("pid") or post.get("position") or "") for post in posts if isinstance(post, dict)}
+        for page in range(2, (total_posts + page_size - 1) // page_size + 1):
+            page_payload = await _waterwriter_public_json(f"w/thread/{thread_id}?page={page}")
+            page_record = page_payload if isinstance(page_payload, dict) else {}
+            page_posts = page_record.get("posts") if isinstance(page_record.get("posts"), list) else []
+            added = 0
+            for post in page_posts:
+                if not isinstance(post, dict):
+                    continue
+                post_id = str(post.get("pid") or post.get("position") or "")
+                if post_id and post_id in known_post_ids:
+                    continue
+                if post_id:
+                    known_post_ids.add(post_id)
+                posts.append(post)
+                added += 1
+            if not added:
+                break
+    owner_id = str(thread.get("authorid") or thread.get("author_id") or "")
+    if not owner_id and posts:
+        first_post = posts[0]
+        owner_id = str(first_post.get("authorid") or first_post.get("author_id") or "") if isinstance(first_post, dict) else ""
+    owner_posts = [
+        post
+        for post in posts
+        if isinstance(post, dict)
+        and str(post.get("authorid") or post.get("author_id") or "") == owner_id
+        and post.get("invisible") in {None, 0, False}
+        and str(post.get("content") or "").strip()
+    ]
+    if not owner_posts:
+        raise ReaderUnavailableError("在水裡寫字未提供可辨識的樓主公開正文；請改由原始網站閱讀。")
+    chapters: list[tuple[int, list[str]]] = []
+    author = ""
+    for ordinal, post in enumerate(owner_posts, start=1):
+        content_root = BeautifulSoup(str(post.get("content") or ""), "html.parser")
+        for node in content_root.select(".pstatus, .sign, .signature, .reply, .quote, .authi, .pi, .pls"):
+            node.decompose()
+        paragraphs = _waterwriter_rich_paragraphs(content_root)
+        if not paragraphs:
+            continue
+        position = post.get("position")
+        floor_number = int(position) if str(position).isdigit() else ordinal
+        chapters.append((floor_number, paragraphs))
+        if not author:
+            author = _clean_text(str(post.get("author") or ""))
+    if not chapters:
+        raise ReaderUnavailableError("在水裡寫字未提供可辨識的樓主公開正文；請改由原始網站閱讀。")
+    base_url = url.split("#", 1)[0]
+    toc = [_toc_entry(f"{base_url}#floor-{floor_number}", f"第 {floor_number} 樓", index) for index, (floor_number, _) in enumerate(chapters, start=1)]
+    fragment = urlparse(url).fragment.removeprefix("floor-")
+    current_index = next((index for index, (floor_number, _) in enumerate(chapters) if str(floor_number) == fragment), 0)
+    title = _clean_text(str(thread.get("subject") or thread.get("title") or "")) or "未命名作品"
+    all_chapters = [(toc[index], paragraphs) for index, (_, paragraphs) in enumerate(chapters)]
+    return ExtractedReaderDocument(
+        toc[current_index].url,
+        title,
+        author or "原始作者以來源頁為準",
+        "在水裡寫字",
+        None,
+        toc[current_index].title,
+        chapters[current_index][1],
+        toc,
+        current_index,
+        title if len(toc) > 1 else None,
+        all_chapters,
+    )
+
+
 def _html_table_of_contents(url: str, source: str, soup: BeautifulSoup, title: str) -> list[ReaderChapterEntry]:
     selectors = {
         "AO3": ("select#selected_id option[value]", "ol.chapter.index a[href]", ".chapter.index a[href]"),
@@ -609,7 +788,7 @@ def _html_table_of_contents(url: str, source: str, soup: BeautifulSoup, title: s
         if not entries:
             return [_toc_entry(url, "全一話", 1)]
     if not entries:
-        label = "全一話" if source in {"同人誌中心", "POPO 原創市集"} else title
+        label = "全一話" if source == "同人誌中心" else title
         entries = [_toc_entry(url, label, 1)]
     return [ReaderChapterEntry(entry.id, entry.title, entry.url, position) for position, entry in enumerate(entries, start=1)]
 
@@ -837,6 +1016,94 @@ async def _pixiv_document(url: str) -> ExtractedReaderDocument:
     return ExtractedReaderDocument(url, title, author, "Pixiv", cover_url, chapter_title, paragraphs, toc, current_index, series_title or None)
 
 
+def _kadokado_reference(url: str) -> tuple[str, str | None]:
+    """Recognise either a KadoKado book landing page or a public chapter URL."""
+    parsed = urlparse(url)
+    chapter_match = KADOKADO_CHAPTER_PATH_PATTERN.search(parsed.path)
+    title_id = parse_qs(parsed.query).get("titleId", [""])[0]
+    book_match = KADOKADO_BOOK_PATH_PATTERN.search(parsed.path)
+    if book_match:
+        title_id = book_match.group("title_id")
+    if not title_id.isdecimal():
+        raise ReaderUnavailableError("KadoKado 網址缺少可辨識的作品 ID；請改由原始網站閱讀。")
+    return title_id, chapter_match.group("chapter_id") if chapter_match else None
+
+
+async def _kadokado_public_json(path: str) -> object:
+    try:
+        response = await _public_get(
+            f"https://api.kadokado.com.tw/{path.lstrip('/')}",
+            headers={**READER_HEADERS, "Accept": "application/json"},
+            timeout=KADOKADO_READER_TIMEOUT_SECONDS,
+        )
+    except Exception as error:
+        raise ReaderUnavailableError("KadoKado 公開章節資料暫時無法讀取，請稍後再試。") from error
+    if response.status_code in {401, 403, 429} or response.status_code >= 500:
+        raise ReaderUnavailableError("KadoKado 要求驗證或暫時拒絕公開讀取；本應用程式不會繞過該保護。")
+    if response.status_code >= 400:
+        raise ReaderUnavailableError(f"KadoKado 回傳 HTTP {response.status_code}，目前無法讀取此篇作品。")
+    try:
+        return response.json()
+    except (ValueError, json.JSONDecodeError) as error:
+        raise ReaderUnavailableError("KadoKado 未回傳可辨識的公開章節資料；請改由原始網站閱讀。") from error
+
+
+async def _kadokado_document(url: str) -> ExtractedReaderDocument:
+    """Read public/free KadoKado chapters via its JSON catalogue, never page chrome."""
+    title_id, requested_chapter_id = _kadokado_reference(url)
+    title_payload, collections_payload = await asyncio.gather(
+        _kadokado_public_json(f"v2/titles/{title_id}"),
+        _kadokado_public_json(f"v1/work/collection-episode?titleId={title_id}"),
+    )
+    title_record = title_payload if isinstance(title_payload, dict) else {}
+    collections = collections_payload if isinstance(collections_payload, list) else []
+    collection_ids: list[str] = []
+    for collection in collections:
+        if not isinstance(collection, dict):
+            continue
+        collection_id = re.match(r"(\d+)", str(collection.get("id") or ""))
+        if collection_id is None:
+            continue
+        collection_ids.append(collection_id.group(1))
+    collection_payloads = await asyncio.gather(
+        *[
+            _kadokado_public_json(f"v2/collection/withIsPurchased?publishedOnly=true&collectionId={collection_id}")
+            for collection_id in collection_ids
+        ]
+    )
+    chapter_records: list[dict[str, object]] = []
+    for payload in collection_payloads:
+        if isinstance(payload, list):
+            chapter_records.extend(item for item in payload if isinstance(item, dict) and item.get("free") is True and str(item.get("id") or "").isdigit())
+    deduped_chapter_records = {str(item.get("id")): item for item in chapter_records}
+    chapter_records = list(deduped_chapter_records.values())
+    chapter_records.sort(key=lambda item: (int(item.get("sequenceNum") or 0), int(item.get("id") or 0)))
+    if not chapter_records:
+        raise ReaderUnavailableError("KadoKado 書籍未提供可讀取的公開章節；請改由原始網站閱讀。")
+    toc = [
+        _toc_entry(
+            f"https://www.kadokado.com.tw/chapter/{item['id']}?titleId={title_id}",
+            str(item.get("displayName") or f"第 {position} 章"),
+            position,
+        )
+        for position, item in enumerate(chapter_records, start=1)
+    ]
+    selected_index = next((index for index, entry in enumerate(toc) if str(entry.url).split("/chapter/")[-1].split("?")[0] == requested_chapter_id), 0)
+    selected = toc[selected_index]
+    chapter_id = selected.url.split("/chapter/")[-1].split("?")[0]
+    chapter_payload = await _kadokado_public_json(f"v2/chapter/{chapter_id}")
+    chapter_record = chapter_payload if isinstance(chapter_payload, dict) else {}
+    content_root = BeautifulSoup(str(chapter_record.get("content") or ""), "html.parser")
+    paragraphs = _paragraphs_from(content_root)
+    if not paragraphs:
+        raise ReaderUnavailableError("KadoKado 公開章節未提供可辨識的正文；請改由原始網站閱讀。")
+    title = _clean_text(str(title_record.get("displayName") or title_record.get("title") or "")) or "未命名 KadoKado 作品"
+    author = _clean_text(str(title_record.get("ownerDisplayName") or title_record.get("author") or "")) or "原始作者以 KadoKado 來源頁為準"
+    cover_candidates = title_record.get("coverUrls") or title_record.get("coverUrl") or []
+    cover_url = str(cover_candidates[0]) if isinstance(cover_candidates, list) and cover_candidates else str(cover_candidates or "")
+    return ExtractedReaderDocument(selected.url, title, author, "KadoKado 角角者", cover_url or None, selected.title, paragraphs, toc, selected_index, title if len(toc) > 1 else None)
+
+
 def extract_reader_document(url: str, html: str) -> ExtractedReaderDocument:
     """Extract a single chapter's readable paragraphs from verified public HTML."""
     source = source_for_reader_url(url)
@@ -848,16 +1115,19 @@ def extract_reader_document(url: str, html: str) -> ExtractedReaderDocument:
         author = _meta_content(soup, "meta[name='author']") or _first_text(soup, ("a[rel='author']", ".byline a", ".author a", ".byline", ".author"), "原始作者以來源頁為準")
     cover_url = _meta_content(soup, "meta[property='og:image']") or None
     root = _content_root(soup, source)
+    if source == "Penana":
+        root = _penana_innermost_reader_root(soup) or root
     if source == "Penana" and root is not None:
         _clean_penana_reader_root(root)
-    if root is None or not _paragraphs_from(root):
+    initial_paragraphs = _penana_paragraphs_from(root) if source == "Penana" and root is not None else (_paragraphs_from(root) if root is not None else [])
+    if root is None or not initial_paragraphs:
         root = _readability_fallback(soup)
     if root is None:
         raise ReaderUnavailableError("找不到可辨識的公開正文區塊；請改由原始網站閱讀。")
     if source == "Penana":
         _clean_penana_reader_root(root)
     chapter_title = _first_text(soup, ("#chapters .chapter h3.title", "#chapters h3.title", "h3.title.heading", ".chapter-title", "#chapters h2"), "正文") if source == "AO3" else _first_text(root, ("h2", "h3", ".chapter-title"), "正文")
-    paragraphs = _paragraphs_from(root)
+    paragraphs = _penana_paragraphs_from(root) if source == "Penana" else _paragraphs_from(root)
     if not paragraphs:
         raise ReaderUnavailableError("來源頁未提供可辨識的公開正文；請改由原始網站閱讀。")
     toc = _html_table_of_contents(url, source, soup, title)
@@ -876,9 +1146,48 @@ def extract_reader_document(url: str, html: str) -> ExtractedReaderDocument:
     )
 
 
+def _ao3_full_work_document(url: str, html: str) -> ExtractedReaderDocument:
+    """Parse AO3's documented public full-work page into locally switchable chapters."""
+    soup = BeautifulSoup(html, "html.parser")
+    title, author = _ao3_title_and_author(soup)
+    cover_url = _meta_content(soup, "meta[property='og:image']") or None
+    table_of_contents = _html_table_of_contents(url, "AO3", soup, title)
+    chapter_nodes = soup.select("#chapters > .chapter") or soup.select("#chapters .chapter")
+    parsed_chapters: list[tuple[ReaderChapterEntry, list[str]]] = []
+    for index, node in enumerate(chapter_nodes, start=1):
+        content = node.select_one(".userstuff")
+        if content is None:
+            continue
+        paragraphs = _paragraphs_from(content)
+        if not paragraphs:
+            continue
+        chapter_title = _first_text(node, ("h3.title", "h3.heading", ".chapter-title"), f"第 {index} 章")
+        entry = table_of_contents[index - 1] if index <= len(table_of_contents) else _toc_entry(url, chapter_title, index)
+        parsed_chapters.append((ReaderChapterEntry(entry.id, chapter_title, entry.url, index), paragraphs))
+    if not parsed_chapters:
+        return extract_reader_document(url, html)
+    toc = [entry for entry, _ in parsed_chapters]
+    first_entry, first_paragraphs = parsed_chapters[0]
+    return ExtractedReaderDocument(
+        url=first_entry.url,
+        title=title,
+        author=author,
+        source="AO3",
+        cover_url=cover_url,
+        chapter_title=first_entry.title,
+        paragraphs=first_paragraphs,
+        table_of_contents=toc,
+        current_chapter_index=0,
+        series_title=title if len(toc) > 1 else None,
+        all_chapters=parsed_chapters,
+    )
+
+
 async def read_public_work(url: str, chapter_url: str | None = None) -> ExtractedReaderDocument:
     """Fetch and extract on demand; content is deliberately never persisted."""
-    target_url = _normalize_bahamut_url(_normalize_ao3_url(chapter_url or url))
+    requested_url = chapter_url or url
+    requested_source = source_for_reader_url(requested_url)
+    target_url = _normalize_bahamut_url(_normalize_ao3_url(requested_url, full_work=requested_source == "AO3" and chapter_url is None))
     if not _same_reader_source(url, target_url):
         raise ReaderRequestError("指定章節不屬於原始作品的平台；請改由原始網站閱讀。")
     source = source_for_reader_url(target_url)
@@ -886,7 +1195,18 @@ async def read_public_work(url: str, chapter_url: str | None = None) -> Extracte
         return await _cxc_document(target_url)
     if source == "Pixiv":
         return await _pixiv_document(target_url)
+    if source == "KadoKado 角角者":
+        return await _kadokado_document(target_url)
+    if source == "在水裡寫字":
+        try:
+            return await _waterwriter_api_document(target_url)
+        except ReaderUnavailableError:
+            # Keep the existing SSR parser as a safe fallback if the source has
+            # not exposed its public thread API for a particular legacy route.
+            pass
     html = await fetch_public_work_html(target_url)
+    if source == "AO3" and chapter_url is None:
+        return _ao3_full_work_document(url, html)
     if source == "Penana" and _is_penana_story_home(target_url):
         return await _penana_story_document(target_url, html)
     if source == "Penana" and _is_penana_issue_url(target_url):

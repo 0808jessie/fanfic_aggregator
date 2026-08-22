@@ -64,6 +64,32 @@ def test_reader_accepts_the_current_public_waterwriter_host():
 def test_ao3_reader_uses_public_adult_view_query_without_user_cookie_handling():
     assert _normalize_ao3_url("https://archiveofourown.org/works/42") == "https://archiveofourown.org/works/42?view_adult=true"
     assert _normalize_ao3_url("https://archiveofourown.org/chapters/43?view_full_work=true") == "https://archiveofourown.org/chapters/43?view_full_work=true&view_adult=true"
+    assert _normalize_ao3_url("https://archiveofourown.org/works/42", full_work=True) == "https://archiveofourown.org/works/42?view_adult=true&view_full_work=true"
+
+
+def test_ao3_work_landing_page_returns_all_public_chapters_for_local_switching(monkeypatch):
+    work_url = "https://archiveofourown.org/works/100"
+    full_work_html = """
+    <html><body><h2 class='title heading'>完整 AO3 作品</h2><h3 class='byline heading'><a>測試作者</a></h3>
+    <select id='selected_id'><option value='301'>第一章</option><option value='302'>第二章</option></select>
+    <div id='chapters'>
+      <div class='chapter'><h3 class='title'>第一章</h3><div class='userstuff'><p>第一章正文。</p></div></div>
+      <div class='chapter'><h3 class='title'>第二章</h3><div class='userstuff'><p>第二章正文。</p></div></div>
+    </div></body></html>
+    """
+    calls = []
+
+    async def fake_fetch(url):
+        calls.append(url)
+        return full_work_html
+
+    monkeypatch.setattr("reader.fetch_public_work_html", fake_fetch)
+
+    document = asyncio.run(read_public_work(work_url))
+
+    assert calls == ["https://archiveofourown.org/works/100?view_adult=true&view_full_work=true"]
+    assert [entry.title for entry in document.table_of_contents] == ["第一章", "第二章"]
+    assert [paragraphs for _, paragraphs in document.all_chapters] == [["第一章正文。"], ["第二章正文。"]]
 
 
 def test_reader_does_not_mistake_a_normal_cloudflare_asset_reference_for_a_challenge_page():
@@ -254,6 +280,39 @@ def test_penana_preserves_br_delimited_public_issue_text():
     assert document.paragraphs == ["第一段 Penana 正文。", "第二段 Penana 正文。"]
 
 
+def test_penana_uses_only_the_innermost_issue_container_without_duplicate_prose():
+    html = """<html><div class='content_holder'><div class='issue-content'><p>第一段唯一正文。</p><p>第二段唯一正文。</p></div></div></html>"""
+
+    document = extract_reader_document("https://www.penana.com/story/157645/issue/1", html)
+
+    assert document.paragraphs == ["第一段唯一正文。", "第二段唯一正文。"]
+
+
+def test_kadokado_book_uses_public_catalogue_to_open_first_free_chapter(monkeypatch):
+    calls = []
+
+    async def fake_kadokado_api(path):
+        calls.append(path)
+        if path == "v2/titles/80718":
+            return {"displayName": "公開 KadoKado 作品", "ownerDisplayName": "測試作者"}
+        if path == "v1/work/collection-episode?titleId=80718":
+            return [{"id": "120765-null"}]
+        if path == "v2/collection/withIsPurchased?publishedOnly=true&collectionId=120765":
+            return [{"id": 797041, "sequenceNum": 1, "displayName": "第壹章", "free": True}, {"id": 797104, "sequenceNum": 2, "displayName": "第貳章", "free": True}]
+        if path == "v2/chapter/797041":
+            return {"content": "<p>第一段 KadoKado 正文。</p><p>第二段 KadoKado 正文。</p>"}
+        raise AssertionError(path)
+
+    monkeypatch.setattr("reader._kadokado_public_json", fake_kadokado_api)
+
+    document = asyncio.run(read_public_work("https://www.kadokado.com.tw/book/80718"))
+
+    assert calls[-1] == "v2/chapter/797041"
+    assert document.url == "https://www.kadokado.com.tw/chapter/797041?titleId=80718"
+    assert [entry.title for entry in document.table_of_contents] == ["第壹章", "第貳章"]
+    assert document.paragraphs == ["第一段 KadoKado 正文。", "第二段 KadoKado 正文。"]
+
+
 def test_penana_story_home_uses_first_public_issue_and_removes_hidden_copy_protection_noise(monkeypatch):
     story_url = "https://www.penana.com/story/195625/demo-story"
     issue_url = "https://www.penana.com/story/195625/demo-story/issue/1"
@@ -351,6 +410,146 @@ def test_waterwriter_uses_public_uid_to_keep_contiguous_owner_self_replies():
 
     assert [entry.title for entry in document.table_of_contents] == ["第 1 樓", "第 2 樓"]
     assert document.paragraphs == ["第一樓正文。"]
+
+
+def test_waterwriter_public_thread_api_splits_every_owner_post_into_reader_chapters(monkeypatch):
+    payload = {
+        "thread": {"authorid": 94701, "subject": "公開連載"},
+        "posts": [
+            {"pid": 1, "authorid": 94701, "position": 1, "content": "<p>第一樓前言。</p>"},
+            {"pid": 2, "authorid": 94701, "position": 2, "content": "<p>第二樓正文。</p>"},
+            {"pid": 3, "authorid": 99, "position": 3, "content": "<p>讀者留言不得收錄。</p>"},
+            {"pid": 4, "authorid": 94701, "position": 4, "content": "<p>第四樓續章。<br/>保留原始換行。</p>"},
+        ],
+    }
+    calls = []
+
+    async def fake_thread_json(path):
+        calls.append(path)
+        return payload
+
+    monkeypatch.setattr("reader._waterwriter_public_json", fake_thread_json, raising=False)
+    from reader import _waterwriter_api_document
+
+    document = asyncio.run(_waterwriter_api_document("https://waterfall.slashtw.space/thread/86226#floor-4"))
+
+    assert calls == ["w/thread/86226"]
+    assert [entry.title for entry in document.table_of_contents] == ["第 1 樓", "第 2 樓", "第 4 樓"]
+    assert document.current_chapter_index == 2
+    assert document.paragraphs == ["第四樓續章。\n保留原始換行。"]
+    assert "讀者留言不得收錄。" not in "\n".join(document.paragraphs)
+
+
+def test_waterwriter_public_thread_api_collects_owner_posts_from_later_pages_and_preloads_every_floor(monkeypatch):
+    first_page = {
+        "thread": {"authorid": 24885, "subject": "30 樓公開連載", "count": 4},
+        "posts": [
+            {"pid": 1, "authorid": 24885, "position": 1, "content": "<p>第一樓正文。</p>"},
+            {"pid": 2, "authorid": 99, "position": 2, "content": "<p>讀者留言。</p>"},
+        ],
+    }
+    second_page = {
+        "thread": {"authorid": 24885, "subject": "30 樓公開連載", "count": 4},
+        "posts": [
+            {"pid": 3, "authorid": 24885, "position": 3, "content": "<p>第三樓續章。</p>"},
+            {"pid": 4, "authorid": 24885, "position": 4, "content": "<p>第四樓續章。</p>"},
+        ],
+    }
+    calls = []
+
+    async def fake_thread_json(path):
+        calls.append(path)
+        return first_page if path == "w/thread/21886" else second_page
+
+    monkeypatch.setattr("reader._waterwriter_public_json", fake_thread_json, raising=False)
+    from reader import _waterwriter_api_document
+
+    document = asyncio.run(_waterwriter_api_document("https://waterfall.slashtw.space/thread/21886#floor-4"))
+
+    assert calls == ["w/thread/21886", "w/thread/21886?page=2"]
+    assert [entry.title for entry in document.table_of_contents] == ["第 1 樓", "第 3 樓", "第 4 樓"]
+    assert [entry.title for entry, _ in document.all_chapters] == ["第 1 樓", "第 3 樓", "第 4 樓"]
+    assert document.current_chapter_index == 2
+    assert document.paragraphs == ["第四樓續章。"]
+
+
+def test_reader_endpoint_serializes_every_ao3_full_work_chapter_for_local_switching(monkeypatch):
+    from reader import ExtractedReaderDocument, ReaderChapterEntry
+
+    first = ReaderChapterEntry("chapter-1", "第一章", "https://archiveofourown.org/chapters/1", 1)
+    second = ReaderChapterEntry("chapter-2", "第二章", "https://archiveofourown.org/chapters/2", 2)
+
+    async def fake_read(_url, _chapter_url=None):
+        return ExtractedReaderDocument(
+            url=first.url,
+            title="44 章 AO3 作品",
+            author="測試作者",
+            source="AO3",
+            cover_url=None,
+            chapter_title=first.title,
+            paragraphs=["第一章正文。"],
+            table_of_contents=[first, second],
+            all_chapters=[(first, ["第一章正文。"]), (second, ["第二章正文。"])],
+        )
+
+    monkeypatch.setattr("main.read_public_work", fake_read)
+    response = TestClient(app).post("/reader", json={"url": "https://archiveofourown.org/works/84479586"})
+
+    assert response.status_code == 200
+    assert [chapter["paragraphs"] for chapter in response.json()["chapters"]] == [["第一章正文。"], ["第二章正文。"]]
+
+
+@pytest.mark.parametrize(
+    ("url", "source"),
+    [
+        ("https://archiveofourown.org/works/84479586", "AO3"),
+        ("https://waterfall.slashtw.space/thread/21886", "在水裡寫字"),
+        ("https://www.penana.com/story/157645/issue/1", "Penana"),
+        ("https://home.gamer.com.tw/creationDetail.php?sn=6229601", "巴哈姆特創作大廳"),
+        ("https://www.kadokado.com.tw/book/80718", "KadoKado 角角者"),
+    ],
+)
+def test_reader_endpoint_returns_a_nonempty_chapter_array_for_each_supported_public_source(monkeypatch, url, source):
+    from reader import ExtractedReaderDocument, ReaderChapterEntry
+
+    entry = ReaderChapterEntry("chapter-1", "全一話", url, 1)
+
+    async def fake_read(request_url, _chapter_url=None):
+        return ExtractedReaderDocument(
+            url=request_url,
+            title="公開測試作品",
+            author="公開測試作者",
+            source=source,
+            cover_url=None,
+            chapter_title=entry.title,
+            paragraphs=["可讀取的公開正文。"],
+            table_of_contents=[entry],
+        )
+
+    monkeypatch.setattr("main.read_public_work", fake_read)
+    response = TestClient(app).post("/api/reader", json={"url": url})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == source
+    assert payload["chapters"] == [{"id": "chapter-1", "title": "全一話", "index": 1, "url": url, "paragraphs": ["可讀取的公開正文。"]}]
+
+
+def test_penana_discards_ip_watermark_tail_and_repeated_body_after_fin():
+    html = """
+    <html><div class='content_holder'><div class='issue-content'>
+      <p>第一段唯一正文。</p><p>Fin.</p>
+      <p>ns196.189.121.135da2 Please respect copyright. P E N A N A</p>
+      <p>第一段唯一正文。</p><p>Fin.</p>
+    </div></div></html>
+    """
+
+    document = extract_reader_document("https://www.penana.com/story/198592/issue/1969479", html)
+
+    assert document.paragraphs == ["第一段唯一正文。", "Fin."]
+    rendered = "\n".join(document.paragraphs)
+    assert "ns196.189.121.135" not in rendered
+    assert rendered.count("第一段唯一正文。") == 1
 
 
 def test_cxc_uses_anonymous_public_api_for_a_free_readable_section(monkeypatch):

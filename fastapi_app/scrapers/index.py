@@ -36,7 +36,6 @@ except ModuleNotFoundError:  # Supports ``fastapi_app.*`` package-style imports 
     from scrapers.waterwriter_scraper import WaterWriterScraper
 
 
-from scrapers.popo_scraper import PopoScraper
 from scrapers.kadokado_scraper import KadoKadoScraper
 
 SCRAPERS: dict[str, Callable[[], object]] = {
@@ -47,7 +46,6 @@ SCRAPERS: dict[str, Callable[[], object]] = {
     "waterwriter": WaterWriterScraper,
     "penana": PenanaScraper,
     "pixiv": PixivScraper,
-    "popo": PopoScraper,
     "kadokado": KadoKadoScraper,
 }
 
@@ -59,7 +57,6 @@ PLATFORM_LABELS = {
     "waterwriter": "在水裡寫字",
     "penana": "Penana",
     "pixiv": "Pixiv",
-    "popo": "POPO 原創市集",
     "kadokado": "KadoKado 角角者",
 }
 LOCAL_CP_PLATFORM_IDS = frozenset(("doujin", "waterwriter"))
@@ -70,7 +67,6 @@ PLATFORM_TIMEOUT_SECONDS: dict[str, float] = {
     "ao3": 8.0,
     "penana": 12.0,
     "bahamut": 12.0,
-    "popo": 20.0,
     "kadokado": 12.0,
     "cxc": 15.0,
     "doujin": 15.0,
@@ -79,6 +75,7 @@ PLATFORM_TIMEOUT_SECONDS: dict[str, float] = {
 SOURCE_CACHE_TTL_SECONDS = 600.0
 _SOURCE_CACHE: dict[tuple[str, str, int], tuple[float, list[ScrapedFanfic], int, int, str | None]] = {}
 _SOURCE_CACHE_LOCK = Lock()
+MAX_CONCURRENT_PLATFORM_SEARCHES = 8
 # A fixed worker pool lets each sync-Playwright worker keep its thread-local
 # browser alive between searches. The public response remains bounded by the
 # per-request wait below; long upstream jobs never block response finalization.
@@ -336,7 +333,10 @@ async def parallel_search_platforms_async(
     # Each request owns its worker set. Every adapter already uses a one-shot
     # HTTP request (not a shared requests.Session), so no platform can exhaust
     # another platform's connection pool or queue a later single-source retry.
-    executor = ThreadPoolExecutor(max_workers=max(1, len(platforms)), thread_name_prefix="fanfic-source")
+    executor = ThreadPoolExecutor(
+        max_workers=max(1, min(MAX_CONCURRENT_PLATFORM_SEARCHES, len(platforms))),
+        thread_name_prefix="fanfic-source",
+    )
 
     async def run_platform(platform_key: str) -> tuple[str, list[ScrapedFanfic], int, int, PlatformStatus]:
         loop = asyncio.get_running_loop()

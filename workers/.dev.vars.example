@@ -1,0 +1,2 @@
+# Local Wrangler development only. Do not commit a real production endpoint.
+API_ORIGIN=https://your-fastapi-origin.example

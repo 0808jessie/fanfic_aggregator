@@ -13,6 +13,7 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+workers/.dev.vars
 
 # IDE and editor files
 .vscode/

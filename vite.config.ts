@@ -170,6 +170,16 @@ export default defineConfig({
   },
   server: {
     host: true,
+    // The managed preview mounts Vite behind Express, whose same-origin proxy
+    // is registered before Vite middleware. This fallback keeps standalone
+    // Vite development aligned with the FastAPI HTTP port when explicitly set.
+    proxy: {
+      "/api": {
+        target: process.env.VITE_DEV_FASTAPI_PROXY_TARGET || "http://127.0.0.1:8000",
+        changeOrigin: true,
+        secure: false,
+      },
+    },
     allowedHosts: [
       ".manuspre.computer",
       ".manus.computer",

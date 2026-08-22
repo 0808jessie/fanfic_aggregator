@@ -192,7 +192,7 @@ describe("Home pagination interactions", () => {
     expect(screen.getByText("準備好開始搜尋")).toBeTruthy();
     expect(screen.getByText("把想讀的故事")).toBeTruthy();
     expect(screen.getByText("跨平台同人閱讀")).toBeTruthy();
-    expect(screen.getByText("9 個公開來源 · 本機保存個人資料")).toBeTruthy();
+    expect(screen.getByText("8 個公開來源 · 本機保存個人資料")).toBeTruthy();
     expect(screen.getByRole("button", { name: "RUN SEARCH" })).toBeTruthy();
   });
 
@@ -217,7 +217,7 @@ describe("Home pagination interactions", () => {
     expect(mockState.lastVariables).toMatchObject({ data: { page: 2 } });
   });
 
-  it("truncates extremely long relationship, character, and general tags without expanding the result card", async () => {
+  it("wraps extremely long relationship, character, and general tags without overflowing the result card", async () => {
     const relationship = "Kochou Shinobu/Tomioka Giyuu Alternate Universe Canon Divergence With An Extremely Long English Relationship Tag";
     const character = "一個名字非常非常長的角色標籤，用來確認不會撐破搜尋結果卡片的可讀範圍";
     const generalTag = "This Is An Intentionally Long General Tag That Must Be Truncated Instead Of Overflowing The Search Card";
@@ -233,8 +233,9 @@ describe("Home pagination interactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "+1 標籤" }));
     for (const tag of [relationship, character, generalTag]) {
       const chip = screen.getByTitle(tag);
-      expect(chip.className).toContain("max-w-[180px]");
-      expect(chip.className).toContain("truncate");
+      expect(chip.className).toContain("max-w-full");
+      expect(chip.className).toContain("break-words");
+      expect(chip.className).toContain("whitespace-normal");
     }
   });
 
@@ -309,7 +310,7 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
-      data: { keyword: "義忍", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut", "popo", "kadokado"], page: 1, forceRefresh: false, customCpMappings: [] },
+      data: { keyword: "義忍", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut", "kadokado"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
     await waitFor(() => expect(screen.getByLabelText("平台連線狀態")).toBeTruthy());
     fireEvent.click(screen.getByLabelText("平台連線狀態"));
@@ -389,7 +390,7 @@ describe("Home pagination interactions", () => {
     await waitFor(() => expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
-      data: { keyword: "Mizuki Studio", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut", "popo", "kadokado"], page: 1, forceRefresh: false, customCpMappings: [] },
+      data: { keyword: "Mizuki Studio", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut", "kadokado"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
   });
 
@@ -475,20 +476,18 @@ describe("source-specific Reader access", () => {
     const penanaCheckbox = screen.getByRole("checkbox", { name: "搜尋 PENANA" });
     const cxcCheckbox = screen.getByRole("checkbox", { name: "搜尋 CxC 創利市集" });
     const bahamutCheckbox = screen.getByRole("checkbox", { name: "搜尋 巴哈姆特創作大廳" });
-    const popoCheckbox = screen.getByRole("checkbox", { name: "搜尋 POPO 原創市集" });
     const kadokadoCheckbox = screen.getByRole("checkbox", { name: "搜尋 KadoKado 角角者" });
     expect(screen.queryByRole("checkbox", { name: "搜尋 LOFTER" })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: "搜尋 POPO 原創市集" })).toBeNull();
     expect(doujinCheckbox.getAttribute("aria-checked")).toBe("true");
     expect(waterwriterCheckbox.getAttribute("aria-checked")).toBe("true");
     expect(penanaCheckbox.getAttribute("aria-checked")).toBe("true");
     expect(cxcCheckbox.getAttribute("aria-checked")).toBe("true");
     expect(bahamutCheckbox.getAttribute("aria-checked")).toBe("true");
-    expect(popoCheckbox.getAttribute("aria-checked")).toBe("true");
     expect(kadokadoCheckbox.getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(popoCheckbox);
-    expect(popoCheckbox.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(kadokadoCheckbox);
+    expect(kadokadoCheckbox.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(screen.getByRole("button", { name: "清除本次條件" }));
-    expect(popoCheckbox.getAttribute("aria-checked")).toBe("true");
     expect(kadokadoCheckbox.getAttribute("aria-checked")).toBe("true");
     fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "花" } });
     fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
@@ -496,7 +495,7 @@ describe("source-specific Reader access", () => {
     await waitFor(() => expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
-      data: { keyword: "花", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut", "popo", "kadokado"], page: 1, forceRefresh: false, customCpMappings: [] },
+      data: { keyword: "花", mode: "keyword", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut", "kadokado"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
   });
 
@@ -556,21 +555,38 @@ describe("source-specific Reader access", () => {
     await waitFor(() => expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",
-      data: { keyword: "Atlas Creator", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut", "popo", "kadokado"], page: 1, forceRefresh: false, customCpMappings: [] },
+      data: { keyword: "Atlas Creator", mode: "author", platforms: ["ao3", "doujin", "waterwriter", "penana", "cxc", "pixiv", "bahamut", "kadokado"], page: 1, forceRefresh: false, customCpMappings: [] },
     }));
     expect(screen.getByText(/正在搜尋作者：Atlas Creator/)).toBeTruthy();
   });
 
-  it("shows a CP dictionary suggestion and applies the existing alias search contract", async () => {
+  it("shows a CP dictionary suggestion for Japanese and English reverse matches, then applies the unified alias search", async () => {
     render(<Home />);
 
-    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "義忍" } });
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "ぎゆしの" } });
     await waitFor(() => expect(screen.getByRole("button", { name: "套用 義忍 的跨語言 CP 對照搜尋" })).toBeTruthy());
     expect(screen.getByText(/包含 AO3：Tomioka Giyuu\/Kochou Shinobu/)).toBeTruthy();
     expect(screen.getByText(/本地：義忍 富岡義勇 胡蝶忍 ／ 日文：ぎゆしの/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "套用 義忍 的跨語言 CP 對照搜尋" }));
     await waitFor(() => expect(mockState.lastVariables).toMatchObject({ data: { keyword: "義忍", mode: "keyword" } }));
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "Tomioka Giyuu/Kochou Shinobu" } });
+    expect(screen.getByRole("button", { name: "套用 義忍 的跨語言 CP 對照搜尋" })).toBeTruthy();
+  });
+
+  it("keeps the result card header actions apart from wrapping source badges and never renders internal source markers", async () => {
+    mockState.primaryPayload = {
+      items: [{ title: "Header 排版測試", author: "Author", platform: "AO3", url: "https://archiveofourown.org/works/header", tags: "Tag", summary: "摘要", source: "live", rating: "Explicit", scraped_at: "2026-01-01T00:00:00Z" }],
+      totalWorks: 1, totalPages: 1, page: 1, loadedThroughPage: 1, nextPage: null, hasMore: false,
+    };
+    render(<Home />);
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "Header" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+    await waitFor(() => expect(screen.getByText("Header 排版測試")).toBeTruthy());
+    expect(screen.queryByText("[live]")).toBeNull();
+    expect(screen.queryByText("[pixiv]")).toBeNull();
+    const header = screen.getByRole("button", { name: "收藏 Header 排版測試" }).parentElement;
+    expect(header?.className).toContain("shrink-0");
   });
 
   it("keeps a fixed cover region for both image and fallback cards", async () => {
