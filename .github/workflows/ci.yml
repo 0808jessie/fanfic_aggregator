@@ -66,6 +66,12 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
+      - name: Prepare Tauri sidecar placeholder for static check
+        run: |
+          mkdir -p src-tauri/binaries
+          touch src-tauri/binaries/api-server-x86_64-unknown-linux-gnu
+          chmod +x src-tauri/binaries/api-server-x86_64-unknown-linux-gnu
+
       - name: Check Tauri Rust project
         working-directory: src-tauri
         run: cargo check
