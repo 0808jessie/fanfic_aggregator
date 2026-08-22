@@ -6,7 +6,9 @@
  */
 const ALLOWED_PATHS = new Set(["/api/search", "/api/reader"]);
 const SEARCH_CACHE_SECONDS = 600;
-const UPSTREAM_TIMEOUT_MS = 8_000;
+// Sources finish independently within 4.5 seconds; leave a bounded cushion for
+// aggregate serialization and a cold but healthy public FastAPI instance.
+const UPSTREAM_TIMEOUT_MS = 12_000;
 
 function corsHeaders() {
   return {

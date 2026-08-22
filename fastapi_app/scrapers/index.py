@@ -62,15 +62,15 @@ PLATFORM_LABELS = {
 LOCAL_CP_PLATFORM_IDS = frozenset(("doujin", "waterwriter"))
 # Live search is HTTP-only. End each source task promptly so slow upstreams
 # return their own state instead of holding the full cross-platform response.
-ADAPTER_TIMEOUT_SECONDS = 15.0
+ADAPTER_TIMEOUT_SECONDS = 4.5
 PLATFORM_TIMEOUT_SECONDS: dict[str, float] = {
-    "ao3": 8.0,
-    "penana": 12.0,
-    "bahamut": 12.0,
-    "kadokado": 12.0,
-    "cxc": 15.0,
-    "doujin": 15.0,
-    "waterwriter": 15.0,
+    "ao3": 4.5,
+    "penana": 4.5,
+    "bahamut": 4.5,
+    "kadokado": 4.5,
+    "cxc": 4.5,
+    "doujin": 4.5,
+    "waterwriter": 4.5,
 }
 SOURCE_CACHE_TTL_SECONDS = 600.0
 _SOURCE_CACHE: dict[tuple[str, str, int], tuple[float, list[ScrapedFanfic], int, int, str | None]] = {}
@@ -352,10 +352,10 @@ async def parallel_search_platforms_async(
             None,
         )
         try:
-            platform_timeout = PLATFORM_TIMEOUT_SECONDS.get(platform_key, timeout_seconds)
+            platform_timeout = min(timeout_seconds, PLATFORM_TIMEOUT_SECONDS.get(platform_key, timeout_seconds))
             return await asyncio.wait_for(task, timeout=max(0.1, platform_timeout))
         except asyncio.TimeoutError:
-            platform_timeout = PLATFORM_TIMEOUT_SECONDS.get(platform_key, timeout_seconds)
+            platform_timeout = min(timeout_seconds, PLATFORM_TIMEOUT_SECONDS.get(platform_key, timeout_seconds))
             warning = f"[{PLATFORM_LABELS.get(platform_key, platform_key)}] 連線逾時（超過 {platform_timeout:g} 秒）"
             print(f"[AdapterIndex] {warning}")
             return platform_key, [], 0, 1, make_platform_status(platform_key, keyword, 0, warning, custom_cp_map, mode)
@@ -365,8 +365,22 @@ async def parallel_search_platforms_async(
             return platform_key, [], 0, 1, make_platform_status(platform_key, keyword, 0, warning, custom_cp_map, mode)
 
     try:
-        source_payloads = await asyncio.gather(*(run_platform(platform) for platform in platforms))
-        for platform_key, items, total_works, total_pages, status in source_payloads:
+        source_payloads = await asyncio.gather(
+            *(run_platform(platform) for platform in platforms),
+            return_exceptions=True,
+        )
+        for requested_platform, source_payload in zip(platforms, source_payloads):
+            if isinstance(source_payload, BaseException):
+                warning = f"[{PLATFORM_LABELS.get(requested_platform, requested_platform)}] scrape failed: {source_payload}"
+                print(f"[AdapterIndex] {warning}")
+                source_payload = (
+                    requested_platform,
+                    [],
+                    0,
+                    1,
+                    make_platform_status(requested_platform, keyword, 0, warning, custom_cp_map, mode),
+                )
+            platform_key, items, total_works, total_pages, status = source_payload
             statuses_map[platform_key] = status
             if status.warning:
                 warnings.append(status.warning)

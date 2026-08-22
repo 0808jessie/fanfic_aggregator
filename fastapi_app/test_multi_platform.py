@@ -56,15 +56,15 @@ def test_platform_status_translates_cp_query_and_detects_cooldown():
     assert adapter_index.translated_query_for_platform("ao3", "義忍") == '"Tomioka Giyuu/Kochou Shinobu" OR "義忍"'
     assert adapter_index.translated_query_for_platform("waterwriter", "義忍") == "義忍"
     assert adapter_index.translated_query_for_platform("doujin", "哨兵嚮導") == "哨兵嚮導"
-    assert adapter_index.ADAPTER_TIMEOUT_SECONDS == 15.0
+    assert adapter_index.ADAPTER_TIMEOUT_SECONDS == 4.5
     assert adapter_index.PLATFORM_TIMEOUT_SECONDS == {
-        "ao3": 8.0,
-        "penana": 12.0,
-        "bahamut": 12.0,
-        "kadokado": 12.0,
-        "cxc": 15.0,
-        "doujin": 15.0,
-        "waterwriter": 15.0,
+        "ao3": 4.5,
+        "penana": 4.5,
+        "bahamut": 4.5,
+        "kadokado": 4.5,
+        "cxc": 4.5,
+        "doujin": 4.5,
+        "waterwriter": 4.5,
     }
     assert adapter_index.classify_platform_status(0, "[在水裡寫字] Blocked by Rate Limit, skipping cleanly") == "cooldown"
     assert adapter_index.classify_platform_status(0, "[同人誌中心] Triggered verification page") == "blocked"
@@ -177,7 +177,28 @@ def test_parallel_search_returns_partial_results_when_one_adapter_exceeds_deadli
     statuses = {status.platformId: status for status in aggregate["platform_statuses"]}
     assert [item.platform for item in aggregate["items"]] == ["AO3"]
     assert statuses["ao3"].status == "success"
-    assert statuses["waterwriter"].status in ("error", "empty")
+    assert statuses["waterwriter"].status == "error"
+
+
+def test_all_platform_deadlines_start_concurrently_and_return_partial_statuses_promptly():
+    class SlowAdapter:
+        def __init__(self):
+            self.last_warning = None
+
+        def scrape(self, keyword: str, page: int = 1):
+            time.sleep(0.25)
+            return []
+
+    platforms = ["ao3", "penana", "bahamut", "kadokado", "cxc", "doujin", "waterwriter"]
+    started_at = time.perf_counter()
+    with patch.object(adapter_index, "SCRAPERS", {platform: SlowAdapter for platform in platforms}):
+        aggregate = adapter_index.parallel_search_platforms(platforms, "花", timeout_seconds=0.05, force_refresh=True)
+    elapsed_seconds = time.perf_counter() - started_at
+
+    assert elapsed_seconds < 0.2
+    assert aggregate["items"] == []
+    assert len(aggregate["platform_statuses"]) == len(platforms)
+    assert all(status.status == "error" for status in aggregate["platform_statuses"])
 
 
 def test_ao3_timeout_is_isolated_without_discarding_other_platform_results():
