@@ -41,7 +41,7 @@ describe("Cloudflare PWA API proxy", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("proxies a search POST, adds CORS and schedules a ten-minute cache write", async () => {
+  it("proxies a search POST, adds CORS and schedules a twelve-hour cache write", async () => {
     const cache = { match: vi.fn().mockResolvedValue(undefined), put: vi.fn().mockResolvedValue(undefined) };
     vi.stubGlobal("caches", { default: cache });
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [{ title: "公開作品" }] }), { status: 200, headers: { "Content-Type": "application/json" } }));
@@ -56,7 +56,8 @@ describe("Cloudflare PWA API proxy", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
-    expect(response.headers.get("Cache-Control")).toContain("max-age=600");
+    expect(response.headers.get("Cache-Control")).toContain("s-maxage=43200");
+    expect(response.headers.get("Cache-Control")).toContain("max-age=43200");
     expect(fetchMock).toHaveBeenCalledWith("https://reader-api.example.test/api/search", expect.objectContaining({ method: "POST" }));
     expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
   });
@@ -82,7 +83,7 @@ describe("Cloudflare PWA API proxy", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
-    expect(response.headers.get("Cache-Control")).toContain("max-age=600");
+    expect(response.headers.get("Cache-Control")).toContain("s-maxage=43200");
     expect(cache.match).toHaveBeenCalledTimes(1);
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -119,6 +120,45 @@ describe("Cloudflare PWA API proxy", () => {
     const response = await worker.fetch(new Request("https://proxy.example/api/unknown", { method: "POST" }), env, context());
 
     expect(response.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("bypasses stale edge results for force_refresh and writes the latest successful search", async () => {
+    const cache = {
+      match: vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [{ title: "舊快取" }] }), { status: 200 })),
+      put: vi.fn().mockResolvedValue(undefined),
+    };
+    vi.stubGlobal("caches", { default: cache });
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [{ title: "最新作品" }] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const ctx = context();
+
+    const response = await worker.fetch(
+      new Request("https://proxy.example/api/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keyword: "義忍", force_refresh: true }) }),
+      env,
+      ctx,
+    );
+
+    expect(await response.json()).toEqual({ items: [{ title: "最新作品" }] });
+    expect(cache.match).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledWith("https://reader-api.example.test/api/search", expect.objectContaining({ method: "POST" }));
+    expect(cache.put).toHaveBeenCalledTimes(1);
+    expect(ctx.waitUntil).toHaveBeenCalledTimes(1);
+
+    const refreshedCacheKey = cache.put.mock.calls[0][0] as Request;
+    cache.match.mockImplementation((request: Request) => Promise.resolve(
+      request.url === refreshedCacheKey.url
+        ? new Response(JSON.stringify({ items: [{ title: "最新作品" }] }), { status: 200 })
+        : undefined,
+    ));
+    fetchMock.mockClear();
+    const cachedResponse = await worker.fetch(
+      new Request("https://proxy.example/api/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keyword: "義忍" }) }),
+      env,
+      context(),
+    );
+
+    expect(await cachedResponse.json()).toEqual({ items: [{ title: "最新作品" }] });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

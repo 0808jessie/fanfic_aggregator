@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class ScrapedFanfic(BaseModel):
@@ -33,13 +33,15 @@ class ScrapedFanfic(BaseModel):
 
 
 class SearchQuery(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     keyword: str = Field(min_length=1, max_length=120)
     mode: Literal["keyword", "author"] = "keyword"
     language: Optional[str] = "all"
     platforms: Optional[list[str]] = None
     platform: Optional[str] = Field(default=None, min_length=1, max_length=40)
     page: int = Field(default=1, ge=1)
-    forceRefresh: bool = False
+    forceRefresh: bool = Field(default=False, validation_alias=AliasChoices("forceRefresh", "force_refresh"))
     # Browser-local mapping payloads are intentionally permissive at the HTTP
     # boundary. The controller validates entries individually so one malformed
     # localStorage value can never reject an otherwise valid search.

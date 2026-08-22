@@ -72,7 +72,10 @@ PLATFORM_TIMEOUT_SECONDS: dict[str, float] = {
     "doujin": 6.5,
     "waterwriter": 6.5,
 }
-SOURCE_CACHE_TTL_SECONDS = 600.0
+# A successful multi-source crawl is expensive for upstream platforms. Keep
+# verified source cards for twelve hours; `force_refresh` always evicts the
+# matching entry before the next crawl writes fresh data back.
+SOURCE_CACHE_TTL_SECONDS = 43_200.0
 _SOURCE_CACHE: dict[tuple[str, str, int], tuple[float, list[ScrapedFanfic], int, int, str | None]] = {}
 _SOURCE_CACHE_LOCK = Lock()
 MAX_CONCURRENT_PLATFORM_SEARCHES = 8

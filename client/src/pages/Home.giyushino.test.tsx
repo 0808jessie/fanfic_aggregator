@@ -94,7 +94,7 @@ describe("Home Page Traditional Chinese '義忍' Search", () => {
     expect(screen.getByLabelText("完結狀態")).toBeTruthy();
     expect(screen.getByLabelText("排序方式")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "強制重新抓取" }));
+    fireEvent.click(screen.getByRole("button", { name: "重新整理抓取最新" }));
     await waitFor(() => expect(mockState.lastVariables).toMatchObject({
       path: "/search",
       method: "POST",

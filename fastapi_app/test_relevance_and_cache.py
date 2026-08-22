@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import main
 from models import ScrapedFanfic, SearchQuery
 from relevance import rank_results, relevance_score
+from scrapers import index as scraper_index
 
 
 def story(**overrides):
@@ -89,10 +90,17 @@ def test_rank_results_breaks_equal_scores_by_update_time_then_word_count():
     assert [item.url for item in ranked] == [newer_long.url, newer_short.url, older_long.url]
 
 
-def test_cache_ttl_policy_uses_cp_and_result_confidence():
-    assert main.cache_ttl_for("義忍", 40) == main.HIGH_CONFIDENCE_CACHE_TTL
-    assert main.cache_ttl_for("一般關鍵字", 10) == main.NORMAL_CONFIDENCE_CACHE_TTL
-    assert main.cache_ttl_for("罕見關鍵字", 2) == main.LOW_CONFIDENCE_CACHE_TTL
+def test_verified_search_cache_ttls_are_twelve_hours_across_api_and_source_layers():
+    assert main.cache_ttl_for("義忍", 40) == main.SEARCH_MEMORY_CACHE_TTL
+    assert main.cache_ttl_for("一般關鍵字", 10) == main.SEARCH_MEMORY_CACHE_TTL
+    assert main.cache_ttl_for("罕見關鍵字", 2) == main.SEARCH_MEMORY_CACHE_TTL
+    assert main.SEARCH_MEMORY_CACHE_TTL.total_seconds() == 43_200
+    assert scraper_index.SOURCE_CACHE_TTL_SECONDS == 43_200
+
+
+def test_search_query_accepts_camel_and_snake_case_force_refresh_flags():
+    assert SearchQuery(keyword="花", forceRefresh=True).forceRefresh is True
+    assert SearchQuery(keyword="花", force_refresh=True).forceRefresh is True
 
 
 def test_force_refresh_skips_memory_cache_and_forwards_to_adapter_registry():

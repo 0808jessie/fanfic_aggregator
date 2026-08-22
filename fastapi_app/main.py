@@ -54,12 +54,13 @@ def normalize_search_language(value: object) -> str:
     }
     return aliases.get(normalized, "all")
 
-# 每個快取 entry 的最後一欄是本次結果的可信度 TTL（秒）。舊的五欄 entry
-# 仍可被讀取，並以一般關鍵字 TTL 處理，讓開發中的記憶體內容安全降級。
+# 每個快取 entry 的最後一欄是本次結果的 TTL。成功的跨來源搜尋成本高，
+# 因此統一保留十二小時；forceRefresh 會略過並以新的成功結果覆寫。
 _MEMORY_CACHE: dict[str, tuple[Any, ...]] = {}
-HIGH_CONFIDENCE_CACHE_TTL = timedelta(hours=2)
-NORMAL_CONFIDENCE_CACHE_TTL = timedelta(minutes=30)
-LOW_CONFIDENCE_CACHE_TTL = timedelta(minutes=5)
+SEARCH_MEMORY_CACHE_TTL = timedelta(hours=12)
+HIGH_CONFIDENCE_CACHE_TTL = SEARCH_MEMORY_CACHE_TTL
+NORMAL_CONFIDENCE_CACHE_TTL = SEARCH_MEMORY_CACHE_TTL
+LOW_CONFIDENCE_CACHE_TTL = SEARCH_MEMORY_CACHE_TTL
 
 
 def get_db():
@@ -130,12 +131,10 @@ def clear_live_only_cp_memory_cache(keyword: str) -> list[str]:
 
 
 def cache_ttl_for(keyword: str, result_count: int) -> timedelta:
-    """Select cache lifetime from explicit CP confidence and verified result count."""
-    if keyword in CP_TAG_MAP:
-        return HIGH_CONFIDENCE_CACHE_TTL
-    if result_count < 3:
-        return LOW_CONFIDENCE_CACHE_TTL
-    return NORMAL_CONFIDENCE_CACHE_TTL
+    """Keep all verified search envelopes for twelve hours until a forced refresh."""
+    # Keep the arguments for backwards-compatible callers and transparent tests.
+    _ = keyword, result_count
+    return SEARCH_MEMORY_CACHE_TTL
 
 
 def is_real_platform_url(url: str, platform: str | None = None) -> bool:

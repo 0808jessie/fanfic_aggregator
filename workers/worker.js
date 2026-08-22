@@ -5,7 +5,7 @@
  * 並在 Worker 的 Settings > Variables 設定 HTTPS API_ORIGIN。
  */
 const ALLOWED_PATHS = new Set(["/api/search", "/api/reader"]);
-const SEARCH_CACHE_SECONDS = 600;
+const SEARCH_CACHE_SECONDS = 43_200;
 // Sources finish independently within 6.5 seconds; leave a bounded cushion for
 // aggregate serialization and a cold but healthy public FastAPI instance.
 const UPSTREAM_TIMEOUT_MS = 15_000;
@@ -64,10 +64,24 @@ function stableValue(value) {
 
 function canonicalSearchBody(bodyText) {
   try {
-    return JSON.stringify(stableValue(JSON.parse(bodyText)));
+    const parsed = JSON.parse(bodyText);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const { forceRefresh, force_refresh, ...cacheBody } = parsed;
+      return JSON.stringify(stableValue(cacheBody));
+    }
+    return JSON.stringify(stableValue(parsed));
   } catch {
     // Let FastAPI validate malformed JSON. It must still use a deterministic key.
     return bodyText;
+  }
+}
+
+function requestsForceRefresh(bodyText) {
+  try {
+    const body = JSON.parse(bodyText);
+    return body?.forceRefresh === true || body?.force_refresh === true;
+  } catch {
+    return false;
   }
 }
 
@@ -83,7 +97,7 @@ function responseWithCors(upstream, cacheable = false) {
   for (const [key, value] of Object.entries(corsHeaders())) headers.set(key, value);
   headers.set("Vary", "Origin");
   if (cacheable) {
-    headers.set("Cache-Control", `public, max-age=${SEARCH_CACHE_SECONDS}, stale-while-revalidate=60`);
+    headers.set("Cache-Control", `public, s-maxage=${SEARCH_CACHE_SECONDS}, max-age=${SEARCH_CACHE_SECONDS}, stale-while-revalidate=60`);
   } else {
     headers.set("Cache-Control", "no-store");
   }
@@ -100,8 +114,9 @@ async function proxyRequest(request, env, ctx) {
 
   const bodyText = await request.text();
   const cacheableSearch = url.pathname === "/api/search";
+  const forceRefresh = cacheableSearch && requestsForceRefresh(bodyText);
   const cacheKey = cacheableSearch ? await cacheKeyFor(request, bodyText) : null;
-  if (cacheKey) {
+  if (cacheKey && !forceRefresh) {
     const cached = await caches.default.match(cacheKey);
     if (cached) return responseWithCors(cached, true);
   }

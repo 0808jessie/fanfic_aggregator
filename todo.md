@@ -704,3 +704,7 @@
 - [x] 以合規公開請求與官方搜尋導流完善 Penana 受阻降級，新增精緻結果卡並移除冗餘分頁說明
 - [x] 修復 Cloudflare Pages Logo 載入與文字 fallback，同步頂部／底部分頁、來源統計及版本資訊至 v1.2.12
 - [x] 補足回歸、驗證網頁／PWA／桌面建置，推送 main、建立 v1.2.12 Release Tag並確認工作流程
+- [x] 稽核後端搜尋記憶體快取、Cloudflare Worker 邊緣快取與既有 force_refresh 參數的 TTL／覆蓋契約
+- [x] 將搜尋快取統一延長為 12 小時，確保 force_refresh 忽略舊快取並以最新結果覆蓋後端與 Worker 快取
+- [x] 在搜尋結果新增精簡手動重新抓取控制與非阻斷狀態回饋
+- [ ] 補足長效快取與重新抓取回歸，驗證網頁／Worker／桌面建置並推送 GitHub main 後確認 CI

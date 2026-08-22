@@ -18,7 +18,7 @@ def load_settings() -> Settings:
     database_path = Path(os.getenv("FANFIC_DB_PATH", project_root / "fanfic.db"))
     return Settings(
         database_path=database_path,
-        cache_ttl_seconds=int(os.getenv("CACHE_TTL_SECONDS", "3600")),
+        cache_ttl_seconds=int(os.getenv("CACHE_TTL_SECONDS", "43200")),
         host=os.getenv("FASTAPI_HOST", "0.0.0.0"),
         port=int(os.getenv("FASTAPI_PORT", "8000")),
     )

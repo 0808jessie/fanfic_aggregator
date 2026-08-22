@@ -211,6 +211,23 @@ describe("Home pagination interactions", () => {
     expect(mockState.mutationCalls).toBe(callsAfterFirstSearch);
   });
 
+  it("offers a result-summary refresh that bypasses the browser cache and requests latest source data", async () => {
+    render(<Home />);
+    fireEvent.change(screen.getByLabelText("搜尋同人作品"), { target: { value: "重新抓取" } });
+    fireEvent.click(screen.getByRole("button", { name: "RUN SEARCH" }));
+    await waitFor(() => expect(screen.getByText("PAGE ONE")).toBeTruthy());
+    const callsAfterInitialSearch = mockState.mutationCalls;
+
+    fireEvent.click(screen.getByRole("button", { name: "重新整理抓取最新" }));
+
+    await waitFor(() => expect(mockState.mutationCalls).toBe(callsAfterInitialSearch + 1));
+    expect(mockState.lastVariables).toMatchObject({
+      path: "/search",
+      method: "POST",
+      data: { keyword: "重新抓取", page: 1, forceRefresh: true },
+    });
+  });
+
   it("renders the crafted reading workspace before a query", () => {
     render(<Home />);
 
